@@ -47,18 +47,24 @@ bool Engine::tick() {
     scheduler_.run(Phase::PreUpdate, time_);
 
     // Fixed-step simulation: consume the accumulated time in constant slices.
+    // The fixed clock advances by exactly one step per run, independently of
+    // the frame clock, so FixedUpdate is deterministic for a given step count.
     fixedAccumulator_ += time_.delta;
     FrameTime fixedTime = time_;
     fixedTime.delta = fixedTimestep_;
+    fixedTime.fixedAlpha = 0.0;
     u32 steps = 0;
     while (fixedAccumulator_ >= fixedTimestep_ && steps < kMaxFixedStepsPerFrame) {
+        fixedElapsed_ += fixedTimestep_;
+        fixedTime.elapsed = fixedElapsed_;
         scheduler_.run(Phase::FixedUpdate, fixedTime);
         fixedAccumulator_ -= fixedTimestep_;
         ++steps;
     }
-    if (steps == kMaxFixedStepsPerFrame) {
+    if (fixedAccumulator_ >= fixedTimestep_) {
         fixedAccumulator_ = 0.0;  // cannot keep up: drop the backlog
     }
+    time_.fixedAlpha = std::clamp(fixedAccumulator_ / fixedTimestep_, 0.0, 1.0);
 
     scheduler_.run(Phase::Update, time_);
     scheduler_.run(Phase::PostUpdate, time_);

@@ -76,6 +76,7 @@ private:
     Clock::time_point lastTick_;
     f64 fixedTimestep_ = 1.0 / 60.0;
     f64 fixedAccumulator_ = 0.0;
+    f64 fixedElapsed_ = 0.0;
     f64 forcedDelta_ = 0.0;
     u64 maxFrames_ = 0;
     bool firstTick_ = true;

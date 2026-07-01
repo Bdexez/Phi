@@ -97,6 +97,8 @@ engine.scheduler().add(Phase::Update, "game.ai", [](const FrameTime& time) { ...
 
 Within a phase, tasks run by ascending `order`, then by registration order.
 
+`FixedUpdate` has its own clock: each step receives `delta = engine.fixed_timestep` and an `elapsed` that advances by exactly one step, so a simulation driven from it is deterministic. At most 8 steps run per frame; beyond that the backlog is dropped. The other phases receive `FrameTime::fixedAlpha`, the fraction of a step accumulated but not simulated yet, to interpolate between the last two fixed-step states when rendering.
+
 ### Identity across plugin boundaries
 
 Services, events, and ECS components are keyed by `bdex::typeId<T>()`, a hash of the type's **name** computed at compile time. The same type therefore has the same id in the executable and in every plugin, without relying on RTTI or on static variables being shared between shared libraries. A plugin also exports its ABI version (`kModuleAbiVersion`); a mismatch is rejected at load time.

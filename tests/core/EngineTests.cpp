@@ -67,6 +67,53 @@ TEST(Engine, FixedUpdateReceivesTheFixedStep) {
     EXPECT_EQ(steps, 3);
 }
 
+TEST(Engine, FixedStepsAdvanceTheirOwnClock) {
+    Config config;
+    config.set("engine.forced_delta", "0.375");
+    config.set("engine.fixed_timestep", "0.25");
+    Engine engine(config);
+    ASSERT_TRUE(engine.initialize().has_value());
+
+    std::vector<FrameTime> fixed;
+    std::vector<FrameTime> frames;
+    engine.scheduler().add(Phase::FixedUpdate, "fixed",
+                           [&](const FrameTime& time) { fixed.push_back(time); });
+    engine.scheduler().add(Phase::Update, "frame",
+                           [&](const FrameTime& time) { frames.push_back(time); });
+
+    engine.tick();  // 0.375 s: one step, 0.125 s left over
+    engine.tick();  // 0.750 s: two steps, nothing left over
+    engine.tick();  // 1.125 s: one step, 0.125 s left over
+
+    ASSERT_EQ(fixed.size(), 4u);
+    for (usize i = 0; i < fixed.size(); ++i) {
+        EXPECT_DOUBLE_EQ(fixed[i].elapsed, 0.25 * static_cast<f64>(i + 1));
+        EXPECT_DOUBLE_EQ(fixed[i].fixedAlpha, 0.0);
+    }
+
+    ASSERT_EQ(frames.size(), 3u);
+    EXPECT_DOUBLE_EQ(frames[0].fixedAlpha, 0.5);
+    EXPECT_DOUBLE_EQ(frames[1].fixedAlpha, 0.0);
+    EXPECT_DOUBLE_EQ(frames[2].fixedAlpha, 0.5);
+}
+
+TEST(Engine, DropsTheFixedBacklogWhenItCannotKeepUp) {
+    Config config;
+    config.set("engine.forced_delta", "1");
+    config.set("engine.fixed_timestep", "0.0625");  // 16 steps per frame, cap is 8
+    Engine engine(config);
+    ASSERT_TRUE(engine.initialize().has_value());
+
+    int steps = 0;
+    FrameTime frame;
+    engine.scheduler().add(Phase::FixedUpdate, "count", [&](const FrameTime&) { ++steps; });
+    engine.scheduler().add(Phase::Update, "frame", [&](const FrameTime& time) { frame = time; });
+
+    engine.tick();
+    EXPECT_EQ(steps, 8);
+    EXPECT_DOUBLE_EQ(frame.fixedAlpha, 0.0);
+}
+
 TEST(Engine, StopsOnRequestOrFrameLimit) {
     Config config;
     config.set("engine.max_frames", "5");
