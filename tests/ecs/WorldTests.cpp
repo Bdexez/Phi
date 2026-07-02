@@ -4,6 +4,7 @@
 
 #include <set>
 #include <string>
+#include <type_traits>
 
 using namespace bdex;
 using namespace bdex::ecs;
@@ -146,4 +147,42 @@ TEST(World, ClearInvalidatesEverything) {
     const Entity fresh = world.create();
     EXPECT_TRUE(world.alive(fresh));
     EXPECT_FALSE(world.has<Position>(fresh));
+}
+
+TEST(World, ConstViewsAndQueries) {
+    World world;
+    const Entity a = world.create();
+    const Entity b = world.create();
+    world.emplace<Position>(a, 1.0f, 2.0f);
+    world.emplace<Velocity>(a, 3.0f, 4.0f);
+    world.emplace<Position>(b, 5.0f, 6.0f);
+
+    // Read-only components arrive as const references.
+    float sum = 0.0f;
+    world.view<const Position, Velocity>().each([&](const Position& p, Velocity& v) {
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(p)>>);
+        v.x += p.x;
+        sum += p.y;
+    });
+    EXPECT_FLOAT_EQ(sum, 2.0f);
+    EXPECT_FLOAT_EQ(world.get<Velocity>(a).x, 4.0f);
+    EXPECT_EQ(world.view<const Position>().count(), 2u);
+
+    // Queries work through a const world.
+    const World& readOnly = world;
+    EXPECT_TRUE((readOnly.has<Position, Velocity>(a)));
+    EXPECT_FALSE(readOnly.has<Velocity>(b));
+    EXPECT_FALSE(readOnly.has<Label>(a));  // never stored anywhere
+    EXPECT_FLOAT_EQ(readOnly.get<Position>(b).x, 5.0f);
+    ASSERT_NE(readOnly.tryGet<Position>(a), nullptr);
+    EXPECT_EQ(readOnly.tryGet<Label>(a), nullptr);
+    EXPECT_EQ(readOnly.tryGet<Position>(Entity{}), nullptr);
+}
+
+TEST(World, RemovingAnUnknownComponentIsANoOp) {
+    World world;
+    const Entity e = world.create();
+    world.remove<Label>(e);
+    EXPECT_FALSE(world.has<Label>(e));
+    EXPECT_TRUE(world.alive(e));
 }

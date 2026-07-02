@@ -21,7 +21,8 @@ class View;
 ///
 /// Component types need no registration: any movable type can be attached.
 /// Pools are keyed by bdex::typeId, so a component type defined in a plugin
-/// and the same type used by the executable share one pool.
+/// and the same type used by the executable share one pool. Queries
+/// (has, tryGet, remove) never create a pool; only emplace and view do.
 ///
 /// Systems are plain functions over views, scheduled through the engine
 /// Scheduler:
@@ -53,29 +54,42 @@ public:
 
     template <class T>
     void remove(Entity entity) {
-        if (alive(entity)) {
-            pool<T>().remove(entity.index);
+        if (auto* components = findPool<T>(); components != nullptr && alive(entity)) {
+            components->remove(entity.index);
         }
     }
 
     template <class T>
     [[nodiscard]] T& get(Entity entity) {
+        return const_cast<T&>(std::as_const(*this).get<T>(entity));
+    }
+    template <class T>
+    [[nodiscard]] const T& get(Entity entity) const {
         BDEX_ASSERT(alive(entity), "get on a dead entity");
-        return pool<T>().get(entity.index);
+        const auto* components = findPool<T>();
+        BDEX_ASSERT(components != nullptr, "entity does not have this component");
+        return components->get(entity.index);
     }
 
     template <class T>
     [[nodiscard]] T* tryGet(Entity entity) {
-        return alive(entity) ? pool<T>().tryGet(entity.index) : nullptr;
+        return const_cast<T*>(std::as_const(*this).tryGet<T>(entity));
+    }
+    template <class T>
+    [[nodiscard]] const T* tryGet(Entity entity) const {
+        const auto* components = findPool<T>();
+        return components != nullptr && alive(entity) ? components->tryGet(entity.index)
+                                                      : nullptr;
     }
 
     template <class... Ts>
-    [[nodiscard]] bool has(Entity entity) {
-        return alive(entity) && (pool<Ts>().contains(entity.index) && ...);
+    [[nodiscard]] bool has(Entity entity) const {
+        return alive(entity) && (hasComponent<Ts>(entity.index) && ...);
     }
 
     /// Iterates entities owning *all* the listed components (types must be
-    /// distinct).
+    /// distinct). A const-qualified type (`view<const Transform>()`) is
+    /// handed to the callback as a const reference.
     template <class... Components>
     [[nodiscard]] View<Components...> view() {
         return View<Components...>(*this, pool<Components>()...);
@@ -89,7 +103,26 @@ public:
 
 private:
     template <class T>
-    ComponentPool<T>& pool() {
+    [[nodiscard]] const ComponentPool<std::remove_cvref_t<T>>* findPool() const {
+        using Stored = std::remove_cvref_t<T>;
+        const auto it = pools_.find(typeId<Stored>());
+        return it == pools_.end() ? nullptr
+                                  : static_cast<const ComponentPool<Stored>*>(it->second.get());
+    }
+    template <class T>
+    [[nodiscard]] ComponentPool<std::remove_cvref_t<T>>* findPool() {
+        return const_cast<ComponentPool<std::remove_cvref_t<T>>*>(
+            std::as_const(*this).findPool<T>());
+    }
+
+    template <class T>
+    [[nodiscard]] bool hasComponent(u32 index) const {
+        const auto* components = findPool<T>();
+        return components != nullptr && components->contains(index);
+    }
+
+    template <class T>
+    ComponentPool<std::remove_cvref_t<T>>& pool() {
         using Stored = std::remove_cvref_t<T>;
         const TypeId id = typeId<Stored>();
         auto it = pools_.find(id);
@@ -110,9 +143,11 @@ private:
 /// the pools so iteration performs no map lookup.
 template <class... Components>
 class View {
+    template <class T>
+    using PoolOf = ComponentPool<std::remove_const_t<T>>;
+
 public:
-    View(World& world, ComponentPool<Components>&... pools)
-        : world_(&world), pools_(&pools...) {}
+    View(World& world, PoolOf<Components>&... pools) : world_(&world), pools_(&pools...) {}
 
     /// Calls `fn` for each matching entity, as either
     /// `fn(Entity, Components&...)` or `fn(Components&...)`.
@@ -132,14 +167,14 @@ public:
                 continue;
             }
             const u32 index = entities[i];
-            if (!(std::get<ComponentPool<Components>*>(pools_)->contains(index) && ...)) {
+            if (!(std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
                 continue;
             }
             if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
                 fn(world_->entityAt(index),
-                   std::get<ComponentPool<Components>*>(pools_)->get(index)...);
+                   std::get<PoolOf<Components>*>(pools_)->get(index)...);
             } else {
-                fn(std::get<ComponentPool<Components>*>(pools_)->get(index)...);
+                fn(std::get<PoolOf<Components>*>(pools_)->get(index)...);
             }
         }
     }
@@ -149,7 +184,7 @@ public:
         usize result = 0;
         IComponentPool* driver = smallestPool();
         for (const u32 index : driver->entities()) {
-            if ((std::get<ComponentPool<Components>*>(pools_)->contains(index) && ...)) {
+            if ((std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
                 ++result;
             }
         }
@@ -164,12 +199,12 @@ private:
                 smallest = candidate;
             }
         };
-        (consider(std::get<ComponentPool<Components>*>(pools_)), ...);
+        (consider(std::get<PoolOf<Components>*>(pools_)), ...);
         return smallest;
     }
 
     World* world_;
-    std::tuple<ComponentPool<Components>*...> pools_;
+    std::tuple<PoolOf<Components>*...> pools_;
 };
 
 }  // namespace bdex::ecs
