@@ -5,6 +5,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,7 +56,9 @@ private:
         TaskId id = 0;
         i32 order = 0;
         std::string name;
-        Task task;
+        // Shared so run() can keep a running task alive (it may remove itself
+        // or grow the vector) without copying the callable every frame.
+        std::shared_ptr<const Task> task;
     };
 
     std::array<std::vector<Entry>, static_cast<usize>(Phase::Count)> phases_;

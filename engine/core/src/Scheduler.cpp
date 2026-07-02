@@ -30,7 +30,8 @@ TaskId Scheduler::add(Phase phase, std::string name, Task task, i32 order) {
     const auto position = std::upper_bound(
         entries.begin(), entries.end(), order,
         [](i32 value, const Entry& entry) { return value < entry.order; });
-    entries.insert(position, Entry{id, order, std::move(name), std::move(task)});
+    entries.insert(position, Entry{id, order, std::move(name),
+                                   std::make_shared<const Task>(std::move(task))});
     return id;
 }
 
@@ -63,8 +64,9 @@ void Scheduler::run(Phase phase, const FrameTime& time) {
     // Index-based: a task may add tasks (vector growth) while we iterate.
     for (usize i = 0; i < entries.size(); ++i) {
         if (entries[i].id != 0) {
-            const Task task = entries[i].task;  // copy: the task may remove itself
-            task(time);
+            // Hold a reference: the task may remove itself or add tasks.
+            const std::shared_ptr<const Task> task = entries[i].task;
+            (*task)(time);
         }
     }
     --runDepth_;
