@@ -80,7 +80,7 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     rhi::BindGroupHandle boundMaterial;
     const GpuMesh* boundMesh = nullptr;
 
-    context.world->view<render::MeshRenderer, scene::WorldTransform>().each(
+    context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
         [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
             if (!renderable.visible) {
                 return;

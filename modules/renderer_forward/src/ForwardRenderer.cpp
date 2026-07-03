@@ -309,7 +309,7 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
     render::DirectionalLight light;  // defaults when the scene has none
     if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
         scenes != nullptr && scenes->active() != nullptr) {
-        scenes->active()->world().view<render::DirectionalLight>().each(
+        scenes->active()->world().view<const render::DirectionalLight>().each(
             [&light](const render::DirectionalLight& candidate) { light = candidate; });
     }
 
@@ -390,7 +390,7 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
         if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
             scenes != nullptr && scenes->active() != nullptr) {
             bool found = false;
-            scenes->active()->world().view<render::Camera, scene::WorldTransform>().each(
+            scenes->active()->world().view<const render::Camera, const scene::WorldTransform>().each(
                 [&](const render::Camera& candidate, const scene::WorldTransform& transform) {
                     if (!found && candidate.primary) {
                         camera = render::makeCameraData(transform.matrix, candidate, aspect);
