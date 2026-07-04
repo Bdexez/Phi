@@ -45,8 +45,10 @@ private:
 };
 
 /// Recomputes WorldTransform for every entity with a Transform, following
-/// Parent links. Parents may appear in any order; a broken or cyclic link is
-/// treated as "no parent".
+/// Parent links. Each matrix is computed once, in O(n) overall, and parents
+/// may be stored in any order. A link to a dead entity or to one without a
+/// Transform is treated as "no parent"; in a cycle, the link that closes it is
+/// ignored.
 void updateWorldTransforms(ecs::World& world);
 
 }  // namespace bdex::scene

@@ -3,7 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <glm/gtc/epsilon.hpp>
+
 #include <numbers>
+#include <vector>
 
 using namespace bdex;
 using namespace bdex::scene;
@@ -98,6 +101,61 @@ TEST(Hierarchy, BrokenAndCyclicLinksDoNotHang) {
 
     updateWorldTransforms(world);  // must terminate
     expectNear(worldPosition(world, orphan), Vec3(3.0f, 0.0f, 0.0f));
+}
+
+TEST(Hierarchy, CyclesKeepOneEntityAsRoot) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+    const ecs::Entity a = scene.createEntity("a");
+    const ecs::Entity b = scene.createEntity("b");
+    world.emplace<Parent>(a, b);
+    world.emplace<Parent>(b, a);
+    world.get<Transform>(a).position = Vec3(1.0f, 0.0f, 0.0f);
+    world.get<Transform>(b).position = Vec3(0.0f, 2.0f, 0.0f);
+
+    updateWorldTransforms(world);
+
+    // The link closing the cycle is ignored: one entity sits at its local
+    // position, the other is offset by it.
+    const Vec3 positionA = worldPosition(world, a);
+    const Vec3 positionB = worldPosition(world, b);
+    const bool aIsRoot = glm::all(glm::epsilonEqual(positionA, Vec3(1.0f, 0.0f, 0.0f), 1e-5f));
+    const bool bIsRoot = glm::all(glm::epsilonEqual(positionB, Vec3(0.0f, 2.0f, 0.0f), 1e-5f));
+    EXPECT_NE(aIsRoot, bIsRoot);
+    expectNear(aIsRoot ? positionB : positionA, Vec3(1.0f, 2.0f, 0.0f));
+}
+
+TEST(Hierarchy, DeepChainsAreFullyResolved) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+
+    // Deeper than any recursion guard would allow, created leaf-first.
+    constexpr int kDepth = 500;
+    std::vector<ecs::Entity> chain;
+    for (int i = 0; i < kDepth; ++i) {
+        chain.push_back(scene.createEntity("link"));
+        world.get<Transform>(chain.back()).position = Vec3(1.0f, 0.0f, 0.0f);
+    }
+    for (int i = 0; i + 1 < kDepth; ++i) {
+        world.emplace<Parent>(chain[i], chain[i + 1]);
+    }
+
+    updateWorldTransforms(world);
+    expectNear(worldPosition(world, chain.front()), Vec3(static_cast<f32>(kDepth), 0.0f, 0.0f));
+    expectNear(worldPosition(world, chain.back()), Vec3(1.0f, 0.0f, 0.0f));
+}
+
+TEST(Hierarchy, ParentsWithoutWorldTransformStillCount) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+
+    const ecs::Entity pivot = world.create();  // Transform only, no WorldTransform
+    world.emplace<Transform>(pivot).position = Vec3(0.0f, 0.0f, 4.0f);
+    const ecs::Entity child = scene.createEntity("child");
+    world.emplace<Parent>(child, pivot);
+
+    updateWorldTransforms(world);
+    expectNear(worldPosition(world, child), Vec3(0.0f, 0.0f, 4.0f));
 }
 
 TEST(Camera, LooksDownNegativeZWithYUp) {
