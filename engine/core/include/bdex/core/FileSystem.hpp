@@ -27,7 +27,8 @@ namespace bdex {
 
 /// Maps logical roots to directories so that code never hard-codes disk
 /// locations: "engine:/shaders/mesh.vert.spv", "app:/textures/crate.tga"...
-/// Paths without a "root:/" prefix are used as-is.
+/// Paths without a "root:/" prefix are used as-is. A mounted path cannot
+/// leave its mount point: absolute paths and ".." escapes are rejected.
 class VirtualFileSystem {
 public:
     void mount(std::string_view root, std::filesystem::path directory);
