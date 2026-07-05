@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace bdex::vulkan {
@@ -68,6 +69,7 @@ struct BindGroupLayout {
 
 struct BindGroup {
     VkDescriptorSet handle = VK_NULL_HANDLE;
+    VkDescriptorPool pool = VK_NULL_HANDLE;  ///< The set is freed back into it.
 };
 
 struct Pipeline {
@@ -201,6 +203,12 @@ private:
     void generateMipmaps(VkCommandBuffer commandBuffer, Texture& texture);
     [[nodiscard]] bool supportsMipGeneration(VkFormat format) const;
 
+    /// Allocates a descriptor set from any pool with room, creating a pool
+    /// when they are all exhausted.
+    [[nodiscard]] std::pair<VkDescriptorSet, VkDescriptorPool> allocateDescriptorSet(
+        VkDescriptorSetLayout layout);
+    [[nodiscard]] VkDescriptorPool createDescriptorPool();
+
     // Swapchain internals (VulkanSwapchain.cpp).
     Result<> buildSwapchain(Swapchain& swapchain);
     void releaseSwapchainImages(Swapchain& swapchain);
@@ -218,7 +226,8 @@ private:
     VkQueue queue_ = VK_NULL_HANDLE;
     u32 queueFamily_ = 0;
     VmaAllocator allocator_ = VK_NULL_HANDLE;
-    VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
+    /// Grows on demand: a new pool is added when every existing one is full.
+    std::vector<VkDescriptorPool> descriptorPools_;
 
     std::string adapterName_;
     u32 adapterApiVersion_ = 0;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
+#include <tuple>
 
 namespace bdex::vulkan {
 namespace {
@@ -88,19 +89,7 @@ Result<> Device::initialize(const DeviceConfig& config) {
 
     createFrameResources();
 
-    // One pool for every bind group. Sets are freed individually.
-    const std::array<VkDescriptorPoolSize, 3> poolSizes = {{
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2048},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4096},
-    }};
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 4096;
-    poolInfo.poolSizeCount = static_cast<u32>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-    BDEX_VK_CHECK(vkCreateDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_));
+    descriptorPools_.push_back(createDescriptorPool());
 
     log::info("vulkan", "device: {} (Vulkan {}, validation {})", adapterName_,
               versionString(adapterApiVersion_), validationEnabled_ ? "on" : "off");
@@ -419,9 +408,10 @@ Device::~Device() {
         for (const auto handle : collect(buffers_)) destroyBuffer(handle);
         flushAllDeferred();
 
-        if (descriptorPool_ != VK_NULL_HANDLE) {
-            vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
+        for (const VkDescriptorPool pool : descriptorPools_) {
+            vkDestroyDescriptorPool(device_, pool, nullptr);
         }
+        descriptorPools_.clear();
         for (FrameData& frame : frames_) {
             if (frame.fence != VK_NULL_HANDLE) vkDestroyFence(device_, frame.fence, nullptr);
             if (frame.pool != VK_NULL_HANDLE) vkDestroyCommandPool(device_, frame.pool, nullptr);
@@ -984,14 +974,8 @@ rhi::BindGroupHandle Device::createBindGroup(const rhi::BindGroupDesc& desc) {
     const BindGroupLayout* layout = bindGroupLayouts_.get(desc.layout);
     BDEX_ASSERT(layout != nullptr, "bind group created with an invalid layout");
 
-    VkDescriptorSetAllocateInfo allocateInfo{};
-    allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocateInfo.descriptorPool = descriptorPool_;
-    allocateInfo.descriptorSetCount = 1;
-    allocateInfo.pSetLayouts = &layout->handle;
-
     BindGroup group;
-    BDEX_VK_CHECK(vkAllocateDescriptorSets(device_, &allocateInfo, &group.handle));
+    std::tie(group.handle, group.pool) = allocateDescriptorSet(layout->handle);
     setDebugName(VK_OBJECT_TYPE_DESCRIPTOR_SET, handleToU64(group.handle), desc.debugName);
 
     // Reserve up front: the write structs point into these arrays.
@@ -1037,9 +1021,55 @@ rhi::BindGroupHandle Device::createBindGroup(const rhi::BindGroupDesc& desc) {
     return bindGroups_.insert(group);
 }
 
+VkDescriptorPool Device::createDescriptorPool() {
+    // Sized for a few thousand materials; sets are freed individually.
+    constexpr std::array<VkDescriptorPoolSize, 3> kPoolSizes = {{
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2048},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4096},
+    }};
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolInfo.maxSets = 4096;
+    poolInfo.poolSizeCount = static_cast<u32>(kPoolSizes.size());
+    poolInfo.pPoolSizes = kPoolSizes.data();
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    BDEX_VK_CHECK(vkCreateDescriptorPool(device_, &poolInfo, nullptr, &pool));
+    return pool;
+}
+
+std::pair<VkDescriptorSet, VkDescriptorPool> Device::allocateDescriptorSet(
+    VkDescriptorSetLayout layout) {
+    VkDescriptorSetAllocateInfo allocateInfo{};
+    allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocateInfo.descriptorSetCount = 1;
+    allocateInfo.pSetLayouts = &layout;
+
+    // Newest pool first: it is the one most likely to have room. Older pools
+    // regain space as sets are freed, so they are tried before growing.
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    for (auto it = descriptorPools_.rbegin(); it != descriptorPools_.rend(); ++it) {
+        allocateInfo.descriptorPool = *it;
+        const VkResult result = vkAllocateDescriptorSets(device_, &allocateInfo, &set);
+        if (result == VK_SUCCESS) {
+            return {set, *it};
+        }
+        if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL) {
+            BDEX_VK_CHECK(result);
+        }
+    }
+
+    descriptorPools_.push_back(createDescriptorPool());
+    log::debug("vulkan", "descriptor pools exhausted: added pool #{}", descriptorPools_.size());
+    allocateInfo.descriptorPool = descriptorPools_.back();
+    BDEX_VK_CHECK(vkAllocateDescriptorSets(device_, &allocateInfo, &set));
+    return {set, descriptorPools_.back()};
+}
+
 void Device::destroyBindGroup(rhi::BindGroupHandle handle) {
     if (const auto group = bindGroups_.take(handle)) {
-        defer([device = device_, pool = descriptorPool_, set = group->handle] {
+        defer([device = device_, pool = group->pool, set = group->handle] {
             vkFreeDescriptorSets(device, pool, 1, &set);
         });
     }
