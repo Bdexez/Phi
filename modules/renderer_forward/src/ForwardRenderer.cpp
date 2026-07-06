@@ -190,12 +190,27 @@ render::TextureHandle ForwardRenderer::createTexture(const assets::ImageData& im
 }
 
 void ForwardRenderer::destroyTexture(render::TextureHandle handle) {
-    if (const auto texture = textures_.take(handle)) {
-        device_.destroyTexture(*texture);
+    if (handle == whiteTexture_) {
+        return;
     }
+    const auto texture = textures_.take(handle);
+    if (!texture) {
+        return;
+    }
+    // Materials sampling the texture would keep a dangling descriptor: they
+    // fall back to the default texture. Their old bind groups, like the
+    // texture itself, are released once in-flight frames are done with them.
+    materials_.forEach([&](render::MaterialHandle, GpuMaterial& material) {
+        if (material.desc.albedo == handle) {
+            material.desc.albedo = {};
+            device_.destroyBindGroup(material.bindGroup);
+            material.bindGroup = createMaterialBindGroup(material.desc);
+        }
+    });
+    device_.destroyTexture(*texture);
 }
 
-render::MaterialHandle ForwardRenderer::createMaterial(const render::MaterialDesc& desc) {
+rhi::BindGroupHandle ForwardRenderer::createMaterialBindGroup(const render::MaterialDesc& desc) {
     const rhi::TextureHandle* albedo = textures_.get(desc.albedo);
     if (albedo == nullptr) {
         albedo = textures_.get(whiteTexture_);
@@ -209,10 +224,16 @@ render::MaterialHandle ForwardRenderer::createMaterial(const render::MaterialDes
     albedoEntry.sampler = defaultSampler_;
     groupDesc.entries.push_back(albedoEntry);
     groupDesc.debugName = "material";
+    return device_.createBindGroup(groupDesc);
+}
 
+render::MaterialHandle ForwardRenderer::createMaterial(const render::MaterialDesc& desc) {
     GpuMaterial material;
     material.desc = desc;
-    material.bindGroup = device_.createBindGroup(groupDesc);
+    if (!textures_.contains(material.desc.albedo)) {
+        material.desc.albedo = {};  // invalid or stale: untextured
+    }
+    material.bindGroup = createMaterialBindGroup(material.desc);
     return materials_.insert(material);
 }
 

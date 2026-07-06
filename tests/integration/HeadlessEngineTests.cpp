@@ -449,3 +449,35 @@ TEST(VulkanHeadless, BindGroupsOutgrowASingleDescriptorPool) {
     device.waitIdle();
     EXPECT_EQ(device.validationErrorCount(), 0u);
 }
+
+TEST(VulkanHeadless, DestroyingATextureInUseKeepsMaterialsValid) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Error);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    if (!test.ready()) {
+        log::setLevel(log::Level::Info);
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+
+    test.populate(1);
+    const render::TextureHandle texture =
+        test.renderer().createTexture(assets::makeCheckerboard(16, 4, {255, 255, 255, 255},
+                                                               {0, 0, 0, 255}));
+    render::MaterialDesc textured;
+    textured.albedo = texture;
+    const render::MaterialHandle material = test.renderer().createMaterial(textured);
+    const ecs::Entity cube = test.scene().createEntity("textured cube");
+    test.world().emplace<render::MeshRenderer>(
+        cube, test.renderer().createMesh(assets::makeCube()), material);
+
+    test.engine->tick();
+    test.renderer().destroyTexture(texture);  // the material still uses it
+    for (int i = 0; i < 4; ++i) {
+        test.engine->tick();
+    }
+    log::setLevel(log::Level::Info);
+
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+    test.engine->shutdown();
+}

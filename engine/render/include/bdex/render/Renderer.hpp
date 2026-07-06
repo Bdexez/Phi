@@ -105,6 +105,7 @@ public:
     virtual void destroyMesh(MeshHandle mesh) = 0;
 
     [[nodiscard]] virtual TextureHandle createTexture(const assets::ImageData& image) = 0;
+    /// Materials still using the texture fall back to an untextured look.
     virtual void destroyTexture(TextureHandle texture) = 0;
 
     [[nodiscard]] virtual MaterialHandle createMaterial(const MaterialDesc& desc) = 0;
