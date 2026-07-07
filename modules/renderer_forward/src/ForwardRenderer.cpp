@@ -410,12 +410,15 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
             render::Camera{}, aspect);
         if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
             scenes != nullptr && scenes->active() != nullptr) {
-            bool found = false;
+            // Several primary cameras: the lowest entity slot wins, whatever
+            // order the components are stored in.
+            u32 chosen = ecs::Entity::kInvalidIndex;
             scenes->active()->world().view<const render::Camera, const scene::WorldTransform>().each(
-                [&](const render::Camera& candidate, const scene::WorldTransform& transform) {
-                    if (!found && candidate.primary) {
+                [&](ecs::Entity entity, const render::Camera& candidate,
+                    const scene::WorldTransform& transform) {
+                    if (candidate.primary && entity.index < chosen) {
                         camera = render::makeCameraData(transform.matrix, candidate, aspect);
-                        found = true;
+                        chosen = entity.index;
                     }
                 });
         }

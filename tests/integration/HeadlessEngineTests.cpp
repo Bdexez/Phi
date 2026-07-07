@@ -109,9 +109,11 @@ public:
     void render(const render::RenderFrameContext& context) override {
         trace_->push_back("render:" + name_);
         lastExtent = context.extent;
+        lastCameraPosition = context.camera.position;
     }
 
     Extent2D lastExtent;
+    Vec3 lastCameraPosition{0.0f};
 
 private:
     std::string name_;
@@ -314,6 +316,34 @@ TEST(HeadlessEngine, ScreenshotIsWrittenAndAnnounced) {
     ASSERT_GT(bytes->size(), 8u);
     EXPECT_EQ(std::string(bytes->begin() + 1, bytes->begin() + 4), "PNG");
     std::filesystem::remove(path);
+}
+
+TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
+    std::vector<std::string> trace;  // outlives the engine, which detaches the probe
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+
+    auto probe = std::make_unique<ProbeFeature>("probe", 0, trace);
+    ProbeFeature* probePtr = probe.get();
+    ASSERT_TRUE(test.renderer().addFeature(std::move(probe)).has_value());
+
+    const auto addCamera = [&](const Vec3& position, bool primary) {
+        const ecs::Entity camera = test.scene().createEntity("camera");
+        test.world().emplace<render::Camera>(camera).primary = primary;
+        test.world().get<scene::Transform>(camera).position = position;
+        return camera;
+    };
+    addCamera(Vec3(9.0f, 0.0f, 0.0f), false);
+    const ecs::Entity first = addCamera(Vec3(1.0f, 0.0f, 0.0f), true);
+    addCamera(Vec3(2.0f, 0.0f, 0.0f), true);
+
+    test.engine->tick();
+    EXPECT_FLOAT_EQ(probePtr->lastCameraPosition.x, 1.0f);
+
+    // Once the first one is gone, the next primary camera takes over.
+    test.world().destroy(first);
+    test.engine->tick();
+    EXPECT_FLOAT_EQ(probePtr->lastCameraPosition.x, 2.0f);
 }
 
 // --- Real GPU -------------------------------------------------------------------------

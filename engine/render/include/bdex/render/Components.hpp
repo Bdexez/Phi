@@ -15,7 +15,8 @@ using MaterialHandle = Handle<struct MaterialTag>;
 // code never depends on a particular renderer.
 
 /// Perspective camera. The view is taken from the entity's WorldTransform
-/// (looking down -Z). The first camera flagged `primary` is used.
+/// (looking down -Z). Among cameras flagged `primary`, the first one created
+/// is used (strictly: the one in the lowest entity slot).
 struct Camera {
     f32 verticalFov = glm::radians(60.0f);
     f32 nearPlane = 0.1f;
