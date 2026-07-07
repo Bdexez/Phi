@@ -227,6 +227,27 @@ TEST(AssetManager, LoadsThroughTheVirtualFileSystemAndCaches) {
     EXPECT_EQ(assets.cachedCount(), 1u);
 }
 
+TEST(AssetManager, MatchesExtensionsRegardlessOfCase) {
+    const TempDir dir;
+    dir.write("TRIANGLE.OBJ", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    dir.write("notes.TxT", "hello");
+
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    AssetManager assets(vfs);
+    assets.registerLoader<std::string>(".TXT", [](std::span<const u8> bytes) -> Result<std::string> {
+        return std::string(bytes.begin(), bytes.end());
+    });
+
+    const auto mesh = assets.load<MeshData>("data:/TRIANGLE.OBJ");
+    ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
+    EXPECT_EQ((*mesh)->triangleCount(), 1u);
+
+    const auto note = assets.load<std::string>("data:/notes.TxT");
+    ASSERT_TRUE(note.has_value()) << note.error().message;
+    EXPECT_EQ(**note, "hello");
+}
+
 TEST(AssetManager, ReportsMissingFilesLoadersAndMounts) {
     const TempDir dir;
     dir.write("notes.txt", "hello");

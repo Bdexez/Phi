@@ -37,10 +37,11 @@ public:
     template <class T>
     using Loader = std::function<Result<T>(std::span<const u8>)>;
 
-    /// `extension` includes the dot and is matched case-sensitively (".obj").
+    /// `extension` includes the dot (".obj") and is matched without regard to
+    /// ASCII case, so "MODEL.OBJ" uses the same loader.
     template <class T>
     void registerLoader(std::string_view extension, Loader<T> loader) {
-        loaders_[{typeId<T>(), std::string(extension)}] =
+        loaders_[{typeId<T>(), normalizeExtension(extension)}] =
             [loader = std::move(loader)](std::span<const u8> bytes) -> Result<std::shared_ptr<void>> {
             Result<T> result = loader(bytes);
             if (!result) {
@@ -67,6 +68,8 @@ public:
 private:
     using ErasedLoader = std::function<Result<std::shared_ptr<void>>(std::span<const u8>)>;
     using Key = std::pair<TypeId, std::string>;
+
+    [[nodiscard]] static std::string normalizeExtension(std::string_view extension);
 
     Result<std::shared_ptr<void>> loadErased(TypeId type, std::string_view typeName,
                                              std::string_view virtualPath);
