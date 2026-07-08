@@ -27,6 +27,8 @@ InputState::InputState(EventBus& events) {
         buttonsDown_.set(index, event.pressed);
         if (event.pressed) {
             buttonsPressed_.set(index);
+        } else {
+            buttonsReleased_.set(index);
         }
     });
 
@@ -49,6 +51,7 @@ void InputState::beginFrame() {
     keysPressed_.reset();
     keysReleased_.reset();
     buttonsPressed_.reset();
+    buttonsReleased_.reset();
     mouseDelta_ = Vec2(0.0f);
     scrollDelta_ = Vec2(0.0f);
 }
@@ -76,6 +79,11 @@ bool InputState::mouseButtonDown(MouseButton button) const {
 bool InputState::mouseButtonPressed(MouseButton button) const {
     const usize index = static_cast<usize>(button);
     return index < kButtonCount && buttonsPressed_.test(index);
+}
+
+bool InputState::mouseButtonReleased(MouseButton button) const {
+    const usize index = static_cast<usize>(button);
+    return index < kButtonCount && buttonsReleased_.test(index);
 }
 
 }  // namespace bdex::platform

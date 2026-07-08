@@ -24,6 +24,7 @@ add_executable(bdex_tests
     core/ServiceRegistryTests.cpp
     core/TypeIdTests.cpp
     ecs/WorldTests.cpp
+    platform/InputTests.cpp
     assets/AssetTests.cpp
     rhi/RhiTests.cpp
     scene/SceneTests.cpp
