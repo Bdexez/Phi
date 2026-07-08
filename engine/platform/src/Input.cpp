@@ -45,6 +45,18 @@ InputState::InputState(EventBus& events) {
     scrollSubscription_ = events.subscribe<MouseScrolled>([this](const MouseScrolled& event) {
         scrollDelta_ += Vec2(static_cast<f32>(event.deltaX), static_cast<f32>(event.deltaY));
     });
+
+    focusSubscription_ = events.subscribe<WindowFocusChanged>([this](const WindowFocusChanged& event) {
+        if (event.focused) {
+            return;
+        }
+        keysReleased_ |= keysDown_;
+        keysDown_.reset();
+        buttonsReleased_ |= buttonsDown_;
+        buttonsDown_.reset();
+        // The cursor may come back anywhere: do not turn that into a jump.
+        hasMousePosition_ = false;
+    });
 }
 
 void InputState::beginFrame() {

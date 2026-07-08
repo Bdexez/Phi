@@ -54,3 +54,29 @@ TEST(InputState, TracksMouseButtonTransitionsPerFrame) {
     input.beginFrame();
     EXPECT_FALSE(input.mouseButtonReleased(MouseButton::Right));
 }
+
+TEST(InputState, LosingFocusReleasesEverything) {
+    EventBus events;
+    InputState input(events);
+
+    input.beginFrame();
+    events.publish(KeyEvent{Key::A, KeyAction::Press});
+    events.publish(MouseButtonEvent{MouseButton::Left, true});
+    events.publish(MouseMoved{100.0, 100.0});
+
+    input.beginFrame();
+    events.publish(WindowFocusChanged{nullptr, false});
+    EXPECT_FALSE(input.keyDown(Key::A));
+    EXPECT_TRUE(input.keyReleased(Key::A));
+    EXPECT_FALSE(input.mouseButtonDown(MouseButton::Left));
+    EXPECT_TRUE(input.mouseButtonReleased(MouseButton::Left));
+    EXPECT_FALSE(input.keyReleased(Key::B));  // was not held
+
+    // Back in focus, the cursor re-enters elsewhere without a delta spike.
+    input.beginFrame();
+    events.publish(WindowFocusChanged{nullptr, true});
+    events.publish(MouseMoved{900.0, 20.0});
+    EXPECT_EQ(input.mouseDelta(), Vec2(0.0f));
+    events.publish(MouseMoved{905.0, 20.0});
+    EXPECT_EQ(input.mouseDelta(), Vec2(5.0f, 0.0f));
+}
