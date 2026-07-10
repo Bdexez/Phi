@@ -26,6 +26,7 @@ add_executable(bdex_tests
     ecs/WorldTests.cpp
     platform/InputTests.cpp
     assets/AssetTests.cpp
+    assets/PngTests.cpp
     assets/ZlibTests.cpp
     rhi/RhiTests.cpp
     scene/SceneTests.cpp
