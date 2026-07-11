@@ -59,21 +59,64 @@ TEST(Zlib, InflatesFixedAndDynamicHuffmanBlocks) {
 }
 
 TEST(Zlib, InflatesStoredBlocks) {
-    // encodePng wraps its scanlines in stored blocks: extract its IDAT payload.
-    const ImageData image = makeCheckerboard(200, 8, {255, 0, 0, 255}, {0, 0, 255, 255});
-    const std::vector<u8> png = encodePng(image);
-    const auto readU32 = [&](usize offset) {
-        return (static_cast<u32>(png[offset]) << 24) | (static_cast<u32>(png[offset + 1]) << 16) |
-               (static_cast<u32>(png[offset + 2]) << 8) | png[offset + 3];
-    };
-    const usize idatLength = readU32(33);
-    const std::span<const u8> idat = std::span(png).subspan(41, idatLength);
+    // More than one stored block (65535 bytes at most each).
+    std::vector<u8> data(150000);
+    for (usize i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<u8>(i * 7 + i / 300);
+    }
+    std::vector<u8> stream = {0x78, 0x01};
+    for (usize offset = 0; offset < data.size();) {
+        const usize size = std::min<usize>(data.size() - offset, 65535);
+        const bool last = offset + size == data.size();
+        stream.insert(stream.end(), {static_cast<u8>(last ? 1 : 0), static_cast<u8>(size),
+                                     static_cast<u8>(size >> 8), static_cast<u8>(~size),
+                                     static_cast<u8>(~size >> 8)});
+        stream.insert(stream.end(), data.begin() + static_cast<std::ptrdiff_t>(offset),
+                      data.begin() + static_cast<std::ptrdiff_t>(offset + size));
+        offset += size;
+    }
+    const u32 checksum = adler32(data);
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        stream.push_back(static_cast<u8>(checksum >> shift));
+    }
 
-    const auto raw = zlibDecompress(idat);
+    const auto raw = zlibDecompress(stream);
     ASSERT_TRUE(raw.has_value()) << raw.error().message;
-    ASSERT_EQ(raw->size(), (200u * 4 + 1) * 200);  // more than one 64 KiB block
-    EXPECT_EQ((*raw)[0], 0);                         // filter byte of the first row
-    EXPECT_EQ((*raw)[1], 255);                       // first pixel: red
+    EXPECT_EQ(*raw, data);
+}
+
+TEST(Zlib, CompressionRoundTrips) {
+    std::vector<std::vector<u8>> inputs;
+    inputs.emplace_back();                      // empty
+    inputs.push_back(bytesOf("a"));             // single byte
+    inputs.push_back(std::vector<u8>(100000, 'x'));  // one long run
+    inputs.push_back(bytesOf(kDynamicText));
+    std::vector<u8> noise(70000);
+    u32 state = 12345;
+    for (u8& byte : noise) {
+        state = state * 1664525u + 1013904223u;
+        byte = static_cast<u8>(state >> 24);
+    }
+    inputs.push_back(noise);                     // incompressible: stored blocks
+    std::vector<u8> mixed;
+    for (int i = 0; i < 2000; ++i) {
+        const std::string_view words[] = {"render ", "frame ", "entity ", "vulkan "};
+        const std::string_view word = words[(i * 7 + i / 13) % 4];
+        mixed.insert(mixed.end(), word.begin(), word.end());
+        mixed.push_back(static_cast<u8>(i));
+    }
+    inputs.push_back(mixed);                     // dynamic Huffman blocks
+
+    for (const std::vector<u8>& input : inputs) {
+        const std::vector<u8> compressed = zlibCompress(input);
+        const auto restored = zlibDecompress(compressed);
+        ASSERT_TRUE(restored.has_value()) << restored.error().message;
+        EXPECT_EQ(*restored, input);
+        // Incompressible data costs at most the stored-block framing.
+        EXPECT_LE(compressed.size(), input.size() + input.size() / 1000 + 64);
+    }
+    EXPECT_LT(zlibCompress(inputs[2]).size(), 1000u);
+    EXPECT_LT(zlibCompress(mixed).size(), mixed.size() / 3);
 }
 
 TEST(Zlib, RejectsCorruptedStreams) {

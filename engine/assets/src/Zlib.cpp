@@ -329,6 +329,473 @@ const Huffman& fixedDistances() {
     return table;
 }
 
+
+// --- Compression ---------------------------------------------------------------
+
+/// LSB-first bit writer.
+class BitWriter {
+public:
+    void write(u32 bits, int count) {
+        buffer_ |= static_cast<u64>(bits) << bitCount_;
+        bitCount_ += count;
+        while (bitCount_ >= 8) {
+            out_.push_back(static_cast<u8>(buffer_));
+            buffer_ >>= 8;
+            bitCount_ -= 8;
+        }
+    }
+
+    void alignToByte() {
+        if (bitCount_ > 0) {
+            out_.push_back(static_cast<u8>(buffer_));
+            buffer_ = 0;
+            bitCount_ = 0;
+        }
+    }
+
+    [[nodiscard]] std::vector<u8>& bytes() { return out_; }
+
+private:
+    std::vector<u8> out_;
+    u64 buffer_ = 0;
+    int bitCount_ = 0;
+};
+
+/// A literal (distance == 0) or a back-reference.
+struct Token {
+    u16 value = 0;  ///< Literal byte, or match length (3..258).
+    u16 distance = 0;
+};
+
+constexpr usize kMinMatch = 3;
+constexpr usize kMaxMatch = 258;
+constexpr usize kWindowSize = 32768;
+constexpr int kHashBits = 15;
+constexpr u32 kMaxChain = 128;     // candidates examined per position
+constexpr usize kNiceMatch = 128;  // stop searching once a match is this long
+constexpr usize kBlockTokens = 32768;
+
+const std::array<u8, kMaxMatch + 1>& lengthCodes() {
+    static const auto table = [] {
+        std::array<u8, kMaxMatch + 1> codes{};
+        for (usize code = 0; code < kLengthBase.size(); ++code) {
+            const usize end = std::min<usize>(kMaxMatch, kLengthBase[code] + (1u << kLengthExtra[code]) - 1);
+            for (usize length = kLengthBase[code]; length <= end; ++length) {
+                codes[length] = static_cast<u8>(code);  // 258 ends up on code 285
+            }
+        }
+        return codes;
+    }();
+    return table;
+}
+
+usize distanceCode(usize distance) {
+    const auto it = std::upper_bound(kDistanceBase.begin(), kDistanceBase.end(), distance);
+    return static_cast<usize>(it - kDistanceBase.begin()) - 1;
+}
+
+/// Greedy LZ77 with hash chains and one step of lazy matching.
+std::vector<Token> findMatches(std::span<const u8> data) {
+    std::vector<Token> tokens;
+    tokens.reserve(data.size() / 2 + 16);
+    std::vector<i32> head(usize{1} << kHashBits, -1);
+    std::vector<i32> previous(kWindowSize, -1);
+
+    const auto hashAt = [&](usize position) {
+        const u32 key = u32{data[position]} | (u32{data[position + 1]} << 8) |
+                        (u32{data[position + 2]} << 16);
+        return (key * 2654435761u) >> (32 - kHashBits);
+    };
+    const auto insert = [&](usize position) {
+        if (position + kMinMatch <= data.size()) {
+            const u32 hash = hashAt(position);
+            previous[position % kWindowSize] = head[hash];
+            head[hash] = static_cast<i32>(position);
+        }
+    };
+    // Longest earlier match for `position` (which must not be inserted yet).
+    const auto longestMatch = [&](usize position, usize& distance) -> usize {
+        if (position + kMinMatch > data.size()) {
+            return 0;
+        }
+        const usize limit = std::min(kMaxMatch, data.size() - position);
+        usize best = 0;
+        u32 chain = kMaxChain;
+        for (i32 candidate = head[hashAt(position)];
+             candidate >= 0 && position - static_cast<usize>(candidate) <= kWindowSize && chain-- > 0;
+             candidate = previous[static_cast<usize>(candidate) % kWindowSize]) {
+            const u8* a = data.data() + candidate;
+            const u8* b = data.data() + position;
+            if (a[best] != b[best]) {
+                continue;  // cannot beat the current best
+            }
+            usize length = 0;
+            while (length < limit && a[length] == b[length]) {
+                ++length;
+            }
+            if (length > best) {
+                best = length;
+                distance = position - static_cast<usize>(candidate);
+                if (best >= std::min(limit, kNiceMatch)) {
+                    break;
+                }
+            }
+        }
+        return best >= kMinMatch ? best : 0;
+    };
+
+    usize position = 0;
+    while (position < data.size()) {
+        usize distance = 0;
+        const usize length = longestMatch(position, distance);
+        insert(position);
+        if (length == 0) {
+            tokens.push_back({data[position], 0});
+            ++position;
+            continue;
+        }
+        // Lazy matching: a longer match one byte later is worth a literal.
+        if (length < kNiceMatch) {
+            usize nextDistance = 0;
+            if (longestMatch(position + 1, nextDistance) > length) {
+                tokens.push_back({data[position], 0});
+                ++position;
+                continue;
+            }
+        }
+        tokens.push_back({static_cast<u16>(length), static_cast<u16>(distance)});
+        for (usize i = 1; i < length; ++i) {
+            insert(position + i);
+        }
+        position += length;
+    }
+    return tokens;
+}
+
+/// Gives at least two symbols a non-zero frequency. A tree with a single
+/// code is incomplete: legal for distances, but rejected by some decoders
+/// (zlib refuses it for the code-length alphabet).
+void ensureTwoCodes(std::span<u32> frequencies) {
+    usize used = static_cast<usize>(
+        std::count_if(frequencies.begin(), frequencies.end(), [](u32 f) { return f != 0; }));
+    for (usize i = 0; used < 2 && i < frequencies.size(); ++i) {
+        if (frequencies[i] == 0) {
+            frequencies[i] = 1;
+            ++used;
+        }
+    }
+}
+
+/// Huffman code lengths for `frequencies`, none longer than `maxBits`.
+/// Frequencies are flattened until the tree fits, which always terminates
+/// (equal weights give a balanced tree).
+std::vector<u8> codeLengths(std::span<const u32> frequencies, int maxBits) {
+    std::vector<u8> lengths(frequencies.size(), 0);
+    std::vector<u32> weights(frequencies.begin(), frequencies.end());
+    for (;;) {
+        struct Node {
+            u64 weight;
+            i32 left;
+            i32 right;
+        };
+        std::vector<Node> nodes;
+        std::vector<i32> symbolOfLeaf;
+        for (usize symbol = 0; symbol < weights.size(); ++symbol) {
+            if (weights[symbol] != 0) {
+                nodes.push_back({weights[symbol], -1, -1});
+                symbolOfLeaf.push_back(static_cast<i32>(symbol));
+            }
+        }
+        if (nodes.size() == 1) {
+            lengths[static_cast<usize>(symbolOfLeaf[0])] = 1;
+            return lengths;
+        }
+        if (nodes.empty()) {
+            return lengths;
+        }
+
+        // Min-heap of node indices; ties broken by index for determinism.
+        const auto greater = [&nodes](i32 a, i32 b) {
+            const Node& x = nodes[static_cast<usize>(a)];
+            const Node& y = nodes[static_cast<usize>(b)];
+            return x.weight != y.weight ? x.weight > y.weight : a > b;
+        };
+        std::vector<i32> heap;
+        for (usize i = 0; i < nodes.size(); ++i) {
+            heap.push_back(static_cast<i32>(i));
+        }
+        std::make_heap(heap.begin(), heap.end(), greater);
+        while (heap.size() > 1) {
+            std::pop_heap(heap.begin(), heap.end(), greater);
+            const i32 a = heap.back();
+            heap.pop_back();
+            std::pop_heap(heap.begin(), heap.end(), greater);
+            const i32 b = heap.back();
+            heap.pop_back();
+            nodes.push_back({nodes[static_cast<usize>(a)].weight + nodes[static_cast<usize>(b)].weight, a, b});
+            heap.push_back(static_cast<i32>(nodes.size() - 1));
+            std::push_heap(heap.begin(), heap.end(), greater);
+        }
+
+        // Depth of every leaf.
+        int deepest = 0;
+        std::vector<std::pair<i32, int>> stack = {{heap.front(), 0}};
+        while (!stack.empty()) {
+            const auto [index, depth] = stack.back();
+            stack.pop_back();
+            const Node& node = nodes[static_cast<usize>(index)];
+            if (node.left < 0) {
+                lengths[static_cast<usize>(symbolOfLeaf[static_cast<usize>(index)])] = static_cast<u8>(depth);
+                deepest = std::max(deepest, depth);
+            } else {
+                stack.push_back({node.left, depth + 1});
+                stack.push_back({node.right, depth + 1});
+            }
+        }
+        if (deepest <= maxBits) {
+            return lengths;
+        }
+        for (u32& weight : weights) {
+            if (weight != 0) {
+                weight = (weight + 1) / 2;
+            }
+        }
+    }
+}
+
+/// Canonical codes for `lengths`, bit-reversed for an LSB-first writer.
+std::vector<u16> canonicalCodes(std::span<const u8> lengths) {
+    std::array<u16, kMaxCodeBits + 2> counts{};
+    for (const u8 length : lengths) {
+        ++counts[length];
+    }
+    counts[0] = 0;
+    std::array<u16, kMaxCodeBits + 2> next{};
+    u16 code = 0;
+    for (int length = 1; length <= kMaxCodeBits; ++length) {
+        code = static_cast<u16>((code + counts[length - 1]) << 1);
+        next[length] = code;
+    }
+    std::vector<u16> codes(lengths.size(), 0);
+    for (usize symbol = 0; symbol < lengths.size(); ++symbol) {
+        const u8 length = lengths[symbol];
+        if (length == 0) {
+            continue;
+        }
+        const u16 value = next[length]++;
+        u16 reversed = 0;
+        for (int bit = 0; bit < length; ++bit) {
+            reversed = static_cast<u16>(reversed | (((value >> bit) & 1u) << (length - 1 - bit)));
+        }
+        codes[symbol] = reversed;
+    }
+    return codes;
+}
+
+/// Literal/length and distance codes of one Huffman block.
+struct BlockCodes {
+    std::vector<u8> literalLengths;
+    std::vector<u8> distanceLengths;
+};
+
+u64 tokenBits(std::span<const Token> tokens, const BlockCodes& codes) {
+    const auto& lengthTable = lengthCodes();
+    u64 bits = codes.literalLengths[256];
+    for (const Token& token : tokens) {
+        if (token.distance == 0) {
+            bits += codes.literalLengths[token.value];
+        } else {
+            const usize lengthCode = lengthTable[token.value];
+            const usize distance = distanceCode(token.distance);
+            bits += codes.literalLengths[257 + lengthCode] + kLengthExtra[lengthCode] +
+                    codes.distanceLengths[distance] + kDistanceExtra[distance];
+        }
+    }
+    return bits;
+}
+
+void writeTokens(BitWriter& writer, std::span<const Token> tokens, const BlockCodes& codes) {
+    const auto& lengthTable = lengthCodes();
+    const std::vector<u16> literalCodes = canonicalCodes(codes.literalLengths);
+    const std::vector<u16> distanceCodes = canonicalCodes(codes.distanceLengths);
+    for (const Token& token : tokens) {
+        if (token.distance == 0) {
+            writer.write(literalCodes[token.value], codes.literalLengths[token.value]);
+            continue;
+        }
+        const usize lengthCode = lengthTable[token.value];
+        writer.write(literalCodes[257 + lengthCode], codes.literalLengths[257 + lengthCode]);
+        writer.write(token.value - kLengthBase[lengthCode], kLengthExtra[lengthCode]);
+        const usize distance = distanceCode(token.distance);
+        writer.write(distanceCodes[distance], codes.distanceLengths[distance]);
+        writer.write(token.distance - kDistanceBase[distance], kDistanceExtra[distance]);
+    }
+    writer.write(literalCodes[256], codes.literalLengths[256]);
+}
+
+/// Header of a dynamic block: the code lengths, run-length and Huffman coded.
+struct DynamicHeader {
+    u32 literalCount = 0;
+    u32 distanceCount = 0;
+    u32 codeLengthCount = 0;
+    std::vector<u8> codeLengthLengths;  // 19 entries
+    std::vector<std::pair<u8, u8>> runs;  // (symbol 0..18, extra bits value)
+
+    [[nodiscard]] u64 bits() const {
+        u64 total = 5 + 5 + 4 + 3 * u64{codeLengthCount};
+        for (const auto& [symbol, extra] : runs) {
+            total += codeLengthLengths[symbol] + (symbol == 16 ? 2 : symbol == 17 ? 3 : symbol == 18 ? 7 : 0);
+        }
+        return total;
+    }
+};
+
+constexpr std::array<u8, 19> kCodeLengthOrder = {16, 17, 18, 0, 8,  7, 9,  6, 10, 5,
+                                                 11, 4,  12, 3, 13, 2, 14, 1, 15};
+
+DynamicHeader makeDynamicHeader(const BlockCodes& codes) {
+    DynamicHeader header;
+    header.literalCount = 286;
+    while (header.literalCount > 257 && codes.literalLengths[header.literalCount - 1] == 0) {
+        --header.literalCount;
+    }
+    header.distanceCount = 30;
+    while (header.distanceCount > 1 && codes.distanceLengths[header.distanceCount - 1] == 0) {
+        --header.distanceCount;
+    }
+
+    std::vector<u8> all(codes.literalLengths.begin(),
+                        codes.literalLengths.begin() + header.literalCount);
+    all.insert(all.end(), codes.distanceLengths.begin(),
+               codes.distanceLengths.begin() + header.distanceCount);
+    for (usize i = 0; i < all.size();) {
+        const u8 value = all[i];
+        usize run = 1;
+        while (i + run < all.size() && all[i + run] == value) {
+            ++run;
+        }
+        usize left = run;
+        if (value == 0) {
+            while (left >= 11) {
+                const usize count = std::min<usize>(left, 138);
+                header.runs.push_back({18, static_cast<u8>(count - 11)});
+                left -= count;
+            }
+            if (left >= 3) {
+                header.runs.push_back({17, static_cast<u8>(left - 3)});
+                left = 0;
+            }
+        } else {
+            header.runs.push_back({value, 0});
+            --left;
+            while (left >= 3) {
+                const usize count = std::min<usize>(left, 6);
+                header.runs.push_back({16, static_cast<u8>(count - 3)});
+                left -= count;
+            }
+        }
+        for (; left > 0; --left) {
+            header.runs.push_back({value, 0});
+        }
+        i += run;
+    }
+
+    std::array<u32, 19> frequencies{};
+    for (const auto& [symbol, extra] : header.runs) {
+        ++frequencies[symbol];
+    }
+    ensureTwoCodes(frequencies);
+    header.codeLengthLengths = codeLengths(frequencies, 7);
+    header.codeLengthCount = 19;
+    while (header.codeLengthCount > 4 &&
+           header.codeLengthLengths[kCodeLengthOrder[header.codeLengthCount - 1]] == 0) {
+        --header.codeLengthCount;
+    }
+    return header;
+}
+
+void writeDynamicHeader(BitWriter& writer, const DynamicHeader& header) {
+    writer.write(header.literalCount - 257, 5);
+    writer.write(header.distanceCount - 1, 5);
+    writer.write(header.codeLengthCount - 4, 4);
+    for (u32 i = 0; i < header.codeLengthCount; ++i) {
+        writer.write(header.codeLengthLengths[kCodeLengthOrder[i]], 3);
+    }
+    const std::vector<u16> codes = canonicalCodes(header.codeLengthLengths);
+    for (const auto& [symbol, extra] : header.runs) {
+        writer.write(codes[symbol], header.codeLengthLengths[symbol]);
+        if (symbol >= 16) {
+            writer.write(extra, symbol == 16 ? 2 : symbol == 17 ? 3 : 7);
+        }
+    }
+}
+
+const BlockCodes& fixedCodes() {
+    static const BlockCodes codes = [] {
+        BlockCodes fixed;
+        fixed.literalLengths.resize(kLiteralCodes);
+        for (usize i = 0; i < kLiteralCodes; ++i) {
+            fixed.literalLengths[i] = i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8;
+        }
+        fixed.distanceLengths.assign(kDistanceCodes, 5);
+        return fixed;
+    }();
+    return codes;
+}
+
+/// Writes one block of tokens covering `raw`, choosing whichever of the
+/// stored, fixed and dynamic encodings is smallest.
+void writeBlock(BitWriter& writer, std::span<const Token> tokens, std::span<const u8> raw,
+                bool last) {
+    std::vector<u32> literalFrequencies(286, 0);
+    std::vector<u32> distanceFrequencies(30, 0);
+    literalFrequencies[256] = 1;
+    const auto& lengthTable = lengthCodes();
+    for (const Token& token : tokens) {
+        if (token.distance == 0) {
+            ++literalFrequencies[token.value];
+        } else {
+            ++literalFrequencies[257 + lengthTable[token.value]];
+            ++distanceFrequencies[distanceCode(token.distance)];
+        }
+    }
+    ensureTwoCodes(literalFrequencies);
+    ensureTwoCodes(distanceFrequencies);
+
+    BlockCodes dynamic;
+    dynamic.literalLengths = codeLengths(literalFrequencies, kMaxCodeBits);
+    dynamic.distanceLengths = codeLengths(distanceFrequencies, kMaxCodeBits);
+    const DynamicHeader header = makeDynamicHeader(dynamic);
+
+    const u64 dynamicBits = 3 + header.bits() + tokenBits(tokens, dynamic);
+    const u64 fixedBits = 3 + tokenBits(tokens, fixedCodes());
+    const usize storedBlocks = std::max<usize>(1, (raw.size() + 65534) / 65535);
+    const u64 storedBits = (u64{raw.size()} + 5 * u64{storedBlocks}) * 8 + 7;
+
+    if (storedBits <= dynamicBits && storedBits <= fixedBits) {
+        usize offset = 0;
+        do {
+            const usize size = std::min<usize>(raw.size() - offset, 65535);
+            const bool final = last && offset + size == raw.size();
+            writer.write(final ? 1 : 0, 3);
+            writer.alignToByte();
+            writer.write(static_cast<u32>(size), 16);
+            writer.write(static_cast<u32>(~size & 0xffff), 16);
+            auto& bytes = writer.bytes();
+            bytes.insert(bytes.end(), raw.begin() + static_cast<std::ptrdiff_t>(offset),
+                         raw.begin() + static_cast<std::ptrdiff_t>(offset + size));
+            offset += size;
+        } while (offset < raw.size());
+    } else if (fixedBits <= dynamicBits) {
+        writer.write((last ? 1 : 0) | (1u << 1), 3);
+        writeTokens(writer, tokens, fixedCodes());
+    } else {
+        writer.write((last ? 1 : 0) | (2u << 1), 3);
+        writeDynamicHeader(writer, header);
+        writeTokens(writer, tokens, dynamic);
+    }
+}
+
 }  // namespace
 
 u32 adler32(std::span<const u8> data, u32 adler) {
@@ -424,6 +891,34 @@ Result<std::vector<u8>> zlibDecompress(std::span<const u8> stream, usize maxSize
         return fail("zlib: Adler-32 mismatch");
     }
     return out;
+}
+
+std::vector<u8> zlibCompress(std::span<const u8> data) {
+    BitWriter writer;
+    writer.write(0x78, 8);  // deflate, 32 KiB window
+    writer.write(0x9c, 8);  // default level, header checksum
+
+    const std::vector<Token> tokens = findMatches(data);
+    usize rawOffset = 0;
+    usize first = 0;
+    do {
+        const usize count = std::min(kBlockTokens, tokens.size() - first);
+        const std::span<const Token> block = std::span(tokens).subspan(first, count);
+        usize rawSize = 0;
+        for (const Token& token : block) {
+            rawSize += token.distance == 0 ? 1 : token.value;
+        }
+        writeBlock(writer, block, data.subspan(rawOffset, rawSize), first + count == tokens.size());
+        first += count;
+        rawOffset += rawSize;
+    } while (first < tokens.size());
+
+    writer.alignToByte();
+    const u32 checksum = adler32(data);
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        writer.write((checksum >> shift) & 0xff, 8);
+    }
+    return std::move(writer.bytes());
 }
 
 }  // namespace bdex::assets
