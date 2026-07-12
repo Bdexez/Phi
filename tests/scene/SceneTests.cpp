@@ -1,3 +1,4 @@
+#include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/scene/Scene.hpp>
 
@@ -5,6 +6,7 @@
 
 #include <glm/gtc/epsilon.hpp>
 
+#include <cmath>
 #include <numbers>
 #include <vector>
 
@@ -182,4 +184,41 @@ TEST(Camera, LooksDownNegativeZWithYUp) {
     // a point to the right at x > 0.
     EXPECT_LT(project(Vec3(0.0f, 1.0f, 0.0f)).y, 0.0f);
     EXPECT_GT(project(Vec3(1.0f, 0.0f, 0.0f)).x, 0.0f);
+}
+
+TEST(Frustum, KeepsWhatTheCameraCanSee) {
+    Transform cameraTransform;
+    cameraTransform.position = Vec3(0.0f, 0.0f, 5.0f);  // looking down -Z
+    render::Camera lens;
+    lens.nearPlane = 0.1f;
+    lens.farPlane = 100.0f;
+    const render::CameraData camera =
+        render::makeCameraData(cameraTransform.localMatrix(), lens, 16.0f / 9.0f);
+    const render::Frustum frustum(camera.viewProjection);
+
+    const auto visible = [&](const Vec3& center, f32 radius) {
+        return frustum.intersects({center, radius});
+    };
+    EXPECT_TRUE(visible(Vec3(0.0f), 0.5f));                    // straight ahead
+    EXPECT_FALSE(visible(Vec3(0.0f, 0.0f, 10.0f), 0.5f));      // behind the camera
+    EXPECT_FALSE(visible(Vec3(0.0f, 0.0f, -200.0f), 1.0f));    // beyond the far plane
+    EXPECT_FALSE(visible(Vec3(50.0f, 0.0f, 0.0f), 1.0f));      // far to the right
+    EXPECT_FALSE(visible(Vec3(0.0f, -50.0f, 0.0f), 1.0f));     // far below
+    EXPECT_TRUE(visible(Vec3(50.0f, 0.0f, 0.0f), 48.0f));      // large enough to reach in
+    EXPECT_TRUE(visible(Vec3(0.0f, 0.0f, 5.5f), 1.0f));        // straddles the near plane
+}
+
+TEST(Frustum, BoundingSpheresFollowTransforms) {
+    const render::BoundingSphere cube = render::computeBoundingSphere(assets::makeCube(2.0f));
+    expectNear(cube.center, Vec3(0.0f));
+    EXPECT_NEAR(cube.radius, std::sqrt(3.0f), 1e-5f);
+    EXPECT_EQ(render::computeBoundingSphere({}).radius, 0.0f);
+
+    Transform transform;
+    transform.position = Vec3(1.0f, 2.0f, 3.0f);
+    transform.rotation = glm::angleAxis(1.0f, glm::normalize(Vec3(1.0f, 1.0f, 0.0f)));
+    transform.scale = Vec3(1.0f, 4.0f, 2.0f);
+    const render::BoundingSphere moved = render::transformSphere(cube, transform.localMatrix());
+    expectNear(moved.center, Vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_NEAR(moved.radius, std::sqrt(3.0f) * 4.0f, 1e-4f);  // largest axis scale
 }
