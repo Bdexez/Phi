@@ -40,8 +40,7 @@ struct ImageData {
 /// 8 bits; color-space chunks (gAMA, sRGB, iCCP) are ignored.
 [[nodiscard]] Result<ImageData> decodePng(std::span<const u8> bytes);
 
-/// Encodes to PNG. The stream is stored uncompressed, which keeps the encoder
-/// dependency-free; it is meant for captures and debugging output.
+/// Encodes to an RGBA8 PNG, with per-row filtering and deflate compression.
 [[nodiscard]] std::vector<u8> encodePng(const ImageData& image);
 [[nodiscard]] Result<> writePng(const std::filesystem::path& path, const ImageData& image);
 
