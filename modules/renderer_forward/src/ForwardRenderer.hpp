@@ -3,6 +3,7 @@
 #include <bdex/core/Engine.hpp>
 #include <bdex/core/Handle.hpp>
 #include <bdex/platform/Window.hpp>
+#include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/rhi/Device.hpp>
 
@@ -16,6 +17,7 @@ struct GpuMesh {
     rhi::BufferHandle vertexBuffer;
     rhi::BufferHandle indexBuffer;
     u32 indexCount = 0;
+    render::BoundingSphere bounds;  ///< In mesh space, for culling.
 };
 
 struct GpuMaterial {

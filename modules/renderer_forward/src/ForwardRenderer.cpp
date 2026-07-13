@@ -147,6 +147,7 @@ render::MeshHandle ForwardRenderer::createMesh(const assets::MeshData& mesh) {
 
     GpuMesh gpuMesh;
     gpuMesh.indexCount = static_cast<u32>(mesh.indices.size());
+    gpuMesh.bounds = render::computeBoundingSphere(mesh);
 
     rhi::BufferDesc vertexDesc;
     vertexDesc.size = mesh.vertices.size() * sizeof(assets::Vertex);
