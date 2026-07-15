@@ -37,9 +37,13 @@ public:
     [[nodiscard]] bool has(std::string_view key) const;
     [[nodiscard]] std::optional<std::string> find(std::string_view key) const;
 
+    // Typed getters return `fallback` when the key is missing, and also when
+    // its value cannot be parsed, in which case a warning is logged.
+
     [[nodiscard]] std::string getString(std::string_view key, std::string_view fallback = "") const;
     [[nodiscard]] i64 getInt(std::string_view key, i64 fallback = 0) const;
     [[nodiscard]] f64 getFloat(std::string_view key, f64 fallback = 0.0) const;
+    /// true/false, yes/no, on/off or 1/0, in any letter case.
     [[nodiscard]] bool getBool(std::string_view key, bool fallback = false) const;
     /// Comma-separated list, entries trimmed, empty entries dropped.
     [[nodiscard]] std::vector<std::string> getList(std::string_view key) const;

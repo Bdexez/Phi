@@ -1,7 +1,9 @@
 #include <bdex/core/Config.hpp>
 
 #include <bdex/core/FileSystem.hpp>
+#include <bdex/core/Log.hpp>
 
+#include <algorithm>
 #include <charconv>
 
 namespace bdex {
@@ -15,6 +17,20 @@ std::string_view trim(std::string_view text) {
     }
     const usize end = text.find_last_not_of(whitespace);
     return text.substr(begin, end - begin + 1);
+}
+
+bool equalsIgnoringCase(std::string_view a, std::string_view b) {
+    const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(), [&](char x, char y) { return lower(x) == lower(y); });
+}
+
+/// A present but unusable value is most likely a typo: say so instead of
+/// silently running with the default.
+template <class T>
+void warnMalformed(std::string_view key, std::string_view value, std::string_view expected,
+                   const T& fallback) {
+    log::warn("config", "'{}' = '{}' is not {}; using {}", key, value, expected, fallback);
 }
 
 }  // namespace
@@ -100,7 +116,11 @@ i64 Config::getInt(std::string_view key, i64 fallback) const {
     i64 value = 0;
     const char* end = it->second.data() + it->second.size();
     const auto [ptr, ec] = std::from_chars(it->second.data(), end, value);
-    return ec == std::errc{} && ptr == end ? value : fallback;
+    if (ec != std::errc{} || ptr != end) {
+        warnMalformed(key, it->second, "an integer", fallback);
+        return fallback;
+    }
+    return value;
 }
 
 f64 Config::getFloat(std::string_view key, f64 fallback) const {
@@ -111,7 +131,11 @@ f64 Config::getFloat(std::string_view key, f64 fallback) const {
     f64 value = 0.0;
     const char* end = it->second.data() + it->second.size();
     const auto [ptr, ec] = std::from_chars(it->second.data(), end, value);
-    return ec == std::errc{} && ptr == end ? value : fallback;
+    if (ec != std::errc{} || ptr != end) {
+        warnMalformed(key, it->second, "a number", fallback);
+        return fallback;
+    }
+    return value;
 }
 
 bool Config::getBool(std::string_view key, bool fallback) const {
@@ -120,12 +144,17 @@ bool Config::getBool(std::string_view key, bool fallback) const {
         return fallback;
     }
     const std::string& value = it->second;
-    if (value == "true" || value == "1" || value == "yes" || value == "on") {
-        return true;
+    for (const std::string_view yes : {"true", "1", "yes", "on"}) {
+        if (equalsIgnoringCase(value, yes)) {
+            return true;
+        }
     }
-    if (value == "false" || value == "0" || value == "no" || value == "off") {
-        return false;
+    for (const std::string_view no : {"false", "0", "no", "off"}) {
+        if (equalsIgnoringCase(value, no)) {
+            return false;
+        }
     }
+    warnMalformed(key, value, "a boolean (true/false, yes/no, on/off, 1/0)", fallback);
     return fallback;
 }
 
