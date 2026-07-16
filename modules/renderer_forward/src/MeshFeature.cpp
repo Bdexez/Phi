@@ -5,19 +5,11 @@
 #include <bdex/assets/AssetManager.hpp>
 #include <bdex/scene/Components.hpp>
 
+#include <algorithm>
 #include <cstddef>
+#include <functional>
 
 namespace bdex::forward {
-namespace {
-
-/// Must match ObjectConstants in mesh.vert / mesh.frag.
-struct ObjectConstants {
-    Mat4 model;
-    Vec4 baseColor;
-    Vec4 params;  // x: specular strength, y: shininess
-};
-
-}  // namespace
 
 Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     auto& assets = context.services.get<assets::AssetManager>();
@@ -71,16 +63,9 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
         return;
     }
 
-    rhi::ICommandList& commands = context.commands;
-    commands.beginDebugGroup("forward.meshes");
-    commands.bindPipeline(pipeline_);
-    commands.bindBindGroup(0, context.frameBindGroup);
-
-    // Consecutive draws often share a material or a mesh: skip redundant binds.
-    rhi::BindGroupHandle boundMaterial;
-    const GpuMesh* boundMesh = nullptr;
+    // Gather what is visible...
+    draws_.clear();
     const render::Frustum frustum(context.camera.viewProjection);
-
     context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
         [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
             if (!renderable.visible) {
@@ -94,26 +79,45 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
                 return;  // outside the view
             }
             const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
-
-            if (material.bindGroup != boundMaterial) {
-                commands.bindBindGroup(1, material.bindGroup);
-                boundMaterial = material.bindGroup;
-            }
-            if (mesh != boundMesh) {
-                commands.bindVertexBuffer(mesh->vertexBuffer);
-                commands.bindIndexBuffer(mesh->indexBuffer, rhi::IndexType::UInt32);
-                boundMesh = mesh;
-            }
-
-            const ObjectConstants constants{
-                transform.matrix,
-                material.desc.baseColor,
-                Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f),
-            };
-            commands.pushConstants(0, rhi::asBytes(constants));
-            commands.drawIndexed(mesh->indexCount);
+            draws_.push_back({
+                material.bindGroup,
+                mesh,
+                {transform.matrix, material.desc.baseColor,
+                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
+            });
         });
+    if (draws_.empty()) {
+        return;
+    }
 
+    // ...group it by material, then mesh, so each is bound once...
+    std::sort(draws_.begin(), draws_.end(), [](const DrawItem& a, const DrawItem& b) {
+        if (a.material.index != b.material.index) {
+            return a.material.index < b.material.index;
+        }
+        return std::less<const GpuMesh*>{}(a.mesh, b.mesh);
+    });
+
+    // ...and draw it.
+    rhi::ICommandList& commands = context.commands;
+    commands.beginDebugGroup("forward.meshes");
+    commands.bindPipeline(pipeline_);
+    commands.bindBindGroup(0, context.frameBindGroup);
+    rhi::BindGroupHandle boundMaterial;
+    const GpuMesh* boundMesh = nullptr;
+    for (const DrawItem& draw : draws_) {
+        if (draw.material != boundMaterial) {
+            commands.bindBindGroup(1, draw.material);
+            boundMaterial = draw.material;
+        }
+        if (draw.mesh != boundMesh) {
+            commands.bindVertexBuffer(draw.mesh->vertexBuffer);
+            commands.bindIndexBuffer(draw.mesh->indexBuffer, rhi::IndexType::UInt32);
+            boundMesh = draw.mesh;
+        }
+        commands.pushConstants(0, rhi::asBytes(draw.constants));
+        commands.drawIndexed(draw.mesh->indexCount);
+    }
     commands.endDebugGroup();
 }
 
