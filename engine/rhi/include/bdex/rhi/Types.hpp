@@ -276,9 +276,13 @@ struct DeviceInfo {
     bool validationEnabled = false;
 };
 
+/// What the last frame recorded, for profiling overlays and tests.
 struct FrameStats {
     u32 drawCalls = 0;
     u64 triangles = 0;
+    u32 pipelineBinds = 0;
+    u32 bindGroupBinds = 0;
+    u32 bufferBinds = 0;  ///< Vertex and index buffers.
 };
 
 }  // namespace bdex::rhi

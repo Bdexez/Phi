@@ -114,6 +114,7 @@ void CommandList::bindPipeline(rhi::PipelineHandle handle) {
     BDEX_ASSERT(pipeline != nullptr, "invalid pipeline");
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
     boundPipeline_ = pipeline;
+    ++stats_.pipelineBinds;
 }
 
 void CommandList::bindBindGroup(u32 setIndex, rhi::BindGroupHandle handle) {
@@ -122,6 +123,7 @@ void CommandList::bindBindGroup(u32 setIndex, rhi::BindGroupHandle handle) {
     BDEX_ASSERT(group != nullptr, "invalid bind group");
     vkCmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             boundPipeline_->layout, setIndex, 1, &group->handle, 0, nullptr);
+    ++stats_.bindGroupBinds;
 }
 
 void CommandList::bindVertexBuffer(rhi::BufferHandle handle, u64 offset) {
@@ -129,6 +131,7 @@ void CommandList::bindVertexBuffer(rhi::BufferHandle handle, u64 offset) {
     BDEX_ASSERT(buffer != nullptr, "invalid vertex buffer");
     const VkDeviceSize vkOffset = offset;
     vkCmdBindVertexBuffers(commandBuffer_, 0, 1, &buffer->handle, &vkOffset);
+    ++stats_.bufferBinds;
 }
 
 void CommandList::bindIndexBuffer(rhi::BufferHandle handle, rhi::IndexType type, u64 offset) {
@@ -137,6 +140,7 @@ void CommandList::bindIndexBuffer(rhi::BufferHandle handle, rhi::IndexType type,
     vkCmdBindIndexBuffer(commandBuffer_, buffer->handle, offset,
                          type == rhi::IndexType::UInt16 ? VK_INDEX_TYPE_UINT16
                                                         : VK_INDEX_TYPE_UINT32);
+    ++stats_.bufferBinds;
 }
 
 void CommandList::pushConstants(u32 offset, std::span<const std::byte> data) {
