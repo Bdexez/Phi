@@ -2,12 +2,17 @@
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/FileSystem.hpp>
+#include <bdex/core/JobSystem.hpp>
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace bdex;
 using namespace bdex::assets;
@@ -238,6 +243,107 @@ TEST(AssetManager, LoadsPngImages) {
     const auto image = assets.load<ImageData>("data:/checker.png");
     ASSERT_TRUE(image.has_value()) << image.error().message;
     EXPECT_EQ((*image)->pixels, source.pixels);
+}
+
+TEST(AssetManager, LoadsAsynchronouslyOnTheJobSystem) {
+    const TempDir dir;
+    dir.write("triangle.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    JobSystem jobs(2);
+    AssetManager assets(vfs, &jobs);
+
+    const AssetFuture<MeshData> pending = assets.loadAsync<MeshData>("data:/triangle.obj");
+    ASSERT_TRUE(pending.valid());
+    const auto mesh = pending.get();
+    ASSERT_TRUE(mesh.has_value()) << mesh.error().message;
+    EXPECT_EQ((*mesh)->triangleCount(), 1u);
+    EXPECT_TRUE(pending.ready());
+
+    // Once loaded, the asset is served from the cache, sync or async.
+    EXPECT_EQ(assets.load<MeshData>("data:/triangle.obj")->get(), mesh->get());
+    const auto again = assets.loadAsync<MeshData>("data:/triangle.obj");
+    EXPECT_TRUE(again.ready());
+    EXPECT_EQ(again.get()->get(), mesh->get());
+
+    const auto missing = assets.loadAsync<MeshData>("data:/missing.obj").get();
+    EXPECT_FALSE(missing.has_value());
+}
+
+TEST(AssetManager, ConcurrentRequestsShareOneLoad) {
+    struct Slow {
+        int value;
+    };
+    const TempDir dir;
+    dir.write("slow.txt", "42");
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    JobSystem jobs(4);
+    AssetManager assets(vfs, &jobs);
+
+    std::atomic<int> calls{0};
+    assets.registerLoader<Slow>(".txt", [&calls](std::span<const u8> bytes) -> Result<Slow> {
+        ++calls;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return Slow{std::stoi(std::string(bytes.begin(), bytes.end()))};
+    });
+
+    std::vector<AssetFuture<Slow>> requests;
+    for (int i = 0; i < 8; ++i) {
+        requests.push_back(assets.loadAsync<Slow>("data:/slow.txt"));
+    }
+    const auto direct = assets.load<Slow>("data:/slow.txt");  // joins the load in flight
+    ASSERT_TRUE(direct.has_value()) << direct.error().message;
+    for (const auto& request : requests) {
+        EXPECT_EQ(request.get()->get(), direct->get());
+    }
+    EXPECT_EQ((*direct)->value, 42);
+    EXPECT_EQ(calls.load(), 1);
+}
+
+TEST(AssetManager, FailedLoadsAreRetried) {
+    const TempDir dir;
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    JobSystem jobs(1);
+    AssetManager assets(vfs, &jobs);
+
+    EXPECT_FALSE(assets.loadAsync<MeshData>("data:/late.obj").get().has_value());
+    dir.write("late.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    EXPECT_TRUE(assets.loadAsync<MeshData>("data:/late.obj").get().has_value());
+}
+
+TEST(AssetManager, AsyncLoadsWithoutJobSystemCompleteImmediately) {
+    const TempDir dir;
+    dir.write("triangle.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    AssetManager assets(vfs);
+
+    const auto pending = assets.loadAsync<MeshData>("data:/triangle.obj");
+    EXPECT_TRUE(pending.ready());
+    EXPECT_TRUE(pending.get().has_value());
+}
+
+TEST(AssetManager, DestructionWaitsForLoadsInFlight) {
+    const TempDir dir;
+    for (int i = 0; i < 16; ++i) {
+        dir.write("mesh" + std::to_string(i) + ".obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    }
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    JobSystem jobs(4);
+    std::vector<AssetFuture<MeshData>> requests;
+    {
+        AssetManager assets(vfs, &jobs);
+        for (int i = 0; i < 16; ++i) {
+            requests.push_back(assets.loadAsync<MeshData>("data:/mesh" + std::to_string(i) + ".obj"));
+        }
+    }  // must not leave jobs running against a destroyed manager
+    for (const auto& request : requests) {
+        EXPECT_TRUE(request.ready());
+        EXPECT_TRUE(request.get().has_value());
+    }
 }
 
 TEST(AssetManager, MatchesExtensionsRegardlessOfCase) {
