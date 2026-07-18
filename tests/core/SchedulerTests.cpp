@@ -63,3 +63,26 @@ TEST(Scheduler, PassesFrameTimeThrough) {
     EXPECT_DOUBLE_EQ(seen.elapsed, 2.0);
     EXPECT_EQ(seen.frame, 7u);
 }
+
+TEST(Scheduler, TasksAddedWhileRunningNeverRerunTheCurrentOne) {
+    Scheduler scheduler;
+    std::vector<std::string> trace;
+    bool added = false;
+    scheduler.add(Phase::Update, "spawner", [&](const FrameTime&) {
+        trace.push_back("spawner");
+        if (!added) {
+            added = true;
+            // Sorts before the running task.
+            scheduler.add(Phase::Update, "early", [&](const FrameTime&) { trace.push_back("early"); }, -1);
+            scheduler.add(Phase::Render, "render", [&](const FrameTime&) { trace.push_back("render"); });
+        }
+    });
+
+    scheduler.run(Phase::Update, {});
+    EXPECT_EQ(trace, (std::vector<std::string>{"spawner"}));
+    // Tasks added during a run are in place once it ends, for every phase.
+    EXPECT_EQ(scheduler.taskNames(Phase::Update), (std::vector<std::string>{"early", "spawner"}));
+    scheduler.run(Phase::Render, {});
+    scheduler.run(Phase::Update, {});
+    EXPECT_EQ(trace, (std::vector<std::string>{"spawner", "render", "early", "spawner"}));
+}

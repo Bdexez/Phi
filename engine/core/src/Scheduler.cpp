@@ -22,20 +22,30 @@ std::string_view phaseName(Phase phase) {
 }
 
 TaskId Scheduler::add(Phase phase, std::string name, Task task, i32 order) {
-    auto& entries = phases_[static_cast<usize>(phase)];
     const TaskId id = nextId_++;
-    // Insert after every entry with an order <= ours: stable for equal orders.
-    // (When called from a running task of the same phase the new task may or
-    // may not run this frame; it always runs from the next frame on.)
-    const auto position = std::upper_bound(
-        entries.begin(), entries.end(), order,
-        [](i32 value, const Entry& entry) { return value < entry.order; });
-    entries.insert(position, Entry{id, order, std::move(name),
-                                   std::make_shared<const Task>(std::move(task))});
+    Entry entry{id, order, std::move(name), std::make_shared<const Task>(std::move(task))};
+    if (runDepth_ > 0) {
+        pendingAdds_.emplace_back(phase, std::move(entry));
+    } else {
+        insert(phase, std::move(entry));
+    }
     return id;
 }
 
+void Scheduler::insert(Phase phase, Entry entry) {
+    auto& entries = phases_[static_cast<usize>(phase)];
+    // After every entry with an order <= ours: stable for equal orders.
+    const auto position = std::upper_bound(
+        entries.begin(), entries.end(), entry.order,
+        [](i32 value, const Entry& existing) { return value < existing.order; });
+    entries.insert(position, std::move(entry));
+}
+
 void Scheduler::remove(TaskId id) {
+    if (std::erase_if(pendingAdds_, [id](const auto& pending) { return pending.second.id == id; }) >
+        0) {
+        return;
+    }
     for (auto& entries : phases_) {
         for (Entry& entry : entries) {
             if (entry.id == id) {
@@ -55,32 +65,44 @@ void Scheduler::clear() {
     for (auto& entries : phases_) {
         entries.clear();
     }
+    pendingAdds_.clear();
     needsCompaction_ = false;
 }
 
 void Scheduler::run(Phase phase, const FrameTime& time) {
     auto& entries = phases_[static_cast<usize>(phase)];
     ++runDepth_;
-    // Index-based: a task may add tasks (vector growth) while we iterate.
+    // Entries neither move nor grow while tasks run (additions are deferred,
+    // removals are tombstones), so indices stay valid.
     for (usize i = 0; i < entries.size(); ++i) {
         if (entries[i].id != 0) {
-            // Hold a reference: the task may remove itself or add tasks.
+            // Hold a reference: the task may remove itself.
             const std::shared_ptr<const Task> task = entries[i].task;
             (*task)(time);
         }
     }
     --runDepth_;
+    if (runDepth_ == 0) {
+        settle();
+    }
+}
 
-    if (runDepth_ == 0 && needsCompaction_) {
+void Scheduler::settle() {
+    if (needsCompaction_) {
         for (auto& list : phases_) {
             std::erase_if(list, [](const Entry& e) { return e.id == 0; });
         }
         needsCompaction_ = false;
     }
+    std::vector<std::pair<Phase, Entry>> pending;
+    pending.swap(pendingAdds_);
+    for (auto& [phase, entry] : pending) {
+        insert(phase, std::move(entry));
+    }
 }
 
 usize Scheduler::taskCount() const {
-    usize count = 0;
+    usize count = pendingAdds_.size();
     for (const auto& entries : phases_) {
         count += static_cast<usize>(
             std::count_if(entries.begin(), entries.end(), [](const Entry& e) { return e.id != 0; }));
@@ -89,11 +111,25 @@ usize Scheduler::taskCount() const {
 }
 
 std::vector<std::string> Scheduler::taskNames(Phase phase) const {
-    std::vector<std::string> names;
+    // Execution order, with pending additions where they will be inserted.
+    std::vector<const Entry*> ordered;
     for (const Entry& entry : phases_[static_cast<usize>(phase)]) {
         if (entry.id != 0) {
-            names.push_back(entry.name);
+            ordered.push_back(&entry);
         }
+    }
+    for (const auto& [pendingPhase, entry] : pendingAdds_) {
+        if (pendingPhase == phase) {
+            const auto position = std::upper_bound(
+                ordered.begin(), ordered.end(), entry.order,
+                [](i32 value, const Entry* existing) { return value < existing->order; });
+            ordered.insert(position, &entry);
+        }
+    }
+    std::vector<std::string> names;
+    names.reserve(ordered.size());
+    for (const Entry* entry : ordered) {
+        names.push_back(entry->name);
     }
     return names;
 }
