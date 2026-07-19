@@ -33,8 +33,18 @@ enum class Phase : u8 {
 
 using TaskId = u64;
 
+/// CPU time spent in a task, for profiling.
+struct TaskStats {
+    std::string name;
+    Phase phase = Phase::Update;
+    f64 lastMs = 0.0;     ///< Duration of the latest run.
+    f64 averageMs = 0.0;  ///< Mean over every run since the last reset.
+    u64 runs = 0;         ///< FixedUpdate tasks may run several times a frame.
+};
+
 /// Registry of per-frame tasks grouped by phase.
 /// Within a phase, tasks run by ascending `order`, then by registration order.
+/// Each run is timed (two clock reads), see taskStats().
 /// Main-thread only.
 class Scheduler {
 public:
@@ -54,6 +64,10 @@ public:
     /// Names of the tasks of a phase, in execution order (for diagnostics).
     [[nodiscard]] std::vector<std::string> taskNames(Phase phase) const;
 
+    /// Timing of every task that ran, phase by phase in execution order.
+    [[nodiscard]] std::vector<TaskStats> taskStats() const;
+    void resetStats();
+
 private:
     struct Entry {
         TaskId id = 0;
@@ -62,6 +76,9 @@ private:
         // Shared so run() can keep a running task alive (it may remove itself
         // or grow the vector) without copying the callable every frame.
         std::shared_ptr<const Task> task;
+        f64 lastSeconds = 0.0;
+        f64 totalSeconds = 0.0;
+        u64 runs = 0;
     };
 
     void insert(Phase phase, Entry entry);

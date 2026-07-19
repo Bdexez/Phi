@@ -1,6 +1,7 @@
 #include <bdex/core/Scheduler.hpp>
 
 #include <algorithm>
+#include <chrono>
 
 namespace bdex {
 
@@ -78,7 +79,14 @@ void Scheduler::run(Phase phase, const FrameTime& time) {
         if (entries[i].id != 0) {
             // Hold a reference: the task may remove itself.
             const std::shared_ptr<const Task> task = entries[i].task;
+            const auto start = std::chrono::steady_clock::now();
             (*task)(time);
+            const f64 seconds =
+                std::chrono::duration<f64>(std::chrono::steady_clock::now() - start).count();
+            Entry& entry = entries[i];
+            entry.lastSeconds = seconds;
+            entry.totalSeconds += seconds;
+            ++entry.runs;
         }
     }
     --runDepth_;
@@ -108,6 +116,31 @@ usize Scheduler::taskCount() const {
             std::count_if(entries.begin(), entries.end(), [](const Entry& e) { return e.id != 0; }));
     }
     return count;
+}
+
+std::vector<TaskStats> Scheduler::taskStats() const {
+    std::vector<TaskStats> stats;
+    for (usize phase = 0; phase < phases_.size(); ++phase) {
+        for (const Entry& entry : phases_[phase]) {
+            if (entry.id == 0 || entry.runs == 0) {
+                continue;
+            }
+            stats.push_back({entry.name, static_cast<Phase>(phase), entry.lastSeconds * 1000.0,
+                             entry.totalSeconds * 1000.0 / static_cast<f64>(entry.runs),
+                             entry.runs});
+        }
+    }
+    return stats;
+}
+
+void Scheduler::resetStats() {
+    for (auto& entries : phases_) {
+        for (Entry& entry : entries) {
+            entry.lastSeconds = 0.0;
+            entry.totalSeconds = 0.0;
+            entry.runs = 0;
+        }
+    }
 }
 
 std::vector<std::string> Scheduler::taskNames(Phase phase) const {
