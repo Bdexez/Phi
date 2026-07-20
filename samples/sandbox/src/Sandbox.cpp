@@ -8,7 +8,7 @@
 //
 // Controls: hold the right mouse button to look around, WASD to move,
 // Space / Left Ctrl to go up / down, Left Shift to move faster,
-// F2 for a screenshot, Escape to quit.
+// F2 for a screenshot, F3 to log a frame profile, Escape to quit.
 
 #include "SkyFeature.hpp"
 
@@ -85,10 +85,34 @@ protected:
                 engine().services().has<render::IRenderer>()) {
                 renderer().requestScreenshot(std::format("screenshot_{}.png", time.frame));
             }
+            if (keyboard->keyPressed(platform::Key::F3)) {
+                logProfile();
+            }
         }
     }
 
 private:
+    /// Logs the CPU time of every engine task since the previous profile.
+    void logProfile() {
+        Scheduler& scheduler = engine().scheduler();
+        std::vector<TaskStats> stats = scheduler.taskStats();
+        std::ranges::sort(stats, [](const TaskStats& a, const TaskStats& b) {
+            return a.averageMs * static_cast<f64>(a.runs) > b.averageMs * static_cast<f64>(b.runs);
+        });
+        log::info("profile", "{:<32} {:>12} {:>10} {:>8}", "task", "phase", "avg ms", "runs");
+        for (const TaskStats& task : stats) {
+            log::info("profile", "{:<32} {:>12} {:>10.3f} {:>8}", task.name, phaseName(task.phase),
+                      task.averageMs, task.runs);
+        }
+        if (engine().services().has<render::IRenderer>()) {
+            const rhi::FrameStats frame = engine().services().get<rhi::IDevice>().lastFrameStats();
+            log::info("profile", "last frame: {} draws, {} triangles, {} pipeline / {} bind group / {} buffer binds",
+                      frame.drawCalls, frame.triangles, frame.pipelineBinds, frame.bindGroupBinds,
+                      frame.bufferBinds);
+        }
+        scheduler.resetStats();
+    }
+
     Result<> buildRenderResources() {
         render::IRenderer& gfx = renderer();
 
