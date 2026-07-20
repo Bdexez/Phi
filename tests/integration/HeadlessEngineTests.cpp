@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -535,4 +536,62 @@ TEST(VulkanHeadless, DestroyingATextureInUseKeepsMaterialsValid) {
 
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
     test.engine->shutdown();
+}
+
+TEST(VulkanHeadless, PointLightsLightTheScene) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    const ecs::Entity cube = test.populate(1).front();  // red-ish cube, camera at z = 6
+    test.world().get<scene::Transform>(cube).position = Vec3(0.0f);
+
+    // No sun, no ambient: only point lights contribute.
+    const ecs::Entity sun = test.scene().createEntity("sun");
+    test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+    test.world().get<render::DirectionalLight>(sun).ambient = Vec3(0.0f);
+
+    const auto centerPixel = [&]() -> std::array<u8, 4> {
+        const std::filesystem::path path =
+            std::filesystem::temp_directory_path() / "bdex_tests_point_lights.png";
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image) {
+            ADD_FAILURE() << "no capture";
+            return {};
+        }
+        const u8* p = image->pixels.data() + (image->height / 2 * image->width + image->width / 2) * 4;
+        return {p[0], p[1], p[2], p[3]};
+    };
+    EXPECT_LT(centerPixel()[0], 8);  // unlit
+
+    // More lights than the renderer keeps, all far away and created both
+    // before and after the lamp: whatever the storage order, the selection
+    // must keep the one next to the cube.
+    const auto addFarLights = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            const ecs::Entity far = test.scene().createEntity("far light");
+            test.world().get<scene::Transform>(far).position =
+                Vec3(0.0f, 500.0f + static_cast<f32>(i), 0.0f);
+            test.world().emplace<render::PointLight>(far).range = 1.0f;
+        }
+    };
+    addFarLights(20);
+    const ecs::Entity lamp = test.scene().createEntity("lamp");
+    test.world().get<scene::Transform>(lamp).position = Vec3(0.0f, 0.0f, 2.0f);
+    test.world().emplace<render::PointLight>(lamp, render::PointLight{Vec3(1.0f, 0.0f, 0.0f), 4.0f, 6.0f});
+    addFarLights(20);
+
+    const std::array<u8, 4> lit = centerPixel();
+    EXPECT_GT(lit[0], 100);           // the face toward the lamp is red
+    EXPECT_LT(lit[1], 20);
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
 }
