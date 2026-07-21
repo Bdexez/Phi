@@ -11,7 +11,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **Modular core:** plugin loading, module dependency resolution, a service registry, an event bus, and INI configuration.
 - **Simulation loop:** ordered execution phases, fixed timestep updates, and a multithreaded job system.
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
-- **3D rendering:** perspective cameras, meshes, textures, materials, and Blinn-Phong directional lighting through an extensible forward renderer.
+- **3D rendering:** perspective cameras, meshes, textures, materials, Blinn-Phong lighting from a directional light and up to 16 point lights, frustum culling, and draw sorting through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Assets:** a virtual file system, asset caching, OBJ, PNG, TGA, and SPIR-V loaders, plus procedural cubes, planes, spheres, and textures.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
@@ -89,7 +89,7 @@ Executables, shared libraries, and modules are placed in `build/bin/`. Shaders a
 
 ### The sandbox
 
-The demo features a textured ground plane, a sphere, animated cubes, and two moons attached to a rotating pivot. A procedural sky demonstrates how applications can add custom render features. The window title displays FPS and average frame time.
+The demo features a textured ground plane, a sphere, animated cubes, and two moons carrying colored point lights, attached to a rotating pivot. A procedural sky demonstrates how applications can add custom render features. The window title displays FPS and average frame time.
 
 | Control | Action |
 | --- | --- |

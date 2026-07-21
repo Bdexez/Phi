@@ -2,7 +2,7 @@
 //
 //   - modules chosen at runtime (see sandbox.ini)
 //   - ECS components and a system defined by the application (Spin)
-//   - transform hierarchy (moons orbiting a pivot)
+//   - transform hierarchy (moons orbiting a pivot, carrying point lights)
 //   - meshes, textures and materials created through the renderer service
 //   - a custom render feature (SkyFeature) plugged into the renderer
 //
@@ -208,6 +208,16 @@ private:
             world.emplace<render::MeshRenderer>(moon, i == 0 ? sphereMesh_ : cubeMesh_,
                                                 cubeMaterials_[i * 4]);
             world.emplace<Spin>(moon, Vec3(1.0f, 0.0f, 0.0f), 2.0f);
+
+            // Each moon carries a colored lamp, slightly below it, that
+            // sweeps over the sphere and the cubes as the pivot turns.
+            const ecs::Entity lamp = level.createEntity(std::format("Moon lamp {}", i));
+            world.get<scene::Transform>(lamp).position = Vec3(i == 0 ? 2.0f : -2.0f, -1.0f, 0.0f);
+            world.emplace<scene::Parent>(lamp, pivot);
+            world.emplace<render::PointLight>(
+                lamp, render::PointLight{.color = i == 0 ? Vec3(1.0f, 0.55f, 0.2f) : Vec3(0.2f, 0.6f, 1.0f),
+                                         .intensity = 6.0f,
+                                         .range = 7.0f});
         }
 
         log::info("sandbox", "scene ready: {} entities", world.entityCount());
