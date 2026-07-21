@@ -284,7 +284,7 @@ Runtime layout, relative to the executable: plugins sit next to it, `assets/engi
 Known gaps, listed so they are not mistaken for design decisions:
 
 - One window; `IWindowSystem` exposes a primary window only.
-- The forward renderer has a single pass: no shadows, post-processing, transparency sorting, or instancing. Culling is per object, against the view frustum only.
+- The forward renderer has a single pass: no shadows, post-processing, or instancing. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
 - No audio, physics, or scripting modules yet.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.
