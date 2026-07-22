@@ -3,7 +3,8 @@
 //   - modules chosen at runtime (see sandbox.ini)
 //   - ECS components and a system defined by the application (Spin)
 //   - transform hierarchy (moons orbiting a pivot, carrying point lights)
-//   - meshes, textures and materials created through the renderer service
+//   - meshes, textures and materials (one transparent) created through the
+//     renderer service
 //   - a custom render feature (SkyFeature) plugged into the renderer
 //
 // Controls: hold the right mouse button to look around, WASD to move,
@@ -141,6 +142,13 @@ private:
         polished.shininess = 96.0f;
         sphereMaterial_ = gfx.createMaterial(polished);
 
+        render::MaterialDesc glass;  // tinted and see-through
+        glass.baseColor = Vec4(0.3f, 0.7f, 1.0f, 0.45f);
+        glass.specular = 1.0f;
+        glass.shininess = 128.0f;
+        glass.transparent = true;
+        glassMaterial_ = gfx.createMaterial(glass);
+
         for (u32 i = 0; i < kCubeCount; ++i) {
             render::MaterialDesc painted;
             painted.baseColor = Vec4(hsvToRgb(static_cast<f32>(i) / kCubeCount, 0.65f, 0.95f), 1.0f);
@@ -180,6 +188,14 @@ private:
         world.get<scene::Transform>(sphere).position = Vec3(0.0f, 1.4f, 0.0f);
         world.get<scene::Transform>(sphere).scale = Vec3(2.2f);
         world.emplace<render::MeshRenderer>(sphere, sphereMesh_, sphereMaterial_);
+
+        // A slowly turning glass block in front of the sphere
+        const ecs::Entity glassBlock = level.createEntity("Glass block");
+        scene::Transform& glassTransform = world.get<scene::Transform>(glassBlock);
+        glassTransform.position = Vec3(0.0f, 1.6f, 2.4f);
+        glassTransform.scale = Vec3(1.6f, 1.6f, 0.4f);
+        world.emplace<render::MeshRenderer>(glassBlock, cubeMesh_, glassMaterial_);
+        world.emplace<Spin>(glassBlock, Vec3(0.0f, 1.0f, 0.0f), 0.35f);
 
         // A ring of spinning cubes
         for (u32 i = 0; i < kCubeCount; ++i) {
@@ -287,6 +303,7 @@ private:
     render::MeshHandle planeMesh_;
     render::MaterialHandle groundMaterial_;
     render::MaterialHandle sphereMaterial_;
+    render::MaterialHandle glassMaterial_;
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
     ecs::Entity camera_;
