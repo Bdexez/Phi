@@ -279,6 +279,7 @@ struct DeviceInfo {
 /// What the last frame recorded, for profiling overlays and tests.
 struct FrameStats {
     u32 drawCalls = 0;
+    u32 instances = 0;  ///< Summed over draw calls; equals drawCalls without instancing.
     u64 triangles = 0;
     u32 pipelineBinds = 0;
     u32 bindGroupBinds = 0;

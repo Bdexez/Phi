@@ -107,9 +107,11 @@ private:
         }
         if (engine().services().has<render::IRenderer>()) {
             const rhi::FrameStats frame = engine().services().get<rhi::IDevice>().lastFrameStats();
-            log::info("profile", "last frame: {} draws, {} triangles, {} pipeline / {} bind group / {} buffer binds",
-                      frame.drawCalls, frame.triangles, frame.pipelineBinds, frame.bindGroupBinds,
-                      frame.bufferBinds);
+            log::info("profile",
+                      "last frame: {} draws ({} instances), {} triangles, {} pipeline / {} bind group / "
+                      "{} buffer binds",
+                      frame.drawCalls, frame.instances, frame.triangles, frame.pipelineBinds,
+                      frame.bindGroupBinds, frame.bufferBinds);
         }
         scheduler.resetStats();
     }

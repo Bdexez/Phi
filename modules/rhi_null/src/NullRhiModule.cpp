@@ -43,11 +43,13 @@ public:
     void draw(u32 vertexCount, u32 instanceCount, u32, u32) override {
         BDEX_ASSERT(rendering_, "draw outside of a rendering scope");
         ++stats.drawCalls;
+        stats.instances += instanceCount;
         stats.triangles += static_cast<u64>(vertexCount / 3) * instanceCount;
     }
     void drawIndexed(u32 indexCount, u32 instanceCount, u32, i32, u32) override {
         BDEX_ASSERT(rendering_, "draw outside of a rendering scope");
         ++stats.drawCalls;
+        stats.instances += instanceCount;
         stats.triangles += static_cast<u64>(indexCount / 3) * instanceCount;
     }
 
