@@ -37,9 +37,12 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
         {1, rhi::VertexFormat::Float3, offsetof(assets::Vertex, normal)},
         {2, rhi::VertexFormat::Float2, offsetof(assets::Vertex, uv)},
     };
-    desc.bindGroupLayouts = {context.frameLayout, renderer_->materialLayout()};
-    desc.pushConstantSize = sizeof(ObjectConstants);
-    desc.pushConstantStages = rhi::ShaderStage::Vertex | rhi::ShaderStage::Fragment;
+    objectLayout_ = device.createBindGroupLayout({
+        {{0, rhi::BindingType::StorageBuffer, rhi::ShaderStage::Vertex}},
+        "forward.objects layout",
+    });
+    objectBuffers_.assign(device.framesInFlight(), ObjectBuffer{});
+    desc.bindGroupLayouts = {context.frameLayout, renderer_->materialLayout(), objectLayout_};
     desc.colorFormats = {context.colorFormat};
     desc.depthFormat = context.depthFormat;
     desc.cullMode = rhi::CullMode::Back;
@@ -61,10 +64,43 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
 }
 
 void MeshFeature::onDetach(rhi::IDevice& device) {
+    for (const ObjectBuffer& slot : objectBuffers_) {
+        device.destroyBindGroup(slot.bindGroup);
+        device.destroyBuffer(slot.buffer);
+    }
+    objectBuffers_.clear();
+    device.destroyBindGroupLayout(objectLayout_);
     device.destroyPipeline(opaquePipeline_);
     device.destroyPipeline(transparentPipeline_);
+    objectLayout_ = {};
     opaquePipeline_ = {};
     transparentPipeline_ = {};
+}
+
+void MeshFeature::ensureObjectCapacity(rhi::IDevice& device, ObjectBuffer& slot, usize count) {
+    if (slot.capacity >= count) {
+        return;
+    }
+    // Released once the frames using them are done (deferred by the device).
+    device.destroyBindGroup(slot.bindGroup);
+    device.destroyBuffer(slot.buffer);
+
+    slot.capacity = std::max<usize>(std::bit_ceil(count), 256);
+    rhi::BufferDesc bufferDesc;
+    bufferDesc.size = slot.capacity * sizeof(ObjectData);
+    bufferDesc.usage = rhi::BufferUsage::Storage;
+    bufferDesc.memory = rhi::MemoryUsage::CpuToGpu;
+    bufferDesc.debugName = "forward.objects";
+    slot.buffer = device.createBuffer(bufferDesc);
+
+    rhi::BindGroupDesc groupDesc;
+    groupDesc.layout = objectLayout_;
+    rhi::BindGroupEntry entry;
+    entry.binding = 0;
+    entry.buffer = slot.buffer;
+    groupDesc.entries.push_back(entry);
+    groupDesc.debugName = "forward.objects";
+    slot.bindGroup = device.createBindGroup(groupDesc);
 }
 
 void MeshFeature::render(const render::RenderFrameContext& context) {
@@ -118,42 +154,71 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
         return;
     }
 
-    // ...then draw opaque surfaces grouped by material and mesh, so each is
-    // bound once, and transparent ones from back to front so they blend
-    // correctly.
+    // ...order them: opaque surfaces grouped by material and mesh, so each
+    // is bound once, transparent ones from back to front so they blend
+    // correctly...
+    const auto byKey = [](const SortKey& a, const SortKey& b) { return a.key < b.key; };
+    std::sort(opaqueOrder_.begin(), opaqueOrder_.end(), byKey);
+    std::sort(transparentOrder_.begin(), transparentOrder_.end(), byKey);
+
+    // ...lay their data out in drawing order...
+    objects_.clear();
+    for (const SortKey& entry : opaqueOrder_) {
+        objects_.push_back(opaque_[entry.draw].object);
+    }
+    for (const SortKey& entry : transparentOrder_) {
+        objects_.push_back(transparent_[entry.draw].object);
+    }
+    ObjectBuffer& slot = objectBuffers_[context.device.frameSlot()];
+    ensureObjectCapacity(context.device, slot, objects_.size());
+    context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)));
+
+    // ...and draw them.
     rhi::ICommandList& commands = context.commands;
     commands.beginDebugGroup("forward.meshes");
-    drawAll(commands, context, opaquePipeline_, opaque_, opaqueOrder_);
-    drawAll(commands, context, transparentPipeline_, transparent_, transparentOrder_);
+    drawBatch(commands, context, opaquePipeline_, opaque_, opaqueOrder_, 0, slot.bindGroup);
+    drawBatch(commands, context, transparentPipeline_, transparent_, transparentOrder_,
+              static_cast<u32>(opaqueOrder_.size()), slot.bindGroup);
     commands.endDebugGroup();
 }
 
-void MeshFeature::drawAll(rhi::ICommandList& commands, const render::RenderFrameContext& context,
-                          rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws,
-                          std::vector<SortKey>& order) {
-    if (draws.empty()) {
+void MeshFeature::drawBatch(rhi::ICommandList& commands, const render::RenderFrameContext& context,
+                            rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws,
+                            const std::vector<SortKey>& order, u32 firstInstance,
+                            rhi::BindGroupHandle objects) {
+    if (order.empty()) {
         return;
     }
-    std::sort(order.begin(), order.end(),
-              [](const SortKey& a, const SortKey& b) { return a.key < b.key; });
-
     commands.bindPipeline(pipeline);
     commands.bindBindGroup(0, context.frameBindGroup);
+    commands.bindBindGroup(2, objects);
     rhi::BindGroupHandle boundMaterial;
     const GpuMesh* boundMesh = nullptr;
-    for (const SortKey& entry : order) {
-        const DrawItem& draw = draws[entry.draw];
-        if (draw.material != boundMaterial) {
-            commands.bindBindGroup(1, draw.material);
-            boundMaterial = draw.material;
+    for (usize begin = 0; begin < order.size();) {
+        // A run of draws sharing the material and the mesh (transparent keys
+        // are distances: equal ones are merged only if they share both too).
+        const DrawItem& first = draws[order[begin].draw];
+        usize end = begin + 1;
+        while (end < order.size()) {
+            const DrawItem& next = draws[order[end].draw];
+            if (next.material != first.material || next.mesh != first.mesh) {
+                break;
+            }
+            ++end;
         }
-        if (draw.mesh != boundMesh) {
-            commands.bindVertexBuffer(draw.mesh->vertexBuffer);
-            commands.bindIndexBuffer(draw.mesh->indexBuffer, rhi::IndexType::UInt32);
-            boundMesh = draw.mesh;
+
+        if (first.material != boundMaterial) {
+            commands.bindBindGroup(1, first.material);
+            boundMaterial = first.material;
         }
-        commands.pushConstants(0, rhi::asBytes(draw.constants));
-        commands.drawIndexed(draw.mesh->indexCount);
+        if (first.mesh != boundMesh) {
+            commands.bindVertexBuffer(first.mesh->vertexBuffer);
+            commands.bindIndexBuffer(first.mesh->indexBuffer, rhi::IndexType::UInt32);
+            boundMesh = first.mesh;
+        }
+        commands.drawIndexed(first.mesh->indexCount, static_cast<u32>(end - begin), 0, 0,
+                             firstInstance + static_cast<u32>(begin));
+        begin = end;
     }
 }
 

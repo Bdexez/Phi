@@ -2,11 +2,16 @@
 #extension GL_GOOGLE_include_directive : require
 #include "bdex/frame_uniforms.glsl"
 
-layout(push_constant) uniform ObjectConstants {
+// Per-object data, one entry per instance. Mirrors ObjectData in MeshFeature.hpp.
+struct ObjectData {
     mat4 model;
     vec4 baseColor;
     vec4 params;  // x: specular strength, y: shininess
-} object;
+};
+
+layout(std430, set = 2, binding = 0) readonly buffer Objects {
+    ObjectData objects[];
+};
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
@@ -15,8 +20,13 @@ layout(location = 2) in vec2 inUv;
 layout(location = 0) out vec3 outWorldPosition;
 layout(location = 1) out vec3 outWorldNormal;
 layout(location = 2) out vec2 outUv;
+layout(location = 3) flat out vec4 outBaseColor;
+layout(location = 4) flat out vec4 outParams;
 
 void main() {
+    // gl_InstanceIndex includes the draw's first instance.
+    ObjectData object = objects[gl_InstanceIndex];
+
     vec4 worldPosition = object.model * vec4(inPosition, 1.0);
     outWorldPosition = worldPosition.xyz;
     // Normals transform by the inverse-transpose of the model matrix, which
@@ -31,5 +41,7 @@ void main() {
     float handedness = dot(linear[0], cofactor[0]) < 0.0 ? -1.0 : 1.0;
     outWorldNormal = cofactor * inNormal * handedness;
     outUv = inUv;
+    outBaseColor = object.baseColor;
+    outParams = object.params;
     gl_Position = frame.viewProjection * worldPosition;
 }

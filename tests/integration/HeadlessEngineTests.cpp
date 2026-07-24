@@ -153,7 +153,7 @@ TEST(HeadlessEngine, RendererWorksWithoutAnyWindowModule) {
     EXPECT_EQ(test.renderer().renderExtent(), (Extent2D{1280, 720}));  // renderer.* defaults
 }
 
-TEST(HeadlessEngine, DrawsOneCallPerVisibleMeshEntity) {
+TEST(HeadlessEngine, DrawsEveryVisibleMeshEntity) {
     TestEngine test(kNullStack);
     ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
     const std::vector<ecs::Entity> cubes = test.populate(3);
@@ -162,9 +162,10 @@ TEST(HeadlessEngine, DrawsOneCallPerVisibleMeshEntity) {
     EXPECT_EQ(test.device().lastFrameStats().instances, 3u);
     EXPECT_EQ(test.device().lastFrameStats().triangles, 36u);
     EXPECT_EQ(test.renderer().renderExtent(), (Extent2D{320, 200}));
-    // One mesh and one material: everything is bound once.
+    // One mesh and one material: a single instanced draw, everything bound once.
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 1u);
     EXPECT_EQ(test.device().lastFrameStats().pipelineBinds, 1u);
-    EXPECT_EQ(test.device().lastFrameStats().bindGroupBinds, 2u);  // frame + material
+    EXPECT_EQ(test.device().lastFrameStats().bindGroupBinds, 3u);  // frame, objects, material
     EXPECT_EQ(test.device().lastFrameStats().bufferBinds, 2u);     // vertices + indices
 
     test.world().get<render::MeshRenderer>(cubes[0]).visible = false;
@@ -316,9 +317,9 @@ TEST(HeadlessEngine, DrawsAreGroupedByMaterialAndMesh) {
 
     test.engine->tick();
     const rhi::FrameStats stats = test.device().lastFrameStats();
-    EXPECT_EQ(stats.drawCalls, 8u);
+    EXPECT_EQ(stats.drawCalls, 4u);  // one instanced draw per (material, mesh)
     EXPECT_EQ(stats.instances, 8u);
-    EXPECT_EQ(stats.bindGroupBinds, 1u + 2u);  // frame, then each material once
+    EXPECT_EQ(stats.bindGroupBinds, 2u + 2u);  // frame and objects, then each material once
     // Each material uses both meshes: at most 2 mesh switches per material.
     EXPECT_EQ(stats.bufferBinds, 2u * 4u);
 }
