@@ -30,6 +30,7 @@ void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
     std::array<VkRenderingAttachmentInfo, kMaxColorAttachments> colors{};
     VkExtent2D extent{};
     colorTargets_.clear();
+    depthTarget_ = {};
 
     for (usize i = 0; i < desc.colorAttachments.size(); ++i) {
         const rhi::ColorAttachment& attachment = desc.colorAttachments[i];
@@ -67,6 +68,7 @@ void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
 
         depthHasStencil = rhi::hasStencil(texture->desc.format);
         extent = {texture->desc.width, texture->desc.height};
+        depthTarget_ = desc.depthAttachment->texture;
     }
 
     VkRenderingInfo info{};
@@ -86,16 +88,22 @@ void CommandList::endRendering() {
     vkCmdEndRendering(commandBuffer_);
     rendering_ = false;
 
-    // Render targets that can be sampled go back to a shader-readable state so
-    // later passes can bind them without any explicit state management.
-    for (const rhi::TextureHandle handle : colorTargets_) {
+    // Render targets that can be sampled (color or depth, e.g. a shadow map)
+    // go back to a shader-readable state so later passes can bind them
+    // without any explicit state management.
+    const auto makeReadable = [&](rhi::TextureHandle handle) {
         Texture* texture = device_->texture(handle);
         if (texture != nullptr && !texture->swapchainImage &&
             hasFlag(texture->desc.usage, rhi::TextureUsage::Sampled)) {
             device_->transition(commandBuffer_, *texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
+    };
+    for (const rhi::TextureHandle handle : colorTargets_) {
+        makeReadable(handle);
     }
+    makeReadable(depthTarget_);
     colorTargets_.clear();
+    depthTarget_ = {};
 }
 
 void CommandList::setViewport(const rhi::Viewport& viewport) {
