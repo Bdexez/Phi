@@ -20,9 +20,15 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     vec4 lightColor;      // rgb, premultiplied by intensity
     vec4 ambientColor;    // rgb
     vec4 timeAndExtent;   // elapsed seconds, delta seconds, width, height
+    mat4 lightViewProjection;  // world to shadow-map clip space
+    vec4 shadowParams;  // x: shadows on, y: texel size (UV), z: depth bias, w: normal offset
     vec4 pointLightCount;  // x: number of valid entries below
     vec4 pointLightPositions[BDEX_MAX_POINT_LIGHTS];  // xyz: world position, w: range
     vec4 pointLightColors[BDEX_MAX_POINT_LIGHTS];     // rgb, premultiplied by intensity
 } frame;
+
+// Depth of the directional light's shadow casters, read with comparison
+// (see bdex/shadows.glsl).
+layout(set = 0, binding = 1) uniform sampler2DShadow bdexShadowMap;
 
 #endif

@@ -28,9 +28,16 @@ struct GpuMaterial {
 /// Single-pass forward renderer written purely against the RHI: it runs
 /// unchanged on any backend module, with or without a window.
 ///
-/// Frame: one color + depth pass in which every render feature draws, in
-/// order. The renderer owns the frame constants (set 0) and the mesh,
-/// texture and material resources; what gets drawn is decided by features.
+/// Frame: a depth-only shadow pass for the sun, then one color + depth pass
+/// in which every render feature draws, in order. The renderer owns the
+/// frame constants and shadow map (set 0) and the mesh, texture and material
+/// resources; what gets drawn is decided by features.
+///
+/// Configuration:
+///   renderer.shadows            directional shadows (default true)
+///   renderer.shadow_map_size    texels per side (default 2048)
+///   renderer.shadow_distance    shadows are drawn up to this distance from
+///                               the camera (default 40)
 class ForwardRenderer final : public render::IRenderer {
 public:
     ForwardRenderer(Engine& engine, rhi::IDevice& device);
@@ -67,6 +74,10 @@ private:
     void ensureCaptureTarget(Extent2D extent);
     void updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
                              const FrameTime& time);
+    [[nodiscard]] render::DirectionalLight findSun() const;
+    /// Fits the sun's shadow volume around the camera's nearby view.
+    void updateShadowView(const render::CameraData& camera);
+    void renderShadowPass(rhi::ICommandList& commands, const FrameTime& time);
     void renderView(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent,
                     const render::CameraData& camera, const FrameTime& time);
     void saveCapture(const std::filesystem::path& path);
@@ -89,6 +100,18 @@ private:
     rhi::Format depthFormat_ = rhi::Format::D32Float;
     Vec4 clearColor_{0.02f, 0.02f, 0.03f, 1.0f};
     std::filesystem::path screenshotPath_;
+
+    // Shadows. The map always exists (1x1 when shadows are off) because the
+    // frame bind groups reference it.
+    rhi::TextureHandle shadowMap_;
+    rhi::SamplerHandle shadowSampler_;
+    rhi::Format shadowFormat_ = rhi::Format::D32Float;
+    u32 shadowMapSize_ = 2048;
+    f32 shadowDistance_ = 40.0f;
+    bool shadowsEnabled_ = true;
+    render::DirectionalLight sun_;    ///< This frame's.
+    render::CameraData shadowView_;   ///< The sun's view of this frame.
+    bool shadowsThisFrame_ = false;
 
     // Frame constants: one buffer + bind group per frame in flight, so the CPU
     // never rewrites data the GPU is still reading.

@@ -43,6 +43,12 @@ struct FrameUniforms {
     Vec4 lightColor{1.0f};      ///< rgb premultiplied by intensity
     Vec4 ambientColor{0.0f};    ///< rgb
     Vec4 timeAndExtent{0.0f};   ///< elapsed seconds, delta seconds, width, height
+    /// World to shadow-map clip space of the directional light; shadow
+    /// passes render with it, and receivers project into it.
+    Mat4 lightViewProjection{1.0f};
+    /// x: 1 when the shadow map holds this frame's shadows, y: one texel in
+    /// UV units, z: depth bias, w: normal offset in world units.
+    Vec4 shadowParams{0.0f};
     Vec4 pointLightCount{0.0f};  ///< x: number of valid entries below
     Vec4 pointLightPositions[kMaxPointLights]{};  ///< xyz: world position, w: range
     Vec4 pointLightColors[kMaxPointLights]{};     ///< rgb, premultiplied by intensity
@@ -66,7 +72,10 @@ struct RenderSetupContext {
     /// Formats of the targets features draw into; pipelines must match them.
     rhi::Format colorFormat;
     rhi::Format depthFormat;
-    /// Layout of set 0 (FrameUniforms).
+    /// Depth format of the shadow map (shadow passes have no color target).
+    rhi::Format shadowFormat;
+    /// Layout of set 0: FrameUniforms (binding 0) and the shadow map
+    /// (binding 1, a comparison sampler).
     rhi::BindGroupLayoutHandle frameLayout;
 };
 
@@ -101,6 +110,11 @@ public:
     /// Destroy everything created in onAttach.
     virtual void onDetach(rhi::IDevice& device) = 0;
     virtual void render(const RenderFrameContext& context) = 0;
+    /// Called inside the shadow pass, before render(), when the frame has
+    /// shadows: draw shadow casters, depth only, transformed by
+    /// FrameUniforms::lightViewProjection. `context.camera` describes the
+    /// light's view, for culling. The default casts no shadow.
+    virtual void renderShadows(const RenderFrameContext& context) { (void)context; }
 };
 
 /// Service provided by a renderer module ("renderer" capability).

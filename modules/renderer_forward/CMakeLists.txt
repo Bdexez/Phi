@@ -17,5 +17,7 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
     OUTPUT_DIR ${BDEX_ASSET_OUTPUT_DIR}/engine/shaders
     SOURCES
         shaders/mesh.vert
-        shaders/mesh.frag)
+        shaders/mesh.frag
+        shaders/shadow.vert
+        shaders/shadow.frag)
 add_dependencies(bdex_module_renderer_forward bdex_renderer_forward_shaders)
