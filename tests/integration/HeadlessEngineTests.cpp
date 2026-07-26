@@ -34,9 +34,10 @@ struct TestEngine {
         config.setDefault("engine.forced_delta", "0.016");
         config.setDefault("window.width", "320");
         config.setDefault("window.height", "200");
-        // Frame statistics then count the main pass only; shadow tests turn
-        // shadows back on.
+        // Frame statistics then count the scene pass only, and colors come
+        // out unchanged; the shadow and HDR tests turn these back on.
         config.setDefault("renderer.shadows", "false");
+        config.setDefault("renderer.hdr", "false");
         engine = std::make_unique<Engine>(config);
 
         auto vfs = std::make_shared<VirtualFileSystem>();
@@ -747,4 +748,59 @@ TEST(VulkanHeadless, TheSunCastsShadows) {
     // Without shadows, both points are lit alike.
     const auto [first, second] = render(false);
     EXPECT_NEAR(first, second, 6);
+}
+
+TEST(VulkanHeadless, HdrKeepsLightAboveWhiteForToneMapping) {
+    // Center pixel (red channel) of a white face lit head-on by a sun of
+    // intensity 2: twice what an 8-bit target can hold.
+    const auto render = [](std::string_view tonemap, std::string_view exposure) -> int {
+        Config config;
+        config.set("rhi.validation", "true");
+        config.set("renderer.hdr", "true");
+        config.set("renderer.tonemap", tonemap);
+        config.set("renderer.exposure", exposure);
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return -1;
+        }
+        test.populate(0);  // camera at z = 6, looking down -Z
+        const ecs::Entity sun = test.scene().createEntity("sun");
+        test.world().emplace<render::DirectionalLight>(
+            sun, render::DirectionalLight{.direction = Vec3(0.0f, 0.0f, -1.0f),
+                                          .color = Vec3(1.0f),
+                                          .intensity = 2.0f,
+                                          .ambient = Vec3(0.0f)});
+        render::MaterialDesc white;
+        white.specular = 0.0f;
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                                   test.renderer().createMaterial(white));
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_hdr.png";
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return -2;
+        }
+        return image->pixels[(image->height / 2 * image->width + image->width / 2) * 4];
+    };
+
+    const int halfExposure = render("none", "0.25");
+    if (halfExposure == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    // 2.0 * 0.25 = 0.5 linear, 188 in sRGB. Had the scene pass clipped at
+    // 1.0, it would be 0.25 linear (137).
+    EXPECT_NEAR(halfExposure, 188, 3);
+
+    // Without tone mapping 2.0 clips to white; ACES rolls it off below.
+    EXPECT_EQ(render("none", "1"), 255);
+    const int aces = render("aces", "1");
+    EXPECT_GT(aces, 230);
+    EXPECT_LT(aces, 252);
 }

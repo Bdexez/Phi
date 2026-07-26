@@ -19,5 +19,7 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/mesh.vert
         shaders/mesh.frag
         shaders/shadow.vert
-        shaders/shadow.frag)
+        shaders/shadow.frag
+        shaders/fullscreen.vert
+        shaders/tonemap.frag)
 add_dependencies(bdex_module_renderer_forward bdex_renderer_forward_shaders)
