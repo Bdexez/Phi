@@ -5,6 +5,7 @@
 #include <bdex/assets/AssetManager.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/core/Log.hpp>
+#include <bdex/render/Shadows.hpp>
 #include <bdex/scene/Scene.hpp>
 
 #include <algorithm>
@@ -461,42 +462,10 @@ render::DirectionalLight ForwardRenderer::findSun() const {
 
 void ForwardRenderer::updateShadowView(const render::CameraData& camera) {
     shadowsThisFrame_ = shadowsEnabled_ && sun_.castShadows;
-    if (!shadowsThisFrame_) {
-        return;
+    if (shadowsThisFrame_) {
+        shadowView_ =
+            render::fitDirectionalShadow(camera, sun_.direction, shadowDistance_, shadowMapSize_);
     }
-    const f32 directionLength = glm::length(sun_.direction);
-    const Vec3 direction =
-        directionLength > 0.0f ? sun_.direction / directionLength : Vec3(0.0f, -1.0f, 0.0f);
-    const Vec3 upHint = std::abs(direction.y) > 0.99f ? Vec3(0.0f, 0.0f, 1.0f) : Vec3(0.0f, 1.0f, 0.0f);
-
-    // Sphere around the part of the view frustum within shadow_distance: its
-    // size does not change as the camera turns, so shadows do not swim.
-    const Mat4 cameraWorld = glm::inverse(camera.view);
-    const Vec3 back = glm::normalize(Vec3(cameraWorld[2]));
-    const f32 tanX = 1.0f / std::abs(camera.projection[0][0]);
-    const f32 tanY = 1.0f / std::abs(camera.projection[1][1]);
-    const f32 distance = shadowDistance_;
-    Vec3 center = camera.position - back * (distance * 0.5f);
-    const f32 radius = std::ceil(distance * std::sqrt(0.25f + tanX * tanX + tanY * tanY));
-
-    // Snap the center to whole shadow-map texels, so moving the camera does
-    // not make shadow edges crawl.
-    const Mat4 rotation = glm::lookAt(Vec3(0.0f), direction, upHint);
-    const f32 texel = 2.0f * radius / static_cast<f32>(shadowMapSize_);
-    Vec3 snapped = Vec3(rotation * Vec4(center, 1.0f));
-    snapped.x = std::floor(snapped.x / texel) * texel;
-    snapped.y = std::floor(snapped.y / texel) * texel;
-    center = Vec3(glm::inverse(rotation) * Vec4(snapped, 1.0f));
-
-    // Casters up to shadow_distance beyond the sphere, toward the sun, still
-    // cast into it.
-    const f32 reach = distance;
-    const Vec3 eye = center - direction * (radius + reach);
-    shadowView_.view = glm::lookAt(eye, center, upHint);
-    shadowView_.projection = glm::ortho(-radius, radius, -radius, radius, 0.0f, 2.0f * radius + reach);
-    shadowView_.projection[1][1] *= -1.0f;  // same clip-space convention as the camera
-    shadowView_.viewProjection = shadowView_.projection * shadowView_.view;
-    shadowView_.position = eye;
 }
 
 void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameTime& time) {
