@@ -80,3 +80,33 @@ TEST(InputState, LosingFocusReleasesEverything) {
     events.publish(MouseMoved{905.0, 20.0});
     EXPECT_EQ(input.mouseDelta(), Vec2(5.0f, 0.0f));
 }
+
+TEST(KeyNames, RoundTripEveryKey) {
+    usize named = 0;
+    for (u16 value = 0; value < static_cast<u16>(Key::Count); ++value) {
+        const Key key = static_cast<Key>(value);
+        const std::string_view name = keyName(key);
+        if (name.empty()) {
+            continue;
+        }
+        ++named;
+        EXPECT_EQ(parseKey(name), key) << name;
+    }
+    EXPECT_EQ(named, 83u);  // every enumerator but Unknown and Count
+    EXPECT_EQ(keyName(Key::Unknown), "");
+}
+
+TEST(KeyNames, ParsingIgnoresCaseAndAcceptsAliases) {
+    EXPECT_EQ(parseKey("leftshift"), Key::LeftShift);
+    EXPECT_EQ(parseKey("SPACE"), Key::Space);
+    EXPECT_EQ(parseKey("ctrl"), Key::LeftControl);
+    EXPECT_EQ(parseKey("Num7"), Key::Num7);
+    EXPECT_EQ(parseKey("7"), Key::Num7);
+    EXPECT_EQ(parseKey("Esc"), Key::Escape);
+    EXPECT_FALSE(parseKey("NotAKey").has_value());
+    EXPECT_FALSE(parseKey("").has_value());
+
+    EXPECT_EQ(parseMouseButton("mouseright"), MouseButton::Right);
+    EXPECT_EQ(mouseButtonName(MouseButton::Middle), "MouseMiddle");
+    EXPECT_FALSE(parseMouseButton("Mouse9").has_value());
+}

@@ -2,6 +2,9 @@
 
 #include <bdex/core/Types.hpp>
 
+#include <optional>
+#include <string_view>
+
 namespace bdex::platform {
 
 /// Keyboard keys, named after their position on a US layout.
@@ -55,5 +58,16 @@ enum class Key : u16 {
 enum class MouseButton : u8 { Left = 0, Right, Middle, Button4, Button5, Count };
 
 enum class KeyAction : u8 { Release, Press, Repeat };
+
+/// Name of a key as written in configuration files: the enumerator's name
+/// ("W", "Space", "LeftShift", "F3"), digits as "0".."9". Empty for Unknown.
+[[nodiscard]] std::string_view keyName(Key key);
+/// Inverse of keyName, ignoring letter case; also accepts "Num0".."Num9" and
+/// "Ctrl" / "Shift" / "Alt" / "Super" for the left-hand modifiers.
+[[nodiscard]] std::optional<Key> parseKey(std::string_view name);
+
+/// "MouseLeft", "MouseRight", "MouseMiddle", "Mouse4", "Mouse5".
+[[nodiscard]] std::string_view mouseButtonName(MouseButton button);
+[[nodiscard]] std::optional<MouseButton> parseMouseButton(std::string_view name);
 
 }  // namespace bdex::platform
