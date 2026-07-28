@@ -115,15 +115,19 @@ Result<> ForwardRenderer::initialize() {
 
     // --- Post-processing ----------------------------------------------------------------
     hdr_ = config.getBool("renderer.hdr", true);
-    exposure_ = static_cast<f32>(std::max(config.getFloat("renderer.exposure", 1.0), 0.0));
-    const std::string tonemap = config.getString("renderer.tonemap", "aces");
-    if (tonemap != "aces" && tonemap != "none") {
-        log::warn("renderer", "unknown renderer.tonemap '{}'; using 'aces'", tonemap);
-    }
-    acesTonemap_ = tonemap != "none";
     if (hdr_) {
-        if (const auto post = createPostPipeline(); !post) {
-            return post;
+        ToneMapPass::Settings settings;
+        settings.exposure =
+            static_cast<f32>(std::max(config.getFloat("renderer.exposure", 1.0), 0.0));
+        const std::string tonemap = config.getString("renderer.tonemap", "aces");
+        if (tonemap != "aces" && tonemap != "none") {
+            log::warn("renderer", "unknown renderer.tonemap '{}'; using 'aces'", tonemap);
+        }
+        settings.aces = tonemap != "none";
+        if (const auto created = toneMap_.create(
+                device_, engine_.services().get<assets::AssetManager>(), colorFormat_, settings);
+            !created) {
+            return created;
         }
     }
 
@@ -166,11 +170,7 @@ void ForwardRenderer::shutdown() {
     frameBindGroups_.clear();
     frameBuffers_.clear();
 
-    device_.destroyPipeline(postPipeline_);
-    device_.destroyBindGroup(postBindGroup_);
-    device_.destroySampler(postSampler_);
-    device_.destroyBindGroupLayout(postLayout_);
-    device_.destroyTexture(hdrTarget_);
+    toneMap_.destroy(device_);
     device_.destroySampler(defaultSampler_);
     device_.destroySampler(shadowSampler_);
     device_.destroyTexture(shadowMap_);
@@ -182,54 +182,11 @@ void ForwardRenderer::shutdown() {
     swapchain_ = {};
 }
 
-Result<> ForwardRenderer::createPostPipeline() {
-    auto& assets = engine_.services().get<assets::AssetManager>();
-    const auto vertexBinary = assets.load<assets::ShaderBinary>("engine:/shaders/fullscreen.vert.spv");
-    if (!vertexBinary) {
-        return std::unexpected(vertexBinary.error());
-    }
-    const auto fragmentBinary = assets.load<assets::ShaderBinary>("engine:/shaders/tonemap.frag.spv");
-    if (!fragmentBinary) {
-        return std::unexpected(fragmentBinary.error());
-    }
-
-    postLayout_ = device_.createBindGroupLayout({
-        {{0, rhi::BindingType::CombinedTextureSampler, rhi::ShaderStage::Fragment}},
-        "post layout",
-    });
-    rhi::SamplerDesc samplerDesc;
-    samplerDesc.minFilter = rhi::Filter::Nearest;
-    samplerDesc.magFilter = rhi::Filter::Nearest;
-    samplerDesc.addressMode = rhi::AddressMode::ClampToEdge;
-    samplerDesc.debugName = "post sampler";
-    postSampler_ = device_.createSampler(samplerDesc);
-
-    const rhi::ShaderHandle vertexShader = device_.createShader(
-        {rhi::ShaderStage::Vertex, (*vertexBinary)->words, "main", "fullscreen.vert"});
-    const rhi::ShaderHandle fragmentShader = device_.createShader(
-        {rhi::ShaderStage::Fragment, (*fragmentBinary)->words, "main", "tonemap.frag"});
-    rhi::GraphicsPipelineDesc desc;
-    desc.vertexShader = vertexShader;
-    desc.fragmentShader = fragmentShader;
-    // No vertex layout: the triangle comes from gl_VertexIndex.
-    desc.bindGroupLayouts = {postLayout_};
-    desc.pushConstantSize = sizeof(Vec4);
-    desc.pushConstantStages = rhi::ShaderStage::Fragment;
-    desc.colorFormats = {colorFormat_};
-    desc.cullMode = rhi::CullMode::None;
-    desc.depthTest = false;
-    desc.depthWrite = false;
-    desc.debugName = "tonemap";
-    postPipeline_ = device_.createGraphicsPipeline(desc);
-    device_.destroyShader(vertexShader);
-    device_.destroyShader(fragmentShader);
-    return {};
-}
-
 render::RenderSetupContext ForwardRenderer::setupContext() {
     // With HDR, features draw the scene in 16-bit float; only the post pass
     // writes the output.
-    return render::RenderSetupContext{device_,      engine_.services(), hdr_ ? hdrFormat_ : colorFormat_,
+    return render::RenderSetupContext{device_,      engine_.services(),
+                                      hdr_ ? ToneMapPass::kSceneFormat : colorFormat_,
                                       depthFormat_, shadowFormat_,      frameLayout_};
 }
 
@@ -408,32 +365,6 @@ void ForwardRenderer::ensureDepthTarget(Extent2D extent) {
     depthExtent_ = extent;
 }
 
-void ForwardRenderer::ensureHdrTarget(Extent2D extent) {
-    if (hdrTarget_.valid() && hdrExtent_ == extent) {
-        return;
-    }
-    device_.destroyBindGroup(postBindGroup_);  // releases are deferred by the device
-    device_.destroyTexture(hdrTarget_);
-    rhi::TextureDesc desc;
-    desc.width = extent.width;
-    desc.height = extent.height;
-    desc.format = hdrFormat_;
-    desc.usage = rhi::TextureUsage::ColorAttachment | rhi::TextureUsage::Sampled;
-    desc.debugName = "hdr scene";
-    hdrTarget_ = device_.createTexture(desc);
-    hdrExtent_ = extent;
-
-    rhi::BindGroupDesc groupDesc;
-    groupDesc.layout = postLayout_;
-    rhi::BindGroupEntry scene;
-    scene.binding = 0;
-    scene.texture = hdrTarget_;
-    scene.sampler = postSampler_;
-    groupDesc.entries.push_back(scene);
-    groupDesc.debugName = "post";
-    postBindGroup_ = device_.createBindGroup(groupDesc);
-}
-
 void ForwardRenderer::ensureCaptureTarget(Extent2D extent) {
     if (captureTarget_.valid() && captureExtent_ == extent) {
         return;
@@ -585,25 +516,6 @@ void ForwardRenderer::renderScene(rhi::ICommandList& commands, rhi::TextureHandl
     commands.endRendering();  // leaves a sampled (HDR) target readable
 }
 
-void ForwardRenderer::postProcess(rhi::ICommandList& commands, rhi::TextureHandle target,
-                                  Extent2D extent) {
-    const std::array<rhi::ColorAttachment, 1> output = {{
-        {target, rhi::LoadOp::DontCare, rhi::StoreOp::Store, {0.0f, 0.0f, 0.0f, 1.0f}},
-    }};
-    commands.beginRendering({output, nullptr});
-    commands.beginDebugGroup("tonemap");
-    commands.setViewport({0.0f, 0.0f, static_cast<f32>(extent.width),
-                          static_cast<f32>(extent.height), 0.0f, 1.0f});
-    commands.setScissor({0, 0, extent.width, extent.height});
-    commands.bindPipeline(postPipeline_);
-    commands.bindBindGroup(0, postBindGroup_);
-    const Vec4 settings(exposure_, acesTonemap_ ? 1.0f : 0.0f, 0.0f, 0.0f);
-    commands.pushConstants(0, rhi::asBytes(settings));
-    commands.draw(3);
-    commands.endDebugGroup();
-    commands.endRendering();
-}
-
 void ForwardRenderer::renderFrame(const FrameTime& time) {
     rhi::ICommandList& commands = device_.beginFrame();
 
@@ -655,11 +567,10 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
             ensureCaptureTarget(extent_);
         }
         if (hdr_) {
-            ensureHdrTarget(extent_);
-            renderScene(commands, hdrTarget_, extent_, camera, time);
-            postProcess(commands, target, extent_);
+            renderScene(commands, toneMap_.sceneTarget(device_, extent_), extent_, camera, time);
+            toneMap_.apply(commands, target, extent_);
             if (extraCapture) {
-                postProcess(commands, captureTarget_, extent_);
+                toneMap_.apply(commands, captureTarget_, extent_);
             }
         } else {
             renderScene(commands, target, extent_, camera, time);
