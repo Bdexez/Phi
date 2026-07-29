@@ -138,6 +138,10 @@ platform::InputState* Application::input() {
     return engine().services().tryGet<platform::InputState>();
 }
 
+platform::InputActions* Application::actions() {
+    return engine().services().tryGet<platform::InputActions>();
+}
+
 platform::IWindow* Application::window() {
     auto* windows = engine().services().tryGet<platform::IWindowSystem>();
     return windows != nullptr ? windows->primaryWindow() : nullptr;
@@ -239,6 +243,15 @@ int Application::run(int argc, char** argv) {
         return kExitStartupFailure;
     }
 
+    // --- Input actions -----------------------------------------------------------------
+    if (auto* inputState = services.tryGet<platform::InputState>()) {
+        auto inputActions = std::make_shared<platform::InputActions>(*inputState);
+        if (const auto loaded = inputActions->load(engine.config()); !loaded) {
+            log::warn("app", "{}", loaded.error().message);
+        }
+        services.provide<platform::InputActions>(inputActions);
+    }
+
     // --- Frame tasks ---------------------------------------------------------------
     Scheduler& scheduler = engine.scheduler();
     scheduler.add(Phase::Update, "app.update", [this](const FrameTime& time) { onUpdate(time); });
@@ -299,6 +312,7 @@ int Application::run(int argc, char** argv) {
     }
 
     state_->closeSubscription.reset();
+    services.remove<platform::InputActions>();  // refers to the window module's InputState
     engine.shutdown();
     state_->scenes = nullptr;
     state_->assets = nullptr;

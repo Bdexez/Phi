@@ -7,9 +7,10 @@
 //     renderer service
 //   - a custom render feature (SkyFeature) plugged into the renderer
 //
-// Controls: hold the right mouse button to look around, WASD to move,
-// Space / Left Ctrl to go up / down, Left Shift to move faster,
-// F2 for a screenshot, F3 to log a frame profile, Escape to quit.
+// Controls (rebindable in the [input] section of sandbox.ini): hold the
+// right mouse button to look around, WASD or the arrows to move, Space /
+// Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
+// F3 to log a frame profile, Escape to quit.
 
 #include "SkyFeature.hpp"
 
@@ -55,6 +56,19 @@ class Sandbox final : public app::Application {
 protected:
     void onConfigure(Config& config) override {
         config.set("window.title", "bdex sandbox");
+
+        // Default bindings; an [input] section in sandbox.ini overrides them.
+        config.setDefault("input.move_forward", "W, Up");
+        config.setDefault("input.move_back", "S, Down");
+        config.setDefault("input.move_left", "A, Left");
+        config.setDefault("input.move_right", "D, Right");
+        config.setDefault("input.move_up", "Space");
+        config.setDefault("input.move_down", "LeftControl");
+        config.setDefault("input.move_fast", "LeftShift");
+        config.setDefault("input.look", "MouseRight");
+        config.setDefault("input.screenshot", "F2");
+        config.setDefault("input.profile", "F3");
+        config.setDefault("input.quit", "Escape");
     }
 
     Result<> onStart() override {
@@ -78,15 +92,14 @@ protected:
         updateCamera(static_cast<f32>(time.delta));
         updateTitle(time);
 
-        if (const auto* keyboard = input(); keyboard != nullptr) {
-            if (keyboard->keyPressed(platform::Key::Escape)) {
+        if (const platform::InputActions* controls = actions(); controls != nullptr) {
+            if (controls->pressed("quit")) {
                 engine().requestExit();
             }
-            if (keyboard->keyPressed(platform::Key::F2) &&
-                engine().services().has<render::IRenderer>()) {
+            if (controls->pressed("screenshot") && engine().services().has<render::IRenderer>()) {
                 renderer().requestScreenshot(std::format("screenshot_{}.png", time.frame));
             }
-            if (keyboard->keyPressed(platform::Key::F3)) {
+            if (controls->pressed("profile")) {
                 logProfile();
             }
         }
@@ -248,14 +261,14 @@ private:
     }
 
     void updateCamera(f32 deltaSeconds) {
-        const platform::InputState* controls = input();
-        if (controls == nullptr) {
+        const platform::InputActions* controls = actions();
+        const platform::InputState* pointer = input();
+        if (controls == nullptr || pointer == nullptr) {
             return;
         }
-        using platform::Key;
 
-        // Mouse look while the right button is held.
-        const bool looking = controls->mouseButtonDown(platform::MouseButton::Right);
+        // Mouse look while the look button is held.
+        const bool looking = controls->down("look");
         if (looking != looking_) {
             looking_ = looking;
             if (platform::IWindow* target = window()) {
@@ -263,7 +276,7 @@ private:
             }
         }
         if (looking_) {
-            const Vec2 delta = controls->mouseDelta();
+            const Vec2 delta = pointer->mouseDelta();
             const f32 limit = std::numbers::pi_v<f32> * 0.49f;
             cameraYaw_ -= delta.x * 0.0025f;
             cameraPitch_ = std::clamp(cameraPitch_ - delta.y * 0.0025f, -limit, limit);
@@ -272,14 +285,14 @@ private:
 
         scene::Transform& transform = scene().world().get<scene::Transform>(camera_);
         Vec3 direction(0.0f);
-        if (controls->keyDown(Key::W)) direction += transform.forward();
-        if (controls->keyDown(Key::S)) direction -= transform.forward();
-        if (controls->keyDown(Key::D)) direction += transform.right();
-        if (controls->keyDown(Key::A)) direction -= transform.right();
-        if (controls->keyDown(Key::Space)) direction += Vec3(0.0f, 1.0f, 0.0f);
-        if (controls->keyDown(Key::LeftControl)) direction -= Vec3(0.0f, 1.0f, 0.0f);
+        if (controls->down("move_forward")) direction += transform.forward();
+        if (controls->down("move_back")) direction -= transform.forward();
+        if (controls->down("move_right")) direction += transform.right();
+        if (controls->down("move_left")) direction -= transform.right();
+        if (controls->down("move_up")) direction += Vec3(0.0f, 1.0f, 0.0f);
+        if (controls->down("move_down")) direction -= Vec3(0.0f, 1.0f, 0.0f);
         if (glm::length(direction) > 0.0f) {
-            const f32 speed = controls->keyDown(Key::LeftShift) ? 14.0f : 5.0f;
+            const f32 speed = controls->down("move_fast") ? 14.0f : 5.0f;
             transform.position += glm::normalize(direction) * speed * deltaSeconds;
         }
     }

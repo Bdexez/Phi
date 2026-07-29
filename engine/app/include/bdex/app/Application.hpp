@@ -2,6 +2,7 @@
 
 #include <bdex/assets/AssetManager.hpp>
 #include <bdex/core/Engine.hpp>
+#include <bdex/platform/Actions.hpp>
 #include <bdex/platform/Input.hpp>
 #include <bdex/platform/Window.hpp>
 #include <bdex/render/Renderer.hpp>
@@ -69,6 +70,9 @@ protected:
     [[nodiscard]] render::IRenderer& renderer();
     /// Null when no window module is loaded.
     [[nodiscard]] platform::InputState* input();
+    /// Actions bound from the [input] configuration section (set defaults in
+    /// onConfigure). Null when no window module is loaded.
+    [[nodiscard]] platform::InputActions* actions();
     [[nodiscard]] platform::IWindow* window();
 
 private:
