@@ -7,6 +7,7 @@ struct ObjectData {
     mat4 model;
     vec4 baseColor;
     vec4 params;
+    vec4 emissive;
 };
 
 layout(std430, set = 2, binding = 0) readonly buffer Objects {

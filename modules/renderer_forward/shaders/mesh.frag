@@ -10,6 +10,7 @@ layout(location = 1) in vec3 inWorldNormal;
 layout(location = 2) in vec2 inUv;
 layout(location = 3) flat in vec4 inBaseColor;
 layout(location = 4) flat in vec4 inParams;  // x: specular strength, y: shininess
+layout(location = 5) flat in vec3 inEmissive;
 
 layout(location = 0) out vec4 outColor;
 
@@ -48,5 +49,5 @@ void main() {
                            frame.pointLightColors[i].rgb * attenuation);
         }
     }
-    outColor = vec4(color, albedo.a);
+    outColor = vec4(color + inEmissive, albedo.a);
 }

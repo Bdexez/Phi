@@ -6,7 +6,8 @@
 struct ObjectData {
     mat4 model;
     vec4 baseColor;
-    vec4 params;  // x: specular strength, y: shininess
+    vec4 params;    // x: specular strength, y: shininess
+    vec4 emissive;  // rgb
 };
 
 layout(std430, set = 2, binding = 0) readonly buffer Objects {
@@ -22,6 +23,7 @@ layout(location = 1) out vec3 outWorldNormal;
 layout(location = 2) out vec2 outUv;
 layout(location = 3) flat out vec4 outBaseColor;
 layout(location = 4) flat out vec4 outParams;
+layout(location = 5) flat out vec3 outEmissive;
 
 void main() {
     // gl_InstanceIndex includes the draw's first instance.
@@ -43,5 +45,6 @@ void main() {
     outUv = inUv;
     outBaseColor = object.baseColor;
     outParams = object.params;
+    outEmissive = object.emissive.rgb;
     gl_Position = frame.viewProjection * worldPosition;
 }

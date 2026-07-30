@@ -169,7 +169,8 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
                 material.bindGroup,
                 mesh,
                 {transform.matrix, material.desc.baseColor,
-                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
+                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f),
+                 Vec4(material.desc.emissive, 0.0f)},
             };
             if (material.desc.transparent) {
                 // Back to front: larger distances first. A non-negative float
@@ -237,7 +238,7 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
                 return;
             }
             casterOrder_.push_back({renderable.mesh.index, static_cast<u32>(casters_.size())});
-            casters_.push_back({{}, mesh, {transform.matrix, Vec4(0.0f), Vec4(0.0f)}});
+            casters_.push_back({{}, mesh, {transform.matrix, Vec4(0.0f), Vec4(0.0f), Vec4(0.0f)}});
         });
     if (casters_.empty()) {
         return;

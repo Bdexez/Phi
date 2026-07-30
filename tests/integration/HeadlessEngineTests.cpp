@@ -804,3 +804,38 @@ TEST(VulkanHeadless, HdrKeepsLightAboveWhiteForToneMapping) {
     EXPECT_GT(aces, 230);
     EXPECT_LT(aces, 252);
 }
+
+TEST(VulkanHeadless, EmissiveSurfacesShineInTheDark) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    test.populate(0);
+    const ecs::Entity sun = test.scene().createEntity("sun");  // no light at all
+    test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+    test.world().get<render::DirectionalLight>(sun).ambient = Vec3(0.0f);
+
+    render::MaterialDesc glowing;
+    glowing.emissive = Vec3(0.5f, 0.0f, 0.0f);
+    const ecs::Entity cube = test.scene().createEntity("cube");
+    test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                               test.renderer().createMaterial(glowing));
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_emissive.png";
+    test.renderer().requestScreenshot(path);
+    test.engine->tick();
+    const auto png = fs::readBinaryFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(png.has_value());
+    const auto image = assets::decodePng(*png);
+    ASSERT_TRUE(image.has_value()) << image.error().message;
+    const u8* center = image->pixels.data() + (image->height / 2 * image->width + image->width / 2) * 4;
+    EXPECT_NEAR(center[0], 188, 3);  // 0.5 linear, encoded as sRGB
+    EXPECT_EQ(center[1], 0);
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+}
