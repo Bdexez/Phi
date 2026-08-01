@@ -114,6 +114,20 @@ TEST(Engine, DropsTheFixedBacklogWhenItCannotKeepUp) {
     EXPECT_DOUBLE_EQ(frame.fixedAlpha, 0.0);
 }
 
+TEST(Engine, TheFixedStepCapIsConfigurable) {
+    Config config;
+    config.set("engine.forced_delta", "1");
+    config.set("engine.fixed_timestep", "0.0625");  // 16 steps per frame
+    config.set("engine.max_fixed_steps", "20");
+    Engine engine(config);
+    ASSERT_TRUE(engine.initialize().has_value());
+
+    int steps = 0;
+    engine.scheduler().add(Phase::FixedUpdate, "count", [&](const FrameTime&) { ++steps; });
+    engine.tick();
+    EXPECT_EQ(steps, 16);  // all of them fit under the cap
+}
+
 TEST(Engine, StopsOnRequestOrFrameLimit) {
     Config config;
     config.set("engine.max_frames", "5");
