@@ -8,13 +8,19 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.preset }}
+    name: ${{ matrix.preset }} (${{ matrix.compiler }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         # release: plugins; static: modules linked in; asan: ASan + UBSan.
-        preset: [release, static, asan]
+        include:
+          - { preset: release, compiler: g++-14 }
+          - { preset: static, compiler: g++-14 }
+          - { preset: asan, compiler: g++-14 }
+          # Clang 18 lacks the concepts level libstdc++ 14 requires for
+          # std::expected; 19 is the first that builds the engine.
+          - { preset: release, compiler: clang++-19 }
     steps:
       - uses: actions/checkout@v4
 
@@ -24,14 +30,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build g++-14 \
+            cmake ninja-build g++-14 clang-19 \
             libglm-dev libglfw3-dev libgtest-dev \
             libvulkan-dev glslc mesa-vulkan-drivers vulkan-validationlayers
 
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }} -G Ninja
-          -DCMAKE_CXX_COMPILER=g++-14 -DBDEX_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DBDEX_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
