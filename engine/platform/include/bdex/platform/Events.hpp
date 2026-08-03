@@ -43,4 +43,22 @@ struct MouseScrolled {
     f64 deltaY = 0.0;
 };
 
+struct GamepadConnected {
+    u32 gamepad = 0;  ///< Slot, below kMaxGamepads.
+    bool connected = false;
+};
+
+struct GamepadButtonEvent {
+    u32 gamepad = 0;
+    GamepadButton button = GamepadButton::A;
+    bool pressed = false;
+};
+
+/// Published when an axis value changes.
+struct GamepadAxisMoved {
+    u32 gamepad = 0;
+    GamepadAxis axis = GamepadAxis::LeftX;
+    f32 value = 0.0f;
+};
+
 }  // namespace bdex::platform

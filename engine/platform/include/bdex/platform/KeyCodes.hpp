@@ -59,6 +59,24 @@ enum class MouseButton : u8 { Left = 0, Right, Middle, Button4, Button5, Count }
 
 enum class KeyAction : u8 { Release, Press, Repeat };
 
+/// Buttons of a standard gamepad, named after the Xbox layout (A at the
+/// bottom of the face buttons).
+enum class GamepadButton : u8 {
+    A, B, X, Y,
+    LeftBumper, RightBumper,
+    Back, Start, Guide,
+    LeftThumb, RightThumb,
+    DpadUp, DpadRight, DpadDown, DpadLeft,
+    Count
+};
+
+/// Sticks go from -1 to 1 (+X right, +Y down); triggers from 0 (released)
+/// to 1.
+enum class GamepadAxis : u8 { LeftX, LeftY, RightX, RightY, LeftTrigger, RightTrigger, Count };
+
+/// Gamepads tracked by InputState.
+inline constexpr u32 kMaxGamepads = 4;
+
 /// Name of a key as written in configuration files: the enumerator's name
 /// ("W", "Space", "LeftShift", "F3"), digits as "0".."9". Empty for Unknown.
 [[nodiscard]] std::string_view keyName(Key key);
@@ -69,5 +87,9 @@ enum class KeyAction : u8 { Release, Press, Repeat };
 /// "MouseLeft", "MouseRight", "MouseMiddle", "Mouse4", "Mouse5".
 [[nodiscard]] std::string_view mouseButtonName(MouseButton button);
 [[nodiscard]] std::optional<MouseButton> parseMouseButton(std::string_view name);
+
+/// "GamepadA", "GamepadStart", "GamepadDpadUp"...
+[[nodiscard]] std::string_view gamepadButtonName(GamepadButton button);
+[[nodiscard]] std::optional<GamepadButton> parseGamepadButton(std::string_view name);
 
 }  // namespace bdex::platform
