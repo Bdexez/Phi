@@ -21,8 +21,15 @@ namespace bdex::platform {
 ///
 ///   if (actions.pressed("fire")) { ... }
 ///
-/// Names are those of parseKey and parseMouseButton. An action with several
-/// bindings is down while any of them is.
+/// Bindings are keys and mouse buttons (parseKey, parseMouseButton), gamepad
+/// buttons (parseGamepadButton) and gamepad axis directions:
+/// "LeftStickUp/Down/Left/Right", "RightStick..." and "LeftTrigger" /
+/// "RightTrigger", read on any connected gamepad. An action is down while
+/// any binding is (an axis counts once pushed past halfway), and value()
+/// gives its analog strength.
+///
+///   move_forward = W, Up, LeftStickUp
+///   if (f32 throttle = actions.value("move_forward"); throttle > 0) ...
 class InputActions {
 public:
     explicit InputActions(const InputState& state) : state_(&state) {}
@@ -41,24 +48,36 @@ public:
     [[nodiscard]] bool down(std::string_view action) const;
     /// True during the frame one of its bindings went down.
     [[nodiscard]] bool pressed(std::string_view action) const;
-    /// True during the frame the action stopped being down.
+    /// True during the frame the action stopped being down. Like pressed(),
+    /// only reported for digital bindings (keys and buttons).
     [[nodiscard]] bool released(std::string_view action) const;
+    /// Strength in [0, 1]: 1 for a held key or button, how far an axis is
+    /// pushed past the dead zone otherwise; the strongest binding wins.
+    [[nodiscard]] f32 value(std::string_view action) const;
+
+    /// Axis travel ignored around rest, in [0, 1) (default 0.2), so worn
+    /// sticks do not drift.
+    void setDeadZone(f32 deadZone);
     /// The action's bindings, by name (for display in menus or hints).
     [[nodiscard]] std::vector<std::string> bindings(std::string_view action) const;
 
 private:
     struct Binding {
-        bool mouse = false;
-        u16 code = 0;  ///< Key or MouseButton value.
+        enum class Kind : u8 { Key, Mouse, GamepadButton, GamepadAxis };
+        Kind kind = Kind::Key;
+        u16 code = 0;    ///< Key, MouseButton, GamepadButton or GamepadAxis value.
+        f32 sign = 1.0f;  ///< Direction of travel, for axes.
     };
 
     [[nodiscard]] bool any(std::string_view action, bool (InputActions::*test)(const Binding&) const) const;
     [[nodiscard]] bool isDown(const Binding& binding) const;
     [[nodiscard]] bool wasPressed(const Binding& binding) const;
     [[nodiscard]] bool wasReleased(const Binding& binding) const;
+    [[nodiscard]] f32 strength(const Binding& binding) const;
 
     const InputState* state_;
     std::map<std::string, std::vector<Binding>, std::less<>> actions_;
+    f32 deadZone_ = 0.2f;
 };
 
 }  // namespace bdex::platform
