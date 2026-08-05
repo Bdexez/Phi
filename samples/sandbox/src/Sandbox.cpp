@@ -10,7 +10,8 @@
 // Controls (rebindable in the [input] section of sandbox.ini): hold the
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
-// F3 to log a frame profile, Escape to quit.
+// F3 to log a frame profile, Escape to quit. A gamepad works too: sticks to
+// move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
 
@@ -58,17 +59,21 @@ protected:
         config.set("window.title", "bdex sandbox");
 
         // Default bindings; an [input] section in sandbox.ini overrides them.
-        config.setDefault("input.move_forward", "W, Up");
-        config.setDefault("input.move_back", "S, Down");
-        config.setDefault("input.move_left", "A, Left");
-        config.setDefault("input.move_right", "D, Right");
-        config.setDefault("input.move_up", "Space");
-        config.setDefault("input.move_down", "LeftControl");
-        config.setDefault("input.move_fast", "LeftShift");
+        config.setDefault("input.move_forward", "W, Up, LeftStickUp");
+        config.setDefault("input.move_back", "S, Down, LeftStickDown");
+        config.setDefault("input.move_left", "A, Left, LeftStickLeft");
+        config.setDefault("input.move_right", "D, Right, LeftStickRight");
+        config.setDefault("input.move_up", "Space, GamepadRightBumper");
+        config.setDefault("input.move_down", "LeftControl, GamepadLeftBumper");
+        config.setDefault("input.move_fast", "LeftShift, RightTrigger");
         config.setDefault("input.look", "MouseRight");
-        config.setDefault("input.screenshot", "F2");
+        config.setDefault("input.look_up", "RightStickUp");
+        config.setDefault("input.look_down", "RightStickDown");
+        config.setDefault("input.look_left", "RightStickLeft");
+        config.setDefault("input.look_right", "RightStickRight");
+        config.setDefault("input.screenshot", "F2, GamepadY");
         config.setDefault("input.profile", "F3");
-        config.setDefault("input.quit", "Escape");
+        config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
     Result<> onStart() override {
@@ -283,25 +288,28 @@ private:
                 target->setCursorCaptured(looking);
             }
         }
-        if (looking_) {
-            const Vec2 delta = pointer->mouseDelta();
+        // Mouse look while the button is held, or the right stick (radians
+        // per second at full tilt).
+        Vec2 turn = looking_ ? pointer->mouseDelta() * 0.0025f : Vec2(0.0f);
+        turn += Vec2(controls->value("look_right") - controls->value("look_left"),
+                     controls->value("look_down") - controls->value("look_up")) *
+                (2.5f * deltaSeconds);
+        if (turn != Vec2(0.0f)) {
             const f32 limit = std::numbers::pi_v<f32> * 0.49f;
-            cameraYaw_ -= delta.x * 0.0025f;
-            cameraPitch_ = std::clamp(cameraPitch_ - delta.y * 0.0025f, -limit, limit);
+            cameraYaw_ -= turn.x;
+            cameraPitch_ = std::clamp(cameraPitch_ - turn.y, -limit, limit);
             applyCameraRotation();
         }
 
         scene::Transform& transform = scene().world().get<scene::Transform>(camera_);
         Vec3 direction(0.0f);
-        if (controls->down("move_forward")) direction += transform.forward();
-        if (controls->down("move_back")) direction -= transform.forward();
-        if (controls->down("move_right")) direction += transform.right();
-        if (controls->down("move_left")) direction -= transform.right();
-        if (controls->down("move_up")) direction += Vec3(0.0f, 1.0f, 0.0f);
-        if (controls->down("move_down")) direction -= Vec3(0.0f, 1.0f, 0.0f);
-        if (glm::length(direction) > 0.0f) {
-            const f32 speed = controls->down("move_fast") ? 14.0f : 5.0f;
-            transform.position += glm::normalize(direction) * speed * deltaSeconds;
+        // Analog: a stick pushed halfway moves at half speed.
+        direction += transform.forward() * (controls->value("move_forward") - controls->value("move_back"));
+        direction += transform.right() * (controls->value("move_right") - controls->value("move_left"));
+        direction.y += controls->value("move_up") - controls->value("move_down");
+        if (const f32 length = glm::length(direction); length > 0.0f) {
+            const f32 speed = glm::mix(5.0f, 14.0f, controls->value("move_fast"));
+            transform.position += direction / std::max(length, 1.0f) * speed * deltaSeconds;
         }
     }
 
