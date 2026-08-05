@@ -17,6 +17,29 @@ ecs::Entity Scene::createEntity(std::string_view name) {
     return entity;
 }
 
+std::vector<ecs::Entity> Scene::findAll(std::string_view name) {
+    std::vector<ecs::Entity> found;
+    world_.view<const Name>().each([&](ecs::Entity entity, const Name& candidate) {
+        if (candidate.value == name) {
+            found.push_back(entity);
+        }
+    });
+    // Views run backwards over storage: order by slot instead.
+    std::sort(found.begin(), found.end(),
+              [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
+    return found;
+}
+
+ecs::Entity Scene::find(std::string_view name) {
+    ecs::Entity first;
+    world_.view<const Name>().each([&](ecs::Entity entity, const Name& candidate) {
+        if (candidate.value == name && entity.index < first.index) {
+            first = entity;
+        }
+    });
+    return first;
+}
+
 Scene& SceneManager::create(std::string name) {
     scenes_.push_back(std::make_unique<Scene>(std::move(name)));
     if (active_ == nullptr) {

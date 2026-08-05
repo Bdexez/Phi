@@ -21,6 +21,13 @@ public:
     /// Creates an entity with Name, Transform and WorldTransform components.
     ecs::Entity createEntity(std::string_view name = "Entity");
 
+    /// The entity with this Name in the lowest slot (normally the first one
+    /// created), or an invalid handle. A linear scan: look entities up once
+    /// and keep the handle rather than every frame.
+    [[nodiscard]] ecs::Entity find(std::string_view name);
+    /// Every entity with this Name, by slot.
+    [[nodiscard]] std::vector<ecs::Entity> findAll(std::string_view name);
+
 private:
     std::string name_;
     ecs::World world_;
