@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -838,4 +839,62 @@ TEST(VulkanHeadless, EmissiveSurfacesShineInTheDark) {
     EXPECT_NEAR(center[0], 188, 3);  // 0.5 linear, encoded as sRGB
     EXPECT_EQ(center[1], 0);
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
+}
+
+TEST(VulkanHeadless, NormalMapsBendTheLighting) {
+    // Center pixel (red) of a white face lit head-on, through a normal map
+    // tilting every normal 45 degrees toward +U.
+    const auto render = [](f32 strength, Vec3 lightDirection) -> int {
+        Config config;
+        config.set("rhi.validation", "true");
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return -1;
+        }
+        test.populate(0);  // camera at z = 6, looking down -Z
+        const ecs::Entity sun = test.scene().createEntity("sun");
+        test.world().emplace<render::DirectionalLight>(
+            sun, render::DirectionalLight{.direction = lightDirection,
+                                          .color = Vec3(1.0f),
+                                          .intensity = 1.0f,
+                                          .ambient = Vec3(0.0f)});
+        // (sin 45, 0, cos 45) encoded in 0..255.
+        const u8 tilted = static_cast<u8>(std::lround((0.70710678f * 0.5f + 0.5f) * 255.0f));
+        render::MaterialDesc bumpy;
+        bumpy.specular = 0.0f;
+        bumpy.normalStrength = strength;
+        bumpy.normalMap = test.renderer().createTexture(
+            assets::makeSolidImage(4, 4, {tilted, 128, tilted, 255}), render::TextureColorSpace::Linear);
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                                   test.renderer().createMaterial(bumpy));
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_normal_map.png";
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return -2;
+        }
+        return image->pixels[(image->height / 2 * image->width + image->width / 2) * 4];
+    };
+
+    const Vec3 headOn(0.0f, 0.0f, -1.0f);
+    const int bent = render(1.0f, headOn);
+    if (bent == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    // cos 45 = 0.707 linear, 219 in sRGB.
+    EXPECT_NEAR(bent, 219, 4);
+    EXPECT_EQ(render(0.0f, headOn), 255);  // strength 0: the flat surface, fully lit
+
+    // Light coming from +X+Z faces the bent normals (+U is +X on the front
+    // face): full light. A flipped tangent would face away and stay black.
+    const Vec3 fromRight = glm::normalize(Vec3(-1.0f, 0.0f, -1.0f));
+    EXPECT_EQ(render(1.0f, fromRight), 255);
+    EXPECT_NEAR(render(0.0f, fromRight), 219, 4);
 }

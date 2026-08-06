@@ -54,9 +54,18 @@ struct FrameUniforms {
     Vec4 pointLightColors[kMaxPointLights]{};     ///< rgb, premultiplied by intensity
 };
 
+/// How a texture's values are stored: color images are authored in sRGB and
+/// decoded to linear when sampled; data such as normal maps is used as is.
+enum class TextureColorSpace : u8 { Srgb, Linear };
+
 struct MaterialDesc {
     Vec4 baseColor{1.0f};
     TextureHandle albedo;  ///< Optional; multiplies baseColor.
+    /// Optional tangent-space normal map (Y up, OpenGL convention), created
+    /// with TextureColorSpace::Linear.
+    TextureHandle normalMap;
+    /// Scales the normal map's bumps: 0 flattens them, 1 as authored.
+    f32 normalStrength = 1.0f;
     f32 specular = 0.3f;
     f32 shininess = 32.0f;
     /// Light the surface emits by itself, unaffected by lighting and
@@ -133,7 +142,8 @@ public:
     [[nodiscard]] virtual MeshHandle createMesh(const assets::MeshData& mesh) = 0;
     virtual void destroyMesh(MeshHandle mesh) = 0;
 
-    [[nodiscard]] virtual TextureHandle createTexture(const assets::ImageData& image) = 0;
+    [[nodiscard]] virtual TextureHandle createTexture(
+        const assets::ImageData& image, TextureColorSpace colorSpace = TextureColorSpace::Srgb) = 0;
     /// Materials still using the texture fall back to an untextured look.
     virtual void destroyTexture(TextureHandle texture) = 0;
 
