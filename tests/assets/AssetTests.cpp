@@ -63,6 +63,35 @@ struct TempDir {
 
 // --- Primitives ----------------------------------------------------------------
 
+TEST(Primitives, TangentsFollowTheTextureAxes) {
+    for (const MeshData& mesh : {makeCube(2.0f), makePlane(3.0f), makeSphere(1.0f, 16, 8)}) {
+        for (const Vertex& vertex : mesh.vertices) {
+            const Vec3 tangent(vertex.tangent);
+            EXPECT_NEAR(glm::length(tangent), 1.0f, 1e-4f);
+            EXPECT_NEAR(glm::dot(tangent, vertex.normal), 0.0f, 1e-4f);
+            EXPECT_EQ(std::abs(vertex.tangent.w), 1.0f);
+        }
+    }
+
+    // Front face of the cube (+Z): U grows toward +X, texture "up" is +Y.
+    const MeshData cube = makeCube(2.0f);
+    for (const Vertex& vertex : cube.vertices) {
+        if (vertex.normal == Vec3(0.0f, 0.0f, 1.0f)) {
+            EXPECT_NEAR(vertex.tangent.x, 1.0f, 1e-5f);
+            const Vec3 up = glm::cross(vertex.normal, Vec3(vertex.tangent)) * vertex.tangent.w;
+            EXPECT_NEAR(up.y, 1.0f, 1e-5f);
+        }
+    }
+
+    // OBJ meshes get them too, mirrored UVs included.
+    const auto mirrored = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 1 0\nvt 0 0\nvt 1 1\nvn 0 0 1\nf 1/1/1 2/2/1 3/3/1\n");
+    ASSERT_TRUE(mirrored.has_value());
+    EXPECT_NEAR(mirrored->vertices[0].tangent.x, -1.0f, 1e-5f);  // U grows toward -X
+    const Vertex& corner = mirrored->vertices[0];
+    const Vec3 up = glm::cross(corner.normal, Vec3(corner.tangent)) * corner.tangent.w;
+    EXPECT_NEAR(up.y, 1.0f, 1e-5f);  // V (flipped on load) still maps up to +Y
+}
+
 TEST(Primitives, CubeHasPerFaceVerticesAndOutwardWinding) {
     const MeshData cube = makeCube(2.0f);
     EXPECT_EQ(cube.vertices.size(), 24u);
