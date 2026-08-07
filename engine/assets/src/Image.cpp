@@ -1,6 +1,9 @@
 #include <bdex/assets/Image.hpp>
 
+#include <bdex/core/Math.hpp>
+
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace bdex::assets {
@@ -34,6 +37,33 @@ ImageData makeCheckerboard(u32 size, u32 cells, Color8 first, Color8 second) {
 }
 
 // --- TGA -------------------------------------------------------------------------
+
+ImageData makeNormalMap(std::span<const f32> heights, u32 width, u32 height, f32 strength) {
+    ImageData image;
+    if (width == 0 || height == 0 || heights.size() != static_cast<usize>(width) * height) {
+        return image;
+    }
+    image.width = width;
+    image.height = height;
+    image.pixels.resize(heights.size() * 4);
+    const auto at = [&](u32 x, u32 y) {
+        return heights[static_cast<usize>(y % height) * width + x % width];
+    };
+    for (u32 y = 0; y < height; ++y) {
+        for (u32 x = 0; x < width; ++x) {
+            // Central differences; texture "up" is the previous row.
+            const f32 slopeRight = (at(x + 1, y) - at(x + width - 1, y)) * 0.5f;
+            const f32 slopeUp = (at(x, y + height - 1) - at(x, y + 1)) * 0.5f;
+            const Vec3 normal = glm::normalize(Vec3(-slopeRight * strength, -slopeUp * strength, 1.0f));
+            u8* pixel = image.pixels.data() + (static_cast<usize>(y) * width + x) * 4;
+            for (int c = 0; c < 3; ++c) {
+                pixel[c] = static_cast<u8>(std::lround((normal[c] * 0.5f + 0.5f) * 255.0f));
+            }
+            pixel[3] = 255;
+        }
+    }
+    return image;
+}
 
 Result<ImageData> decodeTga(std::span<const u8> bytes) {
     constexpr usize kHeaderSize = 18;
