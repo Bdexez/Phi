@@ -1,3 +1,4 @@
+#include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/render/Shadows.hpp>
@@ -322,4 +323,45 @@ TEST(Shadows, TheLightVolumeMovesByWholeTexels) {
     const Vec2 shift = uvB - uvA;
     EXPECT_NEAR(shift.x, std::round(shift.x), 1e-2f);
     EXPECT_NEAR(shift.y, std::round(shift.y), 1e-2f);
+}
+
+TEST(DebugDraw, BuildsLineListsForShapes) {
+    render::DebugDraw debug;
+    debug.line(Vec3(0.0f), Vec3(1.0f), Vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(debug.lineCount(), 1u);
+    EXPECT_EQ(debug.vertices()[1].position, Vec3(1.0f));
+    EXPECT_EQ(debug.vertices()[0].color, Vec4(1.0f, 0.0f, 0.0f, 1.0f));
+
+    debug.clear();
+    debug.box(Vec3(-1.0f), Vec3(1.0f));
+    EXPECT_EQ(debug.lineCount(), 12u);
+    for (usize i = 0; i < debug.vertices().size(); i += 2) {
+        // Every edge has length 2 and runs along one axis.
+        const Vec3 edge = debug.vertices()[i + 1].position - debug.vertices()[i].position;
+        EXPECT_FLOAT_EQ(glm::length(edge), 2.0f);
+    }
+
+    debug.clear();
+    debug.sphere(Vec3(1.0f, 2.0f, 3.0f), 2.0f, Vec4(1.0f), 16);
+    EXPECT_EQ(debug.lineCount(), 3u * 16u);
+    for (const render::DebugDraw::Vertex& vertex : debug.vertices()) {
+        EXPECT_NEAR(glm::length(vertex.position - Vec3(1.0f, 2.0f, 3.0f)), 2.0f, 1e-5f);
+    }
+
+    debug.clear();
+    debug.axes(Mat4(1.0f), 2.0f);
+    ASSERT_EQ(debug.lineCount(), 3u);
+    EXPECT_EQ(debug.vertices()[3].position, Vec3(0.0f, 2.0f, 0.0f));  // Y axis, green
+    EXPECT_EQ(debug.vertices()[3].color, Vec4(0.0f, 1.0f, 0.0f, 1.0f));
+
+    // A frustum's corners project back onto the clip volume's corners.
+    debug.clear();
+    const render::CameraData camera = render::makeCameraData(Mat4(1.0f), render::Camera{}, 1.0f);
+    debug.frustum(camera.viewProjection);
+    EXPECT_EQ(debug.lineCount(), 12u);
+    for (const render::DebugDraw::Vertex& vertex : debug.vertices()) {
+        const Vec4 clip = camera.viewProjection * Vec4(vertex.position, 1.0f);
+        EXPECT_NEAR(std::abs(clip.x / clip.w), 1.0f, 1e-3f);
+        EXPECT_NEAR(std::abs(clip.y / clip.w), 1.0f, 1e-3f);
+    }
 }
