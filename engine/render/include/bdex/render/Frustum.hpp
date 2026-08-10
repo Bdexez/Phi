@@ -2,8 +2,10 @@
 
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/Math.hpp>
+#include <bdex/core/Types.hpp>
 
 #include <array>
+#include <optional>
 
 namespace bdex::render {
 
@@ -18,6 +20,19 @@ struct BoundingSphere {
 /// The sphere after `transform`. Non-uniform scale grows the radius by the
 /// largest axis scale, so the result always encloses the transformed mesh.
 [[nodiscard]] BoundingSphere transformSphere(const BoundingSphere& sphere, const Mat4& transform);
+
+struct Ray {
+    Vec3 origin{0.0f};
+    Vec3 direction{0.0f, 0.0f, -1.0f};  ///< Unit length.
+};
+
+/// The ray from the eye through a pixel (top-left origin, pixel centers at
+/// +0.5) of a `width` x `height` view rendered with `viewProjection`.
+[[nodiscard]] Ray rayThroughPixel(const Mat4& viewProjection, const Vec2& pixel, Extent2D extent);
+
+/// Distance along the ray to the sphere's surface (0 if the origin is
+/// inside), or nothing when the ray misses it or it is behind.
+[[nodiscard]] std::optional<f32> intersect(const Ray& ray, const BoundingSphere& sphere);
 
 /// The six planes of a view volume, for visibility tests.
 class Frustum {

@@ -7,9 +7,11 @@
 #include <bdex/core/Time.hpp>
 #include <bdex/ecs/World.hpp>
 #include <bdex/render/Components.hpp>
+#include <bdex/render/Frustum.hpp>
 #include <bdex/rhi/Device.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <memory>
 #include <string_view>
 
@@ -141,6 +143,9 @@ public:
     // --- Resources -----------------------------------------------------------
     [[nodiscard]] virtual MeshHandle createMesh(const assets::MeshData& mesh) = 0;
     virtual void destroyMesh(MeshHandle mesh) = 0;
+    /// Bounding sphere of a mesh, in mesh space (for picking or gameplay
+    /// queries); nothing for an invalid handle.
+    [[nodiscard]] virtual std::optional<BoundingSphere> meshBounds(MeshHandle mesh) const = 0;
 
     [[nodiscard]] virtual TextureHandle createTexture(
         const assets::ImageData& image, TextureColorSpace colorSpace = TextureColorSpace::Srgb) = 0;

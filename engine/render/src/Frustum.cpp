@@ -62,4 +62,34 @@ bool Frustum::intersects(const BoundingSphere& sphere) const {
     });
 }
 
+Ray rayThroughPixel(const Mat4& viewProjection, const Vec2& pixel, Extent2D extent) {
+    const Vec2 ndc((pixel.x / static_cast<f32>(std::max(extent.width, 1u))) * 2.0f - 1.0f,
+                   (pixel.y / static_cast<f32>(std::max(extent.height, 1u))) * 2.0f - 1.0f);
+    const Mat4 inverse = glm::inverse(viewProjection);
+    const auto unproject = [&](f32 depth) {
+        const Vec4 world = inverse * Vec4(ndc, depth, 1.0f);
+        return Vec3(world) / world.w;
+    };
+    const Vec3 nearPoint = unproject(0.0f);
+    return {nearPoint, glm::normalize(unproject(1.0f) - nearPoint)};
+}
+
+std::optional<f32> intersect(const Ray& ray, const BoundingSphere& sphere) {
+    const Vec3 toCenter = sphere.center - ray.origin;
+    const f32 along = glm::dot(toCenter, ray.direction);
+    const f32 radiusSquared = sphere.radius * sphere.radius;
+    const f32 distanceSquared = glm::dot(toCenter, toCenter);
+    if (distanceSquared <= radiusSquared) {
+        return 0.0f;  // starts inside
+    }
+    if (along < 0.0f) {
+        return std::nullopt;  // behind
+    }
+    const f32 missSquared = distanceSquared - along * along;
+    if (missSquared > radiusSquared) {
+        return std::nullopt;
+    }
+    return along - std::sqrt(radiusSquared - missSquared);
+}
+
 }  // namespace bdex::render
