@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+
 #include <string>
 #include <vector>
 
@@ -126,6 +128,21 @@ TEST(Engine, TheFixedStepCapIsConfigurable) {
     engine.scheduler().add(Phase::FixedUpdate, "count", [&](const FrameTime&) { ++steps; });
     engine.tick();
     EXPECT_EQ(steps, 16);  // all of them fit under the cap
+}
+
+TEST(Engine, MaxFpsPacesFrames) {
+    Config config;
+    config.set("engine.max_fps", "100");  // 10 ms per frame
+    Engine engine(config);
+    ASSERT_TRUE(engine.initialize().has_value());
+
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < 11; ++i) {  // the first frame starts at once
+        engine.tick();
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_GE(elapsed, std::chrono::milliseconds(95));
+    EXPECT_LT(elapsed, std::chrono::milliseconds(400));  // generous for loaded machines
 }
 
 TEST(Engine, StopsOnRequestOrFrameLimit) {

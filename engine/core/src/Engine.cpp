@@ -3,6 +3,7 @@
 #include <bdex/core/Log.hpp>
 
 #include <algorithm>
+#include <thread>
 
 namespace bdex {
 namespace {
@@ -23,6 +24,9 @@ Result<> Engine::initialize() {
     forcedDelta_ = std::max(config_.getFloat("engine.forced_delta", 0.0), 0.0);
     maxFrames_ = static_cast<u64>(std::max<i64>(config_.getInt("engine.max_frames", 0), 0));
     maxFixedSteps_ = static_cast<u32>(std::clamp<i64>(config_.getInt("engine.max_fixed_steps", 8), 1, 1000));
+    if (const f64 maxFps = config_.getFloat("engine.max_fps", 0.0); maxFps > 0.0) {
+        minFrameTime_ = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<f64>(1.0 / maxFps));
+    }
     return modules_.initializeAll(*this);
 }
 
@@ -32,6 +36,16 @@ void Engine::run() {
 }
 
 bool Engine::tick() {
+    if (minFrameTime_.count() > 0) {
+        // Frame starts are scheduled from the previous deadline rather than
+        // from "now", so the rate does not drift; a frame running late
+        // resets the schedule instead of bursting to catch up.
+        const Clock::time_point start = Clock::now();
+        if (nextFrame_ > start) {
+            std::this_thread::sleep_until(nextFrame_);
+        }
+        nextFrame_ = std::max(nextFrame_, start) + minFrameTime_;
+    }
     const Clock::time_point now = Clock::now();
     if (firstTick_) {
         lastTick_ = now;
