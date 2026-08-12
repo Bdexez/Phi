@@ -108,6 +108,10 @@ public:
         return findPool<T>();
     }
 
+    /// Number of entity slots ever used: valid indices for entityAt() are
+    /// below it (check alive() on the result).
+    [[nodiscard]] usize slotCount() const { return generations_.size(); }
+
     /// Rebuilds the full handle of a live entity from its index.
     [[nodiscard]] Entity entityAt(u32 index) const {
         BDEX_ASSERT(index < generations_.size());
