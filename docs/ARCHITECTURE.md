@@ -224,6 +224,21 @@ if (sky.ready()) { auto image = sky.get(); }
 
 `loadAsync` reads and decodes on the `JobSystem` service. It is thread-safe: a request for an asset already being loaded joins that load, a failed load is retried on the next request, and the manager waits for loads still in flight when it is destroyed. Built-in loaders handle OBJ, PNG, TGA, and SPIR-V.
 
+## Scene files
+
+`scene::ComponentSerializers` saves a world's entities as text and loads them back. The format is the engine's INI dialect, one section per entity:
+
+```ini
+[entity.0]
+Name.value = Player
+Transform.position = 0 1 0
+Transform.rotation = 1 0 0 0
+Parent.entity = 3
+WorldTransform =
+```
+
+`withSceneComponents()` knows `Name`, `Transform`, `Parent`, and `WorldTransform`; `render::addComponentSerializers` adds cameras and lights. Applications register their own components with `add<T>(name, save, load)`, using `formatField` / `parseField` for values. Entity references are renumbered on save and resolved on load; loading adds to the world and removes what it created if any value is malformed. `MeshRenderer` is not serialized: its handles belong to the renderer, so applications store their own asset reference and rebuild it.
+
 ## Rendering
 
 ### RHI

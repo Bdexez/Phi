@@ -1,6 +1,7 @@
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
+#include <bdex/render/Serialization.hpp>
 #include <bdex/render/Shadows.hpp>
 #include <bdex/scene/Scene.hpp>
 #include <bdex/scene/Serialization.hpp>
@@ -479,4 +480,28 @@ TEST(SceneFiles, ApplicationsRegisterTheirComponents) {
     ASSERT_TRUE(loaded.has_value()) << loaded.error().message;
     EXPECT_FLOAT_EQ(copy.get<Health>(loaded->front()).points, 42.5f);
     EXPECT_TRUE(copy.get<Health>(loaded->front()).invulnerable);
+}
+
+TEST(SceneFiles, KeepCamerasAndLights) {
+    scene::ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    render::addComponentSerializers(serializers);
+
+    Scene source("source");
+    const ecs::Entity camera = source.createEntity("Camera");
+    source.world().emplace<render::Camera>(camera, render::Camera{0.9f, 0.5f, 250.0f, false});
+    const ecs::Entity sun = source.createEntity("Sun");
+    source.world().emplace<render::DirectionalLight>(sun).castShadows = false;
+    const ecs::Entity lamp = source.createEntity("Lamp");
+    source.world().emplace<render::PointLight>(lamp, render::PointLight{Vec3(1.0f, 0.5f, 0.0f), 3.0f, 12.0f});
+
+    Scene target("target");
+    ASSERT_TRUE(serializers.load(target.world(), serializers.save(source.world())).has_value());
+    const render::Camera& lens = target.world().get<render::Camera>(target.find("Camera"));
+    EXPECT_FLOAT_EQ(lens.verticalFov, 0.9f);
+    EXPECT_FLOAT_EQ(lens.farPlane, 250.0f);
+    EXPECT_FALSE(lens.primary);
+    EXPECT_FALSE(target.world().get<render::DirectionalLight>(target.find("Sun")).castShadows);
+    const render::PointLight& light = target.world().get<render::PointLight>(target.find("Lamp"));
+    EXPECT_EQ(light.color, Vec3(1.0f, 0.5f, 0.0f));
+    EXPECT_FLOAT_EQ(light.range, 12.0f);
 }
