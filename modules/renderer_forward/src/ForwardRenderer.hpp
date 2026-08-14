@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ToneMapPass.hpp"
+#include "PostProcess.hpp"
 
 #include <bdex/core/Engine.hpp>
 #include <bdex/core/Handle.hpp>
@@ -119,7 +119,7 @@ private:
     std::filesystem::path screenshotPath_;
 
     // Post-processing
-    ToneMapPass toneMap_;
+    PostProcess postProcess_;
     bool hdr_ = true;
 
     // Shadows. The map always exists (1x1 when shadows are off) because the

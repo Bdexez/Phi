@@ -1,10 +1,10 @@
-#include "ToneMapPass.hpp"
+#include "PostProcess.hpp"
 
 #include <array>
 
 namespace bdex::forward {
 
-Result<> ToneMapPass::create(rhi::IDevice& device, assets::AssetManager& assets,
+Result<> PostProcess::create(rhi::IDevice& device, assets::AssetManager& assets,
                              rhi::Format outputFormat, Settings settings) {
     settings_ = settings;
     const auto vertexBinary = assets.load<assets::ShaderBinary>("engine:/shaders/fullscreen.vert.spv");
@@ -49,16 +49,16 @@ Result<> ToneMapPass::create(rhi::IDevice& device, assets::AssetManager& assets,
     return {};
 }
 
-void ToneMapPass::destroy(rhi::IDevice& device) {
+void PostProcess::destroy(rhi::IDevice& device) {
     device.destroyPipeline(pipeline_);
     device.destroyBindGroup(bindGroup_);
     device.destroySampler(sampler_);
     device.destroyBindGroupLayout(layout_);
     device.destroyTexture(scene_);
-    *this = ToneMapPass{};
+    *this = PostProcess{};
 }
 
-rhi::TextureHandle ToneMapPass::sceneTarget(rhi::IDevice& device, Extent2D extent) {
+rhi::TextureHandle PostProcess::sceneTarget(rhi::IDevice& device, Extent2D extent) {
     if (scene_.valid() && sceneExtent_ == extent) {
         return scene_;
     }
@@ -85,7 +85,7 @@ rhi::TextureHandle ToneMapPass::sceneTarget(rhi::IDevice& device, Extent2D exten
     return scene_;
 }
 
-void ToneMapPass::apply(rhi::ICommandList& commands, rhi::TextureHandle output, Extent2D extent) const {
+void PostProcess::apply(rhi::ICommandList& commands, rhi::TextureHandle output, Extent2D extent) const {
     const std::array<rhi::ColorAttachment, 1> attachments = {{
         {output, rhi::LoadOp::DontCare, rhi::StoreOp::Store, {0.0f, 0.0f, 0.0f, 1.0f}},
     }};
