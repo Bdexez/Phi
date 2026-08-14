@@ -11,13 +11,16 @@
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
-// object, Escape to quit. A gamepad works too: sticks to
+// object, F5 / F9 to save / load the scene, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
 
 #include <bdex/app/Application.hpp>
+#include <bdex/core/FileSystem.hpp>
 #include <bdex/render/DebugDraw.hpp>
+#include <bdex/render/Serialization.hpp>
+#include <bdex/scene/Serialization.hpp>
 #include <bdex/core/Log.hpp>
 
 #include <algorithm>
@@ -26,6 +29,7 @@
 #include <format>
 #include <limits>
 #include <numbers>
+#include <string>
 #include <vector>
 
 using namespace bdex;
@@ -79,6 +83,8 @@ protected:
         config.setDefault("input.profile", "F3");
         config.setDefault("input.debug_view", "F4");
         config.setDefault("input.select", "MouseLeft");
+        config.setDefault("input.save_scene", "F5");
+        config.setDefault("input.load_scene", "F9");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -92,6 +98,7 @@ protected:
             log::warn("sandbox", "no renderer module loaded: simulation only");
         }
         buildScene();
+        registerSerializers();
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
             spinSystem(scene().world(), static_cast<f32>(time.delta));
@@ -119,6 +126,12 @@ protected:
             if (controls->pressed("select")) {
                 selectUnderCursor();
             }
+            if (controls->pressed("save_scene")) {
+                saveScene();
+            }
+            if (controls->pressed("load_scene")) {
+                loadScene();
+            }
         }
         if (debugView_) {
             drawDebugView();
@@ -141,6 +154,97 @@ private:
             }
         }
         return assets::makeNormalMap(heights, size, size, strength / bevel);
+    }
+
+    // --- Scene files ---------------------------------------------------------------
+    // Shows how applications extend scene files: Spin is the sandbox's own
+    // component, and MeshRenderer handles are saved as model names.
+
+    static constexpr std::string_view kSceneFile = "sandbox_scene.ini";
+
+    struct Model {
+        std::string name;
+        render::MeshHandle mesh;
+        render::MaterialHandle material;
+    };
+
+    void registerSerializers() {
+        serializers_ = scene::ComponentSerializers::withSceneComponents();
+        render::addComponentSerializers(serializers_);
+        serializers_.add<Spin>(
+            "Spin",
+            [](const Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
+                out["axis"] = scene::formatField(spin.axis);
+                out["speed"] = scene::formatField(spin.speed);
+            },
+            [](Spin& spin, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
+                if (auto parsed = scene::parseField(in, "axis", spin.axis); !parsed) {
+                    return parsed;
+                }
+                return scene::parseField(in, "speed", spin.speed);
+            });
+        if (models_.empty()) {
+            return;  // no renderer: nothing is drawn, nothing to save
+        }
+        serializers_.add<render::MeshRenderer>(
+            "Model",
+            [this](const render::MeshRenderer& renderer, scene::Fields& out, const scene::EntityRefs&) {
+                for (const Model& model : models_) {
+                    if (model.mesh == renderer.mesh && model.material == renderer.material) {
+                        out["name"] = model.name;
+                    }
+                }
+                out["visible"] = scene::formatField(renderer.visible);
+            },
+            [this](render::MeshRenderer& renderer, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
+                const auto name = in.find("name");
+                const auto model = std::find_if(models_.begin(), models_.end(), [&](const Model& candidate) {
+                    return name != in.end() && candidate.name == name->second;
+                });
+                if (model == models_.end()) {
+                    return fail("unknown model '{}'", name != in.end() ? name->second : "");
+                }
+                renderer.mesh = model->mesh;
+                renderer.material = model->material;
+                return scene::parseField(in, "visible", renderer.visible);
+            });
+    }
+
+    void saveScene() {
+        const std::string text = serializers_.save(scene().world());
+        if (const auto written = fs::writeBinaryFile(std::filesystem::path(kSceneFile), text.data(), text.size());
+            !written) {
+            log::error("sandbox", "{}", written.error().message);
+            return;
+        }
+        log::info("sandbox", "scene saved to {} ({} entities)", kSceneFile, scene().world().entityCount());
+    }
+
+    void loadScene() {
+        const auto text = fs::readTextFile(std::filesystem::path(kSceneFile));
+        if (!text) {
+            log::warn("sandbox", "{}", text.error().message);
+            return;
+        }
+        // Validate on a scratch world first: a broken file must not leave
+        // the sandbox empty.
+        ecs::World scratch;
+        if (const auto checked = serializers_.load(scratch, *text); !checked) {
+            log::error("sandbox", "cannot load {}: {}", kSceneFile, checked.error().message);
+            return;
+        }
+        ecs::World& world = scene().world();
+        world.clear();
+        (void)serializers_.load(world, *text);
+        camera_ = scene().find("Camera");
+        selected_ = {};
+        if (world.has<scene::Transform>(camera_)) {
+            // Recover yaw and pitch from the camera's facing.
+            const Vec3 forward = world.get<scene::Transform>(camera_).forward();
+            cameraYaw_ = std::atan2(-forward.x, -forward.z);
+            cameraPitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+        }
+        log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
     }
 
     /// Picks the nearest drawn object under the cursor (bounding spheres).
@@ -302,6 +406,15 @@ private:
             painted.specular = 0.4f;
             cubeMaterials_[i] = gfx.createMaterial(painted);
         }
+
+        models_ = {{"ground", planeMesh_, groundMaterial_},
+                   {"sphere", sphereMesh_, sphereMaterial_},
+                   {"glass", cubeMesh_, glassMaterial_},
+                   {"moon_0", sphereMesh_, moonMaterials_[0]},
+                   {"moon_1", cubeMesh_, moonMaterials_[1]}};
+        for (u32 i = 0; i < kCubeCount; ++i) {
+            models_.push_back({std::format("cube_{}", i), cubeMesh_, cubeMaterials_[i]});
+        }
         return {};
     }
 
@@ -454,6 +567,8 @@ private:
     render::MaterialHandle sphereMaterial_;
     render::MaterialHandle glassMaterial_;
     bool debugView_ = false;
+    scene::ComponentSerializers serializers_;
+    std::vector<Model> models_;
     ecs::Entity selected_;
     std::array<render::MaterialHandle, 2> moonMaterials_{};
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
