@@ -128,6 +128,9 @@ Result<> ForwardRenderer::initialize() {
             log::warn("renderer", "unknown renderer.tonemap '{}'; using 'aces'", tonemap);
         }
         settings.aces = tonemap != "none";
+        settings.bloomIntensity = config.getBool("renderer.bloom", true)
+                                      ? static_cast<f32>(std::clamp(config.getFloat("renderer.bloom_intensity", 0.04), 0.0, 1.0))
+                                      : 0.0f;
         if (const auto created = postProcess_.create(
                 device_, engine_.services().get<assets::AssetManager>(), colorFormat_, settings);
             !created) {
@@ -587,6 +590,7 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
         }
         if (hdr_) {
             renderScene(commands, postProcess_.sceneTarget(device_, extent_), extent_, camera, time);
+            postProcess_.prepare(commands);
             postProcess_.apply(commands, target, extent_);
             if (extraCapture) {
                 postProcess_.apply(commands, captureTarget_, extent_);

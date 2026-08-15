@@ -3,10 +3,11 @@
 // Maps the HDR scene color to the display range. Mirrors TonemapConstants in
 // ForwardRenderer.cpp.
 layout(push_constant) uniform TonemapConstants {
-    vec4 settings;  // x: exposure, y: operator (0: clamp, 1: ACES)
+    vec4 settings;  // x: exposure, y: operator (0: clamp, 1: ACES), z: bloom intensity
 } tonemap;
 
 layout(set = 0, binding = 0) uniform sampler2D hdrScene;
+layout(set = 0, binding = 1) uniform sampler2D bloom;  // half resolution
 
 layout(location = 0) out vec4 outColor;
 
@@ -24,7 +25,9 @@ vec3 aces(vec3 x) {
 void main() {
     // Same size as the output: one texel per pixel, no filtering.
     vec4 hdr = texelFetch(hdrScene, ivec2(gl_FragCoord.xy), 0);
-    vec3 color = hdr.rgb * tonemap.settings.x;
+    vec2 uv = gl_FragCoord.xy / vec2(textureSize(hdrScene, 0));
+    vec3 scene = mix(hdr.rgb, texture(bloom, uv).rgb, tonemap.settings.z);
+    vec3 color = scene * tonemap.settings.x;
     if (tonemap.settings.y > 0.5) {
         color = aces(color);
     }

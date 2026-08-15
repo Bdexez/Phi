@@ -42,6 +42,8 @@ struct GpuMaterial {
 ///                               off, features draw straight into the output
 ///   renderer.exposure           scales the scene's light (default 1)
 ///   renderer.tonemap            "aces" (default) or "none" (clamp)
+///   renderer.bloom              glow around bright light (default true)
+///   renderer.bloom_intensity    share of the glow in the image (default 0.04)
 ///   renderer.shadows            directional shadows (default true)
 ///   renderer.shadow_map_size    texels per side (default 2048)
 ///   renderer.shadow_distance    shadows are drawn up to this distance from
