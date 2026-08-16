@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bdex/core/Assert.hpp>
+#include <bdex/core/JobSystem.hpp>
 #include <bdex/core/TypeId.hpp>
 #include <bdex/ecs/ComponentPool.hpp>
 #include <bdex/ecs/Entity.hpp>
@@ -204,6 +205,30 @@ public:
                 fn(std::get<PoolOf<Components>*>(pools_)->get(index)...);
             }
         }
+    }
+
+    /// Like each(), split across the job system's threads (the caller takes
+    /// part) in chunks of `grain` entities. For data-parallel systems: the
+    /// callback may read and write the components it is given, but must not
+    /// create or destroy entities, add or remove components, or touch other
+    /// entities' components. Visiting order is unspecified.
+    template <class Fn>
+    void parallelEach(JobSystem& jobs, Fn&& fn, usize grain = 256) {
+        IComponentPool* driver = smallestPool();
+        const std::span<const u32> entities = driver->entities();
+        jobs.parallelFor(entities.size(), grain, [&](usize begin, usize end) {
+            for (usize i = begin; i < end; ++i) {
+                const u32 index = entities[i];
+                if (!matches(index)) {
+                    continue;
+                }
+                if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
+                    fn(world_->entityAt(index), std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                } else {
+                    fn(std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                }
+            }
+        });
     }
 
     /// Number of matching entities (walks the smallest pool).

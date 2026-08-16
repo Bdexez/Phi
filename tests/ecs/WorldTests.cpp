@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <set>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 using namespace bdex;
 using namespace bdex::ecs;
@@ -210,4 +212,37 @@ TEST(World, ViewsCanExcludeComponents) {
     const auto all = world.view<Position>();
     const auto filtered = all.exclude<Tag>();
     EXPECT_EQ(filtered.count(), 2u);
+}
+
+TEST(World, ParallelEachVisitsEveryMatchOnce) {
+    World world;
+    std::vector<Entity> movers;
+    for (int i = 0; i < 10000; ++i) {
+        const Entity entity = world.create();
+        world.emplace<Position>(entity, static_cast<float>(i), 0.0f);
+        if (i % 3 != 0) {
+            world.emplace<Velocity>(entity, 1.0f, 2.0f);
+            movers.push_back(entity);
+        }
+    }
+
+    JobSystem jobs(4);
+    world.view<Position, const Velocity>().parallelEach(
+        jobs, [](Position& position, const Velocity& velocity) {
+            position.x += velocity.x;
+            position.y += velocity.y;
+        },
+        64);
+
+    usize moved = 0;
+    world.view<const Position>().each([&](Entity entity, const Position& position) {
+        const bool mover = world.has<Velocity>(entity);
+        moved += mover ? 1 : 0;
+        EXPECT_FLOAT_EQ(position.y, mover ? 2.0f : 0.0f);  // exactly once
+    });
+    EXPECT_EQ(moved, movers.size());
+
+    std::atomic<usize> visited{0};
+    world.view<Position>().exclude<Velocity>().parallelEach(jobs, [&](Entity, Position&) { ++visited; });
+    EXPECT_EQ(visited.load(), 10000u - movers.size());
 }
