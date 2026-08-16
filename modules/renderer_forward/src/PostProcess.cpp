@@ -20,13 +20,15 @@ Result<rhi::ShaderHandle> loadShader(rhi::IDevice& device, assets::AssetManager&
 Result<> PostProcess::create(rhi::IDevice& device, assets::AssetManager& assets,
                              rhi::Format outputFormat, Settings settings) {
     settings_ = settings;
+    outputFormat_ = outputFormat;
     const auto fullscreen = loadShader(device, assets, rhi::ShaderStage::Vertex, "fullscreen.vert");
     const auto toneMap = loadShader(device, assets, rhi::ShaderStage::Fragment, "tonemap.frag");
     const auto down = loadShader(device, assets, rhi::ShaderStage::Fragment, "bloom_down.frag");
     const auto up = loadShader(device, assets, rhi::ShaderStage::Fragment, "bloom_up.frag");
-    for (const auto* shader : {&fullscreen, &toneMap, &down, &up}) {
+    const auto fxaa = loadShader(device, assets, rhi::ShaderStage::Fragment, "fxaa.frag");
+    for (const auto* shader : {&fullscreen, &toneMap, &down, &up, &fxaa}) {
         if (!*shader) {
-            for (const auto* other : {&fullscreen, &toneMap, &down, &up}) {
+            for (const auto* other : {&fullscreen, &toneMap, &down, &up, &fxaa}) {
                 if (*other) {
                     device.destroyShader(**other);
                 }
@@ -63,6 +65,10 @@ Result<> PostProcess::create(rhi::IDevice& device, assets::AssetManager& assets,
     desc.colorFormats = {outputFormat};
     desc.debugName = "tonemap";
     toneMapPipeline_ = device.createGraphicsPipeline(desc);
+    desc.fragmentShader = *fxaa;
+    desc.bindGroupLayouts = {sourceLayout_};
+    desc.debugName = "fxaa";
+    fxaaPipeline_ = device.createGraphicsPipeline(desc);
 
     desc.bindGroupLayouts = {sourceLayout_};
     desc.colorFormats = {kSceneFormat};
@@ -74,7 +80,7 @@ Result<> PostProcess::create(rhi::IDevice& device, assets::AssetManager& assets,
     desc.debugName = "bloom up";
     upPipeline_ = device.createGraphicsPipeline(desc);
 
-    for (const rhi::ShaderHandle shader : {*fullscreen, *toneMap, *down, *up}) {
+    for (const rhi::ShaderHandle shader : {*fullscreen, *toneMap, *down, *up, *fxaa}) {
         device.destroyShader(shader);
     }
     return {};
@@ -83,6 +89,8 @@ Result<> PostProcess::create(rhi::IDevice& device, assets::AssetManager& assets,
 void PostProcess::releaseTargets(rhi::IDevice& device) {
     // Releases are deferred by the device until in-flight frames are done.
     device.destroyBindGroup(toneMapInputs_);
+    device.destroyBindGroup(toneMappedSource_);
+    device.destroyTexture(toneMapped_);
     device.destroyBindGroup(sceneSource_);
     device.destroyTexture(scene_);
     for (const BloomLevel& level : bloom_) {
@@ -95,6 +103,7 @@ void PostProcess::releaseTargets(rhi::IDevice& device) {
 void PostProcess::destroy(rhi::IDevice& device) {
     releaseTargets(device);
     device.destroyPipeline(toneMapPipeline_);
+    device.destroyPipeline(fxaaPipeline_);
     device.destroyPipeline(downPipeline_);
     device.destroyPipeline(upPipeline_);
     device.destroySampler(sampler_);
@@ -142,6 +151,15 @@ rhi::TextureHandle PostProcess::sceneTarget(rhi::IDevice& device, Extent2D exten
         desc.debugName = "bloom level";
         const rhi::TextureHandle texture = device.createTexture(desc);
         bloom_.push_back({texture, size, sampling(device, texture)});
+    }
+
+    if (settings_.antialiasing) {
+        desc.width = extent.width;
+        desc.height = extent.height;
+        desc.format = outputFormat_;
+        desc.debugName = "tone mapped";
+        toneMapped_ = device.createTexture(desc);
+        toneMappedSource_ = sampling(device, toneMapped_);
     }
 
     rhi::BindGroupDesc inputs;
@@ -199,6 +217,30 @@ void PostProcess::prepare(rhi::ICommandList& commands) const {
 }
 
 void PostProcess::apply(rhi::ICommandList& commands, rhi::TextureHandle output, Extent2D extent) const {
+    if (!toneMapped_.valid()) {
+        toneMap(commands, output, extent);
+        return;
+    }
+    toneMap(commands, toneMapped_, extent);
+
+    const std::array<rhi::ColorAttachment, 1> attachments = {{
+        {output, rhi::LoadOp::DontCare, rhi::StoreOp::Store, {0.0f, 0.0f, 0.0f, 1.0f}},
+    }};
+    commands.beginRendering({attachments, nullptr});
+    commands.beginDebugGroup("fxaa");
+    commands.setViewport({0.0f, 0.0f, static_cast<f32>(extent.width),
+                          static_cast<f32>(extent.height), 0.0f, 1.0f});
+    commands.setScissor({0, 0, extent.width, extent.height});
+    commands.bindPipeline(fxaaPipeline_);
+    commands.bindBindGroup(0, toneMappedSource_);
+    const Vec4 texel(1.0f / static_cast<f32>(extent.width), 1.0f / static_cast<f32>(extent.height), 0.0f, 0.0f);
+    commands.pushConstants(0, rhi::asBytes(texel));
+    commands.draw(3);
+    commands.endDebugGroup();
+    commands.endRendering();
+}
+
+void PostProcess::toneMap(rhi::ICommandList& commands, rhi::TextureHandle output, Extent2D extent) const {
     const std::array<rhi::ColorAttachment, 1> attachments = {{
         {output, rhi::LoadOp::DontCare, rhi::StoreOp::Store, {0.0f, 0.0f, 0.0f, 1.0f}},
     }};
