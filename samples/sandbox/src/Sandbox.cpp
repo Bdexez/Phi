@@ -18,6 +18,7 @@
 
 #include <bdex/app/Application.hpp>
 #include <bdex/core/FileSystem.hpp>
+#include <bdex/core/JobSystem.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
@@ -42,13 +43,15 @@ struct Spin {
     f32 speed = 1.0f;  // radians per second
 };
 
-/// Application-defined system. Systems are plain functions over ECS views.
-void spinSystem(ecs::World& world, f32 deltaSeconds) {
-    world.view<scene::Transform, const Spin>().each([deltaSeconds](scene::Transform& transform,
-                                                            const Spin& spin) {
-        transform.rotation =
-            glm::normalize(glm::angleAxis(spin.speed * deltaSeconds, spin.axis) * transform.rotation);
-    });
+/// Application-defined system. Systems are plain functions over ECS views;
+/// this one only touches each entity's own components, so it can run on the
+/// job system's threads (a handful of entities stay on the calling thread).
+void spinSystem(ecs::World& world, JobSystem& jobs, f32 deltaSeconds) {
+    world.view<scene::Transform, const Spin>().parallelEach(
+        jobs, [deltaSeconds](scene::Transform& transform, const Spin& spin) {
+            transform.rotation =
+                glm::normalize(glm::angleAxis(spin.speed * deltaSeconds, spin.axis) * transform.rotation);
+        });
 }
 
 Vec3 hsvToRgb(f32 hue, f32 saturation, f32 value) {
@@ -101,7 +104,7 @@ protected:
         registerSerializers();
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
-            spinSystem(scene().world(), static_cast<f32>(time.delta));
+            spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
         });
         return {};
     }
