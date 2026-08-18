@@ -505,3 +505,46 @@ TEST(SceneFiles, KeepCamerasAndLights) {
     EXPECT_EQ(light.color, Vec3(1.0f, 0.5f, 0.0f));
     EXPECT_FLOAT_EQ(light.range, 12.0f);
 }
+
+TEST(Shadows, CascadesCoverTheirSlices) {
+    const std::vector<f32> splits = render::cascadeSplits(0.1f, 100.0f, 4);
+    ASSERT_EQ(splits.size(), 4u);
+    EXPECT_FLOAT_EQ(splits.back(), 100.0f);
+    for (usize i = 1; i < splits.size(); ++i) {
+        EXPECT_GT(splits[i], splits[i - 1]);
+        // Each slice is longer than the one before: near cascades are sharper.
+        EXPECT_GT(splits[i] - splits[i - 1], i > 1 ? splits[i - 1] - splits[i - 2] : splits[0]);
+    }
+
+    Transform eye;
+    eye.position = Vec3(4.0f, 3.0f, 2.0f);
+    eye.rotation = glm::angleAxis(-0.6f, Vec3(0.0f, 1.0f, 0.0f));
+    const render::CameraData camera = render::makeCameraData(eye.localMatrix(), render::Camera{}, 16.0f / 9.0f);
+    const Vec3 sun = glm::normalize(Vec3(0.3f, -1.0f, 0.2f));
+    const Mat4 inverseViewProjection = glm::inverse(camera.viewProjection);
+    f32 previousSize = 0.0f;
+    for (usize cascade = 0; cascade < splits.size(); ++cascade) {
+        const f32 nearDistance = cascade == 0 ? 0.0f : splits[cascade - 1];
+        const render::CameraData light =
+            render::fitDirectionalShadow(camera, sun, nearDistance, splits[cascade], 1024);
+        // Larger slices get larger (coarser) volumes.
+        const f32 size = 1.0f / light.projection[0][0];
+        EXPECT_GT(size, previousSize);
+        previousSize = size;
+        // Points of the slice project inside the map.
+        for (const f32 x : {-1.0f, 1.0f}) {
+            for (const f32 y : {-1.0f, 1.0f}) {
+                const Vec4 far = inverseViewProjection * Vec4(x, y, 1.0f, 1.0f);
+                const Vec3 ray = glm::normalize(Vec3(far) / far.w - camera.position);
+                const f32 alongAxis = glm::dot(ray, -glm::normalize(Vec3(glm::inverse(camera.view)[2])));
+                for (const f32 depth : {std::max(nearDistance, 0.2f), splits[cascade]}) {
+                    const Vec4 clip = light.viewProjection * Vec4(camera.position + ray * (depth / alongAxis), 1.0f);
+                    EXPECT_LE(std::abs(clip.x / clip.w), 1.0f);
+                    EXPECT_LE(std::abs(clip.y / clip.w), 1.0f);
+                    EXPECT_GE(clip.z / clip.w, 0.0f);
+                    EXPECT_LE(clip.z / clip.w, 1.0f);
+                }
+            }
+        }
+    }
+}
