@@ -80,6 +80,7 @@ private:
     std::vector<DrawItem> casters_;
     std::vector<SortKey> casterOrder_;
     std::vector<ObjectData> objects_;
+    usize shadowObjectsUsed_ = 0;  ///< This frame's, across shadow cascades.
 };
 
 }  // namespace bdex::forward

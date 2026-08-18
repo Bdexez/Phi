@@ -362,17 +362,26 @@ TEST(HeadlessEngine, OpaqueMeshesCastShadowsFromTheSun) {
 
     render::MaterialDesc glass;
     glass.transparent = true;
+    const render::MaterialHandle glassMaterial = test.renderer().createMaterial(glass);
     const ecs::Entity pane = test.scene().createEntity("pane");
     test.world().emplace<render::MeshRenderer>(pane, test.renderer().createMesh(assets::makeCube()),
-                                               test.renderer().createMaterial(glass));
+                                               glassMaterial);
+    constexpr u32 kMainPass = 4;  // every mesh, once
 
-    // Shadow pass (3 opaque casters) + main pass (4 meshes).
+    // The shadow pass draws the opaque cubes (in each cascade they reach).
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().instances, 3u + 4u);
+    const u32 withGlass = test.device().lastFrameStats().instances - kMainPass;
+    EXPECT_GT(withGlass, 0u);
 
+    // The same pane, opaque, casts too.
+    test.world().get<render::MeshRenderer>(pane).material = test.renderer().createMaterial({});
+    test.engine->tick();
+    EXPECT_GT(test.device().lastFrameStats().instances - kMainPass, withGlass);
+
+    // A sun that casts no shadow leaves the main pass alone.
     test.world().get<render::DirectionalLight>(sun).castShadows = false;
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().instances, 4u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, kMainPass);
 }
 
 TEST(HeadlessEngine, TheRendererReportsMeshBounds) {
@@ -716,7 +725,9 @@ TEST(VulkanHeadless, TransparentSurfacesBlendBackToFront) {
 }
 
 TEST(VulkanHeadless, TheSunCastsShadows) {
-    const auto render = [](bool shadows) -> std::pair<int, int> {
+    // `distance` scales the camera's position: far enough, the shadow falls
+    // in a farther cascade.
+    const auto render = [](bool shadows, f32 distance = 1.0f) -> std::pair<int, int> {
         Config config;
         config.set("rhi.validation", "true");
         config.set("renderer.shadows", shadows ? "true" : "false");
@@ -729,9 +740,11 @@ TEST(VulkanHeadless, TheSunCastsShadows) {
         // Looking down at a ground plane, with a cube floating above it and
         // the sun straight overhead.
         const ecs::Entity camera = test.scene().createEntity("camera");
-        test.world().emplace<render::Camera>(camera);
+        render::Camera lens;
+        lens.verticalFov = glm::radians(60.0f) / distance;  // the scene keeps its size on screen
+        test.world().emplace<render::Camera>(camera, lens);
         scene::Transform& eye = test.world().get<scene::Transform>(camera);
-        eye.position = Vec3(0.0f, 10.0f, 10.0f);
+        eye.position = Vec3(0.0f, 10.0f, 10.0f) * distance;
         eye.rotation = glm::quatLookAt(glm::normalize(Vec3(0.0f, -1.0f, -1.0f)), Vec3(0.0f, 1.0f, 0.0f));
 
         const ecs::Entity sun = test.scene().createEntity("sun");
@@ -764,7 +777,7 @@ TEST(VulkanHeadless, TheSunCastsShadows) {
 
         // Where two ground points land on screen.
         const render::CameraData view = render::makeCameraData(
-            test.world().get<scene::WorldTransform>(camera).matrix, render::Camera{},
+            test.world().get<scene::WorldTransform>(camera).matrix, lens,
             static_cast<f32>(image->width) / static_cast<f32>(image->height));
         const auto brightness = [&](const Vec3& point) {
             const Vec4 clip = view.viewProjection * Vec4(point, 1.0f);
@@ -787,6 +800,11 @@ TEST(VulkanHeadless, TheSunCastsShadows) {
     // Without shadows, both points are lit alike.
     const auto [first, second] = render(false);
     EXPECT_NEAR(first, second, 6);
+
+    // From three times as far (about 42 m), a far cascade holds the shadow.
+    const auto [farShadowed, farLit] = render(true, 3.0f);
+    ASSERT_GE(farShadowed, 0);
+    EXPECT_LT(farShadowed * 2, farLit) << "shadowed " << farShadowed << ", lit " << farLit;
 }
 
 TEST(VulkanHeadless, HdrKeepsLightAboveWhiteForToneMapping) {

@@ -6,6 +6,7 @@
 #include <bdex/scene/Components.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstddef>
 
@@ -85,6 +86,8 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     shadowDesc.blend = rhi::BlendMode::Opaque;
     shadowDesc.depthWrite = true;
     shadowDesc.cullMode = rhi::CullMode::Front;
+    shadowDesc.pushConstantSize = sizeof(u32) * 4;  // the cascade index (shadow.vert)
+    shadowDesc.pushConstantStages = rhi::ShaderStage::Vertex;
     shadowDesc.debugName = "forward.meshes.shadows";
     shadowPipeline_ = device.createGraphicsPipeline(shadowDesc);
 
@@ -254,10 +257,22 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
     for (const SortKey& entry : casterOrder_) {
         objects_.push_back(casters_[entry.draw].object);
     }
+    // The cascades of a frame share the buffer: each writes after the
+    // previous one, so none overwrites what an earlier draw still reads.
+    if (context.shadowCascade == 0) {
+        shadowObjectsUsed_ = 0;
+    }
+    const usize first = shadowObjectsUsed_;
+    shadowObjectsUsed_ += objects_.size();
     ObjectBuffer& slot = shadowObjectBuffers_[context.device.frameSlot()];
-    ensureObjectCapacity(context.device, slot, objects_.size());
-    context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)));
-    drawBatch(context.commands, context, shadowPipeline_, casters_, casterOrder_, 0, slot.bindGroup);
+    ensureObjectCapacity(context.device, slot, shadowObjectsUsed_);
+    context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)),
+                               first * sizeof(ObjectData));
+    const std::array<u32, 4> cascade = {context.shadowCascade, 0, 0, 0};
+    context.commands.bindPipeline(shadowPipeline_);
+    context.commands.pushConstants(0, rhi::asBytes(cascade));
+    drawBatch(context.commands, context, shadowPipeline_, casters_, casterOrder_, static_cast<u32>(first),
+              slot.bindGroup);
 }
 
 void MeshFeature::drawBatch(rhi::ICommandList& commands, const render::RenderFrameContext& context,

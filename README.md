@@ -158,7 +158,7 @@ Override any key at startup with `--set`:
 
 With `renderer.vsync=false`, `engine.max_fps` caps the frame rate (for example `--set engine.max_fps=144`) instead of running flat out.
 
-Shadows from the directional light are on by default; `renderer.shadows`, `renderer.shadow_map_size` (texels per side, default `2048`), and `renderer.shadow_distance` (how far from the camera shadows are drawn, default `40`) tune them.
+Shadows from the directional light are on by default, in four cascades that keep them sharp near the camera; `renderer.shadows`, `renderer.shadow_map_size` (texels per side of each cascade, default `1024`), and `renderer.shadow_distance` (how far from the camera shadows are drawn, default `100`) tune them.
 
 The scene is rendered in HDR and tone mapped for display: `renderer.exposure` scales the light (default `1`), `renderer.tonemap` picks `aces` (default) or `none` (clamp), `renderer.bloom` / `renderer.bloom_intensity` (default `0.04`) control the glow around bright light, `renderer.antialiasing` picks `fxaa` (default) or `none`, and `renderer.hdr=false` draws straight into the display target instead, which is cheaper but clips anything brighter than white.
 

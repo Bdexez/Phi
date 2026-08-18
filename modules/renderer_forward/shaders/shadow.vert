@@ -14,8 +14,12 @@ layout(std430, set = 2, binding = 0) readonly buffer Objects {
     ObjectData objects[];
 };
 
+layout(push_constant) uniform ShadowConstants {
+    uvec4 cascade;  // x: which of frame.shadowCascades this pass renders
+} shadow;
+
 layout(location = 0) in vec3 inPosition;
 
 void main() {
-    gl_Position = frame.lightViewProjection * objects[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    gl_Position = frame.shadowCascades[shadow.cascade.x] * objects[gl_InstanceIndex].model * vec4(inPosition, 1.0);
 }

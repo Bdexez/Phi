@@ -35,6 +35,8 @@ struct FrameUniforms {
     /// Point lights beyond this count are dropped, farthest from the camera
     /// first.
     static constexpr u32 kMaxPointLights = 16;
+    /// Cascades of the sun's shadow map, laid out 2 x 2 in one depth texture.
+    static constexpr u32 kShadowCascades = 4;
 
     Mat4 view{1.0f};
     Mat4 projection{1.0f};
@@ -45,11 +47,15 @@ struct FrameUniforms {
     Vec4 lightColor{1.0f};      ///< rgb premultiplied by intensity
     Vec4 ambientColor{0.0f};    ///< rgb
     Vec4 timeAndExtent{0.0f};   ///< elapsed seconds, delta seconds, width, height
-    /// World to shadow-map clip space of the directional light; shadow
-    /// passes render with it, and receivers project into it.
-    Mat4 lightViewProjection{1.0f};
-    /// x: 1 when the shadow map holds this frame's shadows, y: one texel in
-    /// UV units, z: depth bias, w: normal offset in world units.
+    /// World to clip space of each shadow cascade; a shadow pass renders
+    /// with one of them, and receivers project into the one covering them.
+    Mat4 shadowCascades[kShadowCascades]{};
+    /// Far distance from the camera (along its view axis) of each cascade.
+    Vec4 cascadeSplits{0.0f};
+    /// x: depth bias, y: normal offset in world units, per cascade.
+    Vec4 cascadeBiases[kShadowCascades]{};
+    /// x: 1 when the shadow map holds this frame's shadows, y: one texel of
+    /// the atlas in UV units.
     Vec4 shadowParams{0.0f};
     Vec4 pointLightCount{0.0f};  ///< x: number of valid entries below
     Vec4 pointLightPositions[kMaxPointLights]{};  ///< xyz: world position, w: range
@@ -105,6 +111,8 @@ struct RenderFrameContext {
     /// Bind group for set 0 (FrameUniforms) of the current frame.
     rhi::BindGroupHandle frameBindGroup;
     FrameTime time;
+    /// In renderShadows: the cascade being drawn (see FrameUniforms).
+    u32 shadowCascade = 0;
 };
 
 /// A unit of rendering plugged into a renderer: mesh drawing, a sky, debug
@@ -124,10 +132,11 @@ public:
     /// Destroy everything created in onAttach.
     virtual void onDetach(rhi::IDevice& device) = 0;
     virtual void render(const RenderFrameContext& context) = 0;
-    /// Called inside the shadow pass, before render(), when the frame has
-    /// shadows: draw shadow casters, depth only, transformed by
-    /// FrameUniforms::lightViewProjection. `context.camera` describes the
-    /// light's view, for culling. The default casts no shadow.
+    /// Called inside the shadow pass, before render(), once per shadow
+    /// cascade when the frame has shadows: draw shadow casters, depth only,
+    /// transformed by FrameUniforms::shadowCascades[context.shadowCascade]
+    /// (the renderer has set the viewport). `context.camera` describes that
+    /// cascade's view, for culling. The default casts no shadow.
     virtual void renderShadows(const RenderFrameContext& context) { (void)context; }
 };
 

@@ -52,13 +52,13 @@ Result<> ForwardRenderer::initialize() {
     shadowsEnabled_ = config.getBool("renderer.shadows", true);
     shadowMapSize_ =
         shadowsEnabled_
-            ? static_cast<u32>(std::clamp<i64>(config.getInt("renderer.shadow_map_size", 2048), 64, 8192))
+            ? static_cast<u32>(std::clamp<i64>(config.getInt("renderer.shadow_map_size", 1024), 64, 4096))
             : 1;
     shadowDistance_ =
-        static_cast<f32>(std::clamp(config.getFloat("renderer.shadow_distance", 40.0), 1.0, 1000.0));
+        static_cast<f32>(std::clamp(config.getFloat("renderer.shadow_distance", 100.0), 1.0, 1000.0));
     rhi::TextureDesc shadowDesc;
-    shadowDesc.width = shadowMapSize_;
-    shadowDesc.height = shadowMapSize_;
+    shadowDesc.width = shadowMapSize_ * 2;  // 2 x 2 cascades
+    shadowDesc.height = shadowMapSize_ * 2;
     shadowDesc.format = shadowFormat_;
     shadowDesc.usage = rhi::TextureUsage::DepthStencilAttachment | rhi::TextureUsage::Sampled;
     shadowDesc.debugName = "shadow map";
@@ -420,9 +420,17 @@ render::DirectionalLight ForwardRenderer::findSun() const {
 
 void ForwardRenderer::updateShadowView(const render::CameraData& camera) {
     shadowsThisFrame_ = shadowsEnabled_ && sun_.castShadows;
-    if (shadowsThisFrame_) {
-        shadowView_ =
-            render::fitDirectionalShadow(camera, sun_.direction, shadowDistance_, shadowMapSize_);
+    if (!shadowsThisFrame_) {
+        return;
+    }
+    // Near plane of the camera, recovered from its projection (z = 0 there).
+    const f32 nearPlane = camera.projection[3][2] / -camera.projection[2][2];
+    cascadeSplits_ = render::cascadeSplits(std::max(nearPlane, 0.01f), shadowDistance_,
+                                           render::FrameUniforms::kShadowCascades);
+    for (usize cascade = 0; cascade < cascades_.size(); ++cascade) {
+        cascades_[cascade] = render::fitDirectionalShadow(
+            camera, sun_.direction, cascade == 0 ? 0.0f : cascadeSplits_[cascade - 1],
+            cascadeSplits_[cascade], shadowMapSize_);
     }
 }
 
@@ -431,24 +439,30 @@ void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameT
     // the frame bind group that references it.
     const rhi::DepthAttachment depth{shadowMap_, rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
     commands.beginRendering({{}, &depth});
-    commands.setViewport({0.0f, 0.0f, static_cast<f32>(shadowMapSize_),
-                          static_cast<f32>(shadowMapSize_), 0.0f, 1.0f});
-    commands.setScissor({0, 0, shadowMapSize_, shadowMapSize_});
     if (shadowsThisFrame_) {
         auto* scenes = engine_.services().tryGet<scene::SceneManager>();
         scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
-        const render::RenderFrameContext context{
-            device_,
-            commands,
-            activeScene != nullptr ? &activeScene->world() : nullptr,
-            shadowView_,
-            {shadowMapSize_, shadowMapSize_},
-            frameBindGroups_[device_.frameSlot()],
-            time,
-        };
         commands.beginDebugGroup("shadows");
-        for (const auto& feature : features_) {
-            feature->renderShadows(context);
+        for (u32 cascade = 0; cascade < cascades_.size(); ++cascade) {
+            // Each cascade draws into its cell of the 2 x 2 atlas.
+            const u32 x = (cascade & 1u) * shadowMapSize_;
+            const u32 y = (cascade >> 1u) * shadowMapSize_;
+            commands.setViewport({static_cast<f32>(x), static_cast<f32>(y), static_cast<f32>(shadowMapSize_),
+                                  static_cast<f32>(shadowMapSize_), 0.0f, 1.0f});
+            commands.setScissor({static_cast<i32>(x), static_cast<i32>(y), shadowMapSize_, shadowMapSize_});
+            const render::RenderFrameContext context{
+                device_,
+                commands,
+                activeScene != nullptr ? &activeScene->world() : nullptr,
+                cascades_[cascade],
+                {shadowMapSize_, shadowMapSize_},
+                frameBindGroups_[device_.frameSlot()],
+                time,
+                cascade,
+            };
+            for (const auto& feature : features_) {
+                feature->renderShadows(context);
+            }
         }
         commands.endDebugGroup();
     }
@@ -470,13 +484,17 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
         directionLength > 0.0f ? light.direction / directionLength : Vec3(0.0f, -1.0f, 0.0f), 0.0f);
     uniforms.lightColor = Vec4(light.color * light.intensity, 1.0f);
     uniforms.ambientColor = Vec4(light.ambient, 1.0f);
-    uniforms.lightViewProjection = shadowView_.viewProjection;
     if (shadowsThisFrame_) {
-        // Biases scale with the size of a shadow-map texel in the world.
-        const f32 texelWorld = 2.0f / (shadowView_.projection[0][0] * static_cast<f32>(shadowMapSize_));
-        const f32 depthRange = 1.0f / std::abs(shadowView_.projection[2][2]);
-        uniforms.shadowParams = Vec4(1.0f, 1.0f / static_cast<f32>(shadowMapSize_),
-                                     texelWorld / depthRange, 1.5f * texelWorld);
+        for (usize cascade = 0; cascade < cascades_.size(); ++cascade) {
+            const render::CameraData& view = cascades_[cascade];
+            uniforms.shadowCascades[cascade] = view.viewProjection;
+            uniforms.cascadeSplits[static_cast<glm::length_t>(cascade)] = cascadeSplits_[cascade];
+            // Biases scale with the size of the cascade's texels in the world.
+            const f32 texelWorld = 2.0f / (view.projection[0][0] * static_cast<f32>(shadowMapSize_));
+            const f32 depthRange = 1.0f / std::abs(view.projection[2][2]);
+            uniforms.cascadeBiases[cascade] = Vec4(texelWorld / depthRange, 1.5f * texelWorld, 0.0f, 0.0f);
+        }
+        uniforms.shadowParams = Vec4(1.0f, 1.0f / static_cast<f32>(shadowMapSize_ * 2), 0.0f, 0.0f);
     }
     uniforms.timeAndExtent =
         Vec4(static_cast<f32>(time.elapsed), static_cast<f32>(time.delta),
