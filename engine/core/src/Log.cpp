@@ -3,6 +3,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <memory>
+#include <string>
 #include <mutex>
 #include <vector>
 
@@ -47,9 +49,12 @@ const char* levelColor(Level level) {
     return "";
 }
 
+f64 secondsSinceStart(const State& s) {
+    return std::chrono::duration<f64>(std::chrono::steady_clock::now() - s.start).count();
+}
+
 void writeConsole(State& s, const Record& record) {
-    const f64 seconds =
-        std::chrono::duration<f64>(std::chrono::steady_clock::now() - s.start).count();
+    const f64 seconds = secondsSinceStart(s);
     const std::string line = s.consoleColors
         ? std::format("\x1b[90m[{:9.3f}]\x1b[0m {}{:<5}\x1b[0m \x1b[1m{}\x1b[0m: {}\n", seconds,
                       levelColor(record.level), levelName(record.level), record.category,
@@ -108,6 +113,28 @@ void removeSink(u32 id) {
     State& s = state();
     std::lock_guard lock(s.mutex);
     std::erase_if(s.sinks, [id](const auto& entry) { return entry.first == id; });
+}
+
+Result<u32> addFileSink(const std::filesystem::path& path) {
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+    std::shared_ptr<std::FILE> file(std::fopen(path.string().c_str(), "w"), [](std::FILE* f) {
+        if (f != nullptr) {
+            std::fclose(f);
+        }
+    });
+    if (file == nullptr) {
+        return fail("cannot open log file '{}'", path.string());
+    }
+    // Sinks run with the log mutex held: writes never interleave.
+    return addSink([file](const Record& record) {
+        const std::string line = std::format("[{:9.3f}] {:<5} {}: {}\n", secondsSinceStart(state()),
+                                             levelName(record.level), record.category, record.message);
+        std::fwrite(line.data(), 1, line.size(), file.get());
+        std::fflush(file.get());
+    });
 }
 
 void setConsoleEnabled(bool enabled) {

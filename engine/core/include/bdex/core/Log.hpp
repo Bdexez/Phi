@@ -1,6 +1,9 @@
 #pragma once
 
+#include <bdex/core/Result.hpp>
 #include <bdex/core/Types.hpp>
+
+#include <filesystem>
 
 #include <format>
 #include <functional>
@@ -29,6 +32,10 @@ void setLevel(Level level);
 /// Adds an extra sink (file, in-game console, test capture...). Thread-safe.
 u32 addSink(Sink sink);
 void removeSink(u32 id);
+/// Adds a sink writing every record to `path` (replaced if it exists), one
+/// line each, flushed as written so nothing is lost if the process dies.
+/// The file closes when the sink is removed.
+[[nodiscard]] Result<u32> addFileSink(const std::filesystem::path& path);
 /// The built-in stderr sink is enabled by default.
 void setConsoleEnabled(bool enabled);
 
