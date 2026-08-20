@@ -80,6 +80,35 @@ Result<Config> Config::loadFile(const std::filesystem::path& path) {
     return parse(*text);
 }
 
+std::string Config::toText() const {
+    std::string text;
+    // Top-level keys first: after a section header they would belong to it.
+    for (const auto& [key, value] : values_) {
+        if (key.find('.') == std::string::npos) {
+            text += key + " = " + value + "\n";
+        }
+    }
+    std::string_view section;
+    for (const auto& [key, value] : values_) {
+        const usize dot = key.find('.');
+        if (dot == std::string::npos) {
+            continue;
+        }
+        const std::string_view keySection = std::string_view(key).substr(0, dot);
+        if (keySection != section) {
+            section = keySection;
+            text += (text.empty() ? "[" : "\n[") + std::string(section) + "]\n";
+        }
+        text += key.substr(dot + 1) + " = " + value + "\n";
+    }
+    return text;
+}
+
+Result<> Config::saveFile(const std::filesystem::path& path) const {
+    const std::string text = toText();
+    return fs::writeBinaryFile(path, text.data(), text.size());
+}
+
 void Config::set(std::string_view key, std::string_view value) {
     values_.insert_or_assign(std::string(key), std::string(value));
 }

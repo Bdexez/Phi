@@ -28,6 +28,14 @@ public:
     [[nodiscard]] static Result<Config> parse(std::string_view text);
     [[nodiscard]] static Result<Config> loadFile(const std::filesystem::path& path);
 
+    /// INI text that parse() reads back to the same entries: keys grouped in
+    /// sections by their first component ("window.width" goes to [window]
+    /// as "width"), keys without a dot first. Values must not start or end
+    /// with whitespace or contain line breaks, which INI cannot represent.
+    [[nodiscard]] std::string toText() const;
+    /// Writes toText() to `path` (settings menus, rebinding...).
+    [[nodiscard]] Result<> saveFile(const std::filesystem::path& path) const;
+
     void set(std::string_view key, std::string_view value);
     /// Sets the value only if the key is absent (used for defaults).
     void setDefault(std::string_view key, std::string_view value);
