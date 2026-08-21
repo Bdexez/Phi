@@ -20,7 +20,8 @@ constexpr int kExitStartupFailure = 1;
 constexpr int kExitBadCommandLine = 2;
 constexpr int kExitValidationErrors = 3;
 
-constexpr std::string_view kUsage =
+// A C string (not a string_view): printed with printf's %s.
+constexpr const char kUsage[] =
     "Options:\n"
     "  --config <file>      INI configuration file\n"
     "  --set <key>=<value>  override a configuration key (repeatable)\n"
@@ -159,12 +160,11 @@ int Application::run(int argc, char** argv) {
     // --- Configuration: defaults < onConfigure < file < command line ---------
     const auto cli = parseCommandLine(argc, argv);
     if (!cli) {
-        std::fprintf(stderr, "error: %s\n\n%s", cli.error().message.c_str(), kUsage.data());
+        std::fprintf(stderr, "error: %s\n\n%s", cli.error().message.c_str(), kUsage);
         return kExitBadCommandLine;
     }
     if (cli->help) {
-        std::printf("Usage: %s [options]\n\n%s", executable.filename().string().c_str(),
-                    kUsage.data());
+        std::printf("Usage: %s [options]\n\n%s", executable.filename().string().c_str(), kUsage);
         return kExitSuccess;
     }
 

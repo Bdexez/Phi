@@ -238,7 +238,10 @@ private:
         }
         ecs::World& world = scene().world();
         world.clear();
-        (void)serializers_.load(world, *text);
+        if (const auto loaded = serializers_.load(world, *text); !loaded) {
+            // Validated above: only a bug could get here.
+            log::error("sandbox", "reloading {} failed: {}", kSceneFile, loaded.error().message);
+        }
         camera_ = scene().find("Camera");
         selected_ = {};
         if (world.has<scene::Transform>(camera_)) {
