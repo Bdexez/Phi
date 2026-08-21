@@ -35,6 +35,9 @@ public:
 
     void setTitle(std::string_view) override {}
     void setCursorCaptured(bool) override {}
+    // Nothing to cover: the virtual framebuffer keeps its size.
+    void setFullscreen(bool fullscreen) override { fullscreen_ = fullscreen; }
+    [[nodiscard]] bool fullscreen() const override { return fullscreen_; }
 
     [[nodiscard]] Result<u64> createVulkanSurface(void*) override {
         return fail("window_null has no presentation surface");
@@ -44,6 +47,7 @@ private:
     EventBus* events_;
     Extent2D size_;
     bool closeRequested_ = false;
+    bool fullscreen_ = false;
 };
 
 class NullWindowSystem final : public platform::IWindowSystem {

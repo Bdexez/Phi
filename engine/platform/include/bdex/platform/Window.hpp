@@ -21,6 +21,11 @@ public:
     virtual void setTitle(std::string_view title) = 0;
     /// Hides the cursor and delivers unbounded relative motion (camera look).
     virtual void setCursorCaptured(bool captured) = 0;
+    /// Covers the primary monitor in its current video mode, or goes back
+    /// to the windowed size and position. The framebuffer is resized
+    /// accordingly (WindowResized follows).
+    virtual void setFullscreen(bool fullscreen) = 0;
+    [[nodiscard]] virtual bool fullscreen() const = 0;
 
     /// Creates a Vulkan presentation surface for this window.
     ///
