@@ -526,6 +526,34 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
     }
     uniforms.pointLightCount.x = static_cast<f32>(pointLights_.size());
 
+    // Spot lights, chosen the same way.
+    spotLights_.clear();
+    if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
+        scenes != nullptr && scenes->active() != nullptr) {
+        scenes->active()->world().view<const render::SpotLight, const scene::WorldTransform>().each(
+            [&](const render::SpotLight& spot, const scene::WorldTransform& transform) {
+                const Vec3 position(transform.matrix[3]);
+                spotLights_.push_back({position, glm::normalize(-Vec3(transform.matrix[2])), &spot,
+                                       glm::length(position - camera.position) - spot.range});
+            });
+    }
+    constexpr usize kMaxSpots = render::FrameUniforms::kMaxSpotLights;
+    if (spotLights_.size() > kMaxSpots) {
+        std::ranges::nth_element(spotLights_, spotLights_.begin() + kMaxSpots, {},
+                                 &SpotLightCandidate::distance);
+        spotLights_.resize(kMaxSpots);
+    }
+    for (usize i = 0; i < spotLights_.size(); ++i) {
+        const SpotLightCandidate& candidate = spotLights_[i];
+        const render::SpotLight& spot = *candidate.light;
+        const f32 outer = std::clamp(spot.outerAngle, 1e-3f, glm::radians(89.0f));
+        const f32 inner = std::clamp(spot.innerAngle, 0.0f, outer - 1e-3f);
+        uniforms.spotLightPositions[i] = Vec4(candidate.position, std::max(spot.range, 1e-3f));
+        uniforms.spotLightDirections[i] = Vec4(candidate.direction, std::cos(outer));
+        uniforms.spotLightColors[i] = Vec4(spot.color * spot.intensity, std::cos(inner));
+    }
+    uniforms.pointLightCount.y = static_cast<f32>(spotLights_.size());
+
     device_.writeBuffer(frameBuffers_[device_.frameSlot()], rhi::asBytes(uniforms));
 }
 

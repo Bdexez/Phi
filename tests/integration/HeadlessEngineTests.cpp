@@ -1112,3 +1112,58 @@ TEST(VulkanHeadless, FxaaSmoothsEdges) {
     ASSERT_GE(smoothed, 0) << "capture failed or validation errors";
     EXPECT_GT(smoothed, aliased * 3 + 50) << "aliased " << aliased << ", fxaa " << smoothed;
 }
+
+TEST(VulkanHeadless, SpotLightsLightOnlyTheirCone) {
+    // Center pixel (red) of a cube lit only by a spot light at z = 3.
+    const auto render = [](const Quat& aim, f32 outerAngle) -> int {
+        Config config;
+        config.set("rhi.validation", "true");
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return -1;
+        }
+        test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        test.populate(0);  // camera at z = 6, looking down -Z
+        const ecs::Entity sun = test.scene().createEntity("sun");
+        test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+        test.world().get<render::DirectionalLight>(sun).ambient = Vec3(0.0f);
+        render::MaterialDesc white;
+        white.specular = 0.0f;
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                                   test.renderer().createMaterial(white));
+        const ecs::Entity spot = test.scene().createEntity("spot");
+        test.world().get<scene::Transform>(spot).position = Vec3(0.0f, 0.0f, 3.0f);
+        test.world().get<scene::Transform>(spot).rotation = aim;  // -Z looks at the cube
+        render::SpotLight light;
+        light.color = Vec3(1.0f, 0.0f, 0.0f);
+        light.intensity = 6.0f;
+        light.innerAngle = outerAngle * 0.5f;
+        light.outerAngle = outerAngle;
+        test.world().emplace<render::SpotLight>(spot, light);
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_spot.png";
+        test.engine->tick();
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return -2;
+        }
+        return image->pixels[(image->height / 2 * image->width + image->width / 2) * 4];
+    };
+
+    const Quat atCube(1.0f, 0.0f, 0.0f, 0.0f);
+    const int lit = render(atCube, glm::radians(30.0f));
+    if (lit == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    EXPECT_GT(lit, 150);
+    // Turned away, or with a cone too narrow to reach the center: dark.
+    EXPECT_LT(render(glm::angleAxis(glm::radians(90.0f), Vec3(0.0f, 1.0f, 0.0f)), glm::radians(30.0f)), 10);
+    EXPECT_LT(render(glm::angleAxis(glm::radians(40.0f), Vec3(1.0f, 0.0f, 0.0f)), glm::radians(10.0f)), 10);
+}

@@ -504,6 +504,15 @@ TEST(SceneFiles, KeepCamerasAndLights) {
     const render::PointLight& light = target.world().get<render::PointLight>(target.find("Lamp"));
     EXPECT_EQ(light.color, Vec3(1.0f, 0.5f, 0.0f));
     EXPECT_FLOAT_EQ(light.range, 12.0f);
+
+    const ecs::Entity torch = source.createEntity("Torch");
+    render::SpotLight spot;
+    spot.innerAngle = 0.25f;
+    spot.outerAngle = 0.4f;
+    source.world().emplace<render::SpotLight>(torch, spot);
+    Scene again("again");
+    ASSERT_TRUE(serializers.load(again.world(), serializers.save(source.world())).has_value());
+    EXPECT_FLOAT_EQ(again.world().get<render::SpotLight>(again.find("Torch")).outerAngle, 0.4f);
 }
 
 TEST(Shadows, CascadesCoverTheirSlices) {

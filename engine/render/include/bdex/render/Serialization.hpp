@@ -4,7 +4,8 @@
 
 namespace bdex::render {
 
-/// Registers Camera, DirectionalLight and PointLight with scene files.
+/// Registers Camera, DirectionalLight, PointLight and SpotLight with scene
+/// files.
 /// MeshRenderer is left out: its handles only mean something to the
 /// renderer that created them, so applications save their own reference
 /// (an asset path, say) and rebuild it on load.

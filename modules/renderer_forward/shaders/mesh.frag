@@ -27,6 +27,14 @@ vec3 shade(vec3 albedo, vec3 normal, vec3 toCamera, vec3 toLight, vec3 radiance)
     return radiance * (albedo * diffuse + specular);
 }
 
+// Inverse-square falloff, windowed so it reaches zero at `range`.
+float distanceFalloff(vec3 toLight, float range) {
+    float distanceSquared = dot(toLight, toLight);
+    float ratio = distanceSquared / (range * range);
+    float window = clamp(1.0 - ratio * ratio, 0.0, 1.0);
+    return window * window / max(distanceSquared, 1e-4);
+}
+
 void main() {
     vec4 albedo = texture(albedoTexture, inUv) * inBaseColor;
     // Tangent-space normal map, applied on the interpolated surface frame.
@@ -50,15 +58,24 @@ void main() {
     int pointLights = int(frame.pointLightCount.x);
     for (int i = 0; i < pointLights; ++i) {
         vec3 toLight = frame.pointLightPositions[i].xyz - inWorldPosition;
-        float range = frame.pointLightPositions[i].w;
-        float distanceSquared = dot(toLight, toLight);
-        // Inverse-square falloff, windowed so it reaches zero at the range.
-        float ratio = distanceSquared / (range * range);
-        float window = clamp(1.0 - ratio * ratio, 0.0, 1.0);
-        float attenuation = window * window / max(distanceSquared, 1e-4);
+        float attenuation = distanceFalloff(toLight, frame.pointLightPositions[i].w);
         if (attenuation > 0.0) {
-            color += shade(albedo.rgb, normal, toCamera, toLight * inversesqrt(distanceSquared),
+            color += shade(albedo.rgb, normal, toCamera, normalize(toLight),
                            frame.pointLightColors[i].rgb * attenuation);
+        }
+    }
+
+    int spotLights = int(frame.pointLightCount.y);
+    for (int i = 0; i < spotLights; ++i) {
+        vec3 toLight = frame.spotLightPositions[i].xyz - inWorldPosition;
+        vec3 direction = normalize(toLight);
+        // Smooth edge between the inner and outer cones.
+        float cone = smoothstep(frame.spotLightDirections[i].w, frame.spotLightColors[i].w,
+                                dot(-direction, frame.spotLightDirections[i].xyz));
+        float attenuation = cone * distanceFalloff(toLight, frame.spotLightPositions[i].w);
+        if (attenuation > 0.0) {
+            color += shade(albedo.rgb, normal, toCamera, direction,
+                           frame.spotLightColors[i].rgb * attenuation);
         }
     }
     outColor = vec4(color + inEmissive, albedo.a);

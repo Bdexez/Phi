@@ -35,6 +35,8 @@ struct FrameUniforms {
     /// Point lights beyond this count are dropped, farthest from the camera
     /// first.
     static constexpr u32 kMaxPointLights = 16;
+    /// The same for spot lights.
+    static constexpr u32 kMaxSpotLights = 8;
     /// Cascades of the sun's shadow map, laid out 2 x 2 in one depth texture.
     static constexpr u32 kShadowCascades = 4;
 
@@ -57,9 +59,12 @@ struct FrameUniforms {
     /// x: 1 when the shadow map holds this frame's shadows, y: one texel of
     /// the atlas in UV units.
     Vec4 shadowParams{0.0f};
-    Vec4 pointLightCount{0.0f};  ///< x: number of valid entries below
+    Vec4 pointLightCount{0.0f};  ///< x: point lights below, y: spot lights
     Vec4 pointLightPositions[kMaxPointLights]{};  ///< xyz: world position, w: range
     Vec4 pointLightColors[kMaxPointLights]{};     ///< rgb, premultiplied by intensity
+    Vec4 spotLightPositions[kMaxSpotLights]{};    ///< xyz: world position, w: range
+    Vec4 spotLightDirections[kMaxSpotLights]{};   ///< xyz: unit axis, w: cos(outer angle)
+    Vec4 spotLightColors[kMaxSpotLights]{};       ///< rgb premultiplied, w: cos(inner angle)
 };
 
 /// How a texture's values are stored: color images are authored in sRGB and
