@@ -36,6 +36,7 @@ public:
     Result<> create(rhi::IDevice& device, assets::AssetManager& assets, rhi::Format outputFormat,
                     Settings settings);
     void destroy(rhi::IDevice& device);
+    [[nodiscard]] const Settings& settings() const { return settings_; }
 
     /// The HDR target to draw the scene into, (re)created at `extent`.
     [[nodiscard]] rhi::TextureHandle sceneTarget(rhi::IDevice& device, Extent2D extent);

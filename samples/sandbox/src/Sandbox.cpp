@@ -11,8 +11,8 @@
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
-// object, F5 / F9 to save / load the scene, F6 for a flashlight, F11 for
-// fullscreen, Escape to quit. A gamepad works too: sticks to
+// object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
+// shaders, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
@@ -91,6 +91,7 @@ protected:
         config.setDefault("input.load_scene", "F9");
         config.setDefault("input.toggle_fullscreen", "F11");
         config.setDefault("input.flashlight", "F6, GamepadX");
+        config.setDefault("input.reload_shaders", "F7");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -140,6 +141,11 @@ protected:
             }
             if (controls->pressed("flashlight")) {
                 toggleFlashlight();
+            }
+            if (controls->pressed("reload_shaders") && engine().services().has<render::IRenderer>()) {
+                if (const auto reloaded = renderer().reloadShaders(); !reloaded) {
+                    log::error("sandbox", "{}", reloaded.error().message);
+                }
             }
             if (platform::IWindow* target = window(); target != nullptr && controls->pressed("toggle_fullscreen")) {
                 target->setFullscreen(!target->fullscreen());

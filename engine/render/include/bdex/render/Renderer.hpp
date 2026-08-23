@@ -171,6 +171,11 @@ public:
 
     // --- Extension -------------------------------------------------------------
     virtual Result<> addFeature(std::unique_ptr<IRenderFeature> feature) = 0;
+    /// Rebuilds every pipeline from the shader files on disk (development:
+    /// edit a shader, recompile it, reload). Features are detached and
+    /// attached again, in order; one that fails to attach is removed and
+    /// the first failure is returned.
+    virtual Result<> reloadShaders() = 0;
     /// Returns false if no feature has that name.
     virtual bool removeFeature(std::string_view name) = 0;
 

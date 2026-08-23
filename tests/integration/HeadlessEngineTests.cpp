@@ -228,6 +228,25 @@ TEST(HeadlessEngine, ApplicationsExtendTheRendererWithFeatures) {
     EXPECT_EQ(trace, (std::vector<std::string>{"detach:overlay"}));
 }
 
+TEST(HeadlessEngine, ShadersReloadByReattachingFeatures) {
+    std::vector<std::string> trace;  // outlives the engine, which detaches the probe
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(2);
+    ASSERT_TRUE(test.renderer().addFeature(std::make_unique<ProbeFeature>("probe", 10, trace)).has_value());
+    test.engine->tick();
+
+    trace.clear();
+    ASSERT_TRUE(test.renderer().reloadShaders().has_value());
+    EXPECT_EQ(trace, (std::vector<std::string>{"detach:probe", "attach:probe"}));
+
+    // Rendering carries on with the rebuilt pipelines.
+    trace.clear();
+    test.engine->tick();
+    EXPECT_EQ(trace, (std::vector<std::string>{"render:probe"}));
+    EXPECT_EQ(test.device().lastFrameStats().instances, 2u);
+}
+
 TEST(HeadlessEngine, InputStateIsDrivenByEvents) {
     TestEngine test(kNullStack);
     ASSERT_TRUE(test.ready()) << test.loadError << test.initError;

@@ -358,6 +358,38 @@ Result<> ForwardRenderer::addFeature(std::unique_ptr<render::IRenderFeature> fea
     return {};
 }
 
+Result<> ForwardRenderer::reloadShaders() {
+    device_.waitIdle();  // nothing in flight may use the pipelines
+    auto& assets = engine_.services().get<assets::AssetManager>();
+    assets.clearCache();  // read the shader files again
+
+    if (hdr_) {
+        const PostProcess::Settings settings = postProcess_.settings();
+        postProcess_.destroy(device_);  // its targets are recreated next frame
+        if (auto created = postProcess_.create(device_, assets, colorFormat_, settings); !created) {
+            return fail("post-processing shaders failed to reload: {}", created.error().message);
+        }
+    }
+
+    Result<> first;
+    for (auto it = features_.begin(); it != features_.end();) {
+        (*it)->onDetach(device_);
+        if (auto attached = (*it)->onAttach(setupContext()); !attached) {
+            log::error("renderer", "render feature '{}' removed: {}", (*it)->name(), attached.error().message);
+            if (first) {
+                first = fail("render feature '{}' failed to reload: {}", (*it)->name(), attached.error().message);
+            }
+            it = features_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (first) {
+        log::info("renderer", "shaders reloaded");
+    }
+    return first;
+}
+
 bool ForwardRenderer::removeFeature(std::string_view name) {
     const auto it = std::find_if(features_.begin(), features_.end(),
                                  [name](const auto& f) { return f->name() == name; });
