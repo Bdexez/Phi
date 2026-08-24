@@ -133,6 +133,18 @@ To run the simulation alone, load only the virtual window module:
 ./build/bin/sandbox --modules window_null --frames 120
 ```
 
+### The benchmark
+
+`benchmark` renders a grid of cubes offscreen and reports the average CPU time of every engine task, to compare changes on equal terms:
+
+```sh
+./build/bin/benchmark                                   # 10,000 cubes on Vulkan
+./build/bin/benchmark --set bench.entities=50000 --set renderer.shadows=false
+./build/bin/benchmark --modules window_null,rhi_null,renderer_forward   # CPU side only
+```
+
+`bench.entities`, `bench.materials`, `bench.warmup`, and `bench.frames` size the run; renderer settings apply as usual.
+
 ## Configuration
 
 Configuration is applied in the following order, from lowest to highest priority: engine defaults, application defaults, the INI file, then command-line arguments.
