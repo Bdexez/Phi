@@ -6,6 +6,7 @@
 #include <bdex/ecs/ComponentPool.hpp>
 #include <bdex/ecs/Entity.hpp>
 
+#include <functional>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -50,15 +51,48 @@ public:
     template <class T, class... Args>
     T& emplace(Entity entity, Args&&... args) {
         BDEX_ASSERT(alive(entity), "emplace on a dead entity");
-        return pool<T>().emplace(entity.index, std::forward<Args>(args)...);
+        auto& components = pool<T>();
+        const bool added = !components.contains(entity.index);
+        T& component = components.emplace(entity.index, std::forward<Args>(args)...);
+        if (!added || hooks_.empty()) {
+            return component;
+        }
+        notify(typeId<std::remove_cvref_t<T>>(), HookKind::Add, entity);
+        // A hook may have added components, moving this one.
+        return components.get(entity.index);
     }
 
     template <class T>
     void remove(Entity entity) {
-        if (auto* components = findPool<T>(); components != nullptr && alive(entity)) {
+        auto* components = findPool<T>();
+        if (components == nullptr || !alive(entity) || !components->contains(entity.index)) {
+            return;
+        }
+        notify(typeId<std::remove_cvref_t<T>>(), HookKind::Remove, entity);
+        if (alive(entity)) {  // a hook may have destroyed it
             components->remove(entity.index);
         }
     }
+
+    // --- Observers ---------------------------------------------------------------
+
+    using ComponentHook = std::function<void(World&, Entity)>;
+    using HookId = u64;
+
+    /// Calls `hook` after a T is attached to an entity that had none (not
+    /// when emplace replaces one).
+    template <class T>
+    HookId onAdd(ComponentHook hook) {
+        return addHook(typeId<std::remove_cvref_t<T>>(), HookKind::Add, std::move(hook));
+    }
+    /// Calls `hook` before a T leaves an entity (remove<T>, destroy, clear),
+    /// while it can still be read. Hooks may change the world; destroying
+    /// the entity being destroyed is a no-op.
+    template <class T>
+    HookId onRemove(ComponentHook hook) {
+        return addHook(typeId<std::remove_cvref_t<T>>(), HookKind::Remove, std::move(hook));
+    }
+    void removeHook(HookId id);
 
     template <class T>
     [[nodiscard]] T& get(Entity entity) {
@@ -120,6 +154,18 @@ public:
     }
 
 private:
+    enum class HookKind : u8 { Add, Remove };
+    struct Hook {
+        HookId id = 0;
+        TypeId type = 0;
+        HookKind kind = HookKind::Add;
+        std::shared_ptr<const ComponentHook> function;
+    };
+
+    HookId addHook(TypeId type, HookKind kind, ComponentHook hook);
+    void notify(TypeId type, HookKind kind, Entity entity);
+    [[nodiscard]] bool hasHook(TypeId type, HookKind kind) const;
+
     template <class T>
     [[nodiscard]] const ComponentPool<std::remove_cvref_t<T>>* findPool() const {
         using Stored = std::remove_cvref_t<T>;
@@ -155,6 +201,9 @@ private:
     std::vector<u32> freeSlots_;
     usize aliveCount_ = 0;
     std::unordered_map<TypeId, std::unique_ptr<IComponentPool>> pools_;
+    std::vector<Hook> hooks_;
+    HookId nextHookId_ = 1;
+    std::vector<u32> dying_;  ///< Entities whose destroy() is running hooks.
 };
 
 /// Result of World::view<...>(). Cheap to create; holds direct references to
