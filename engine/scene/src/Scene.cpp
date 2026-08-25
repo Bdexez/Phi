@@ -91,7 +91,9 @@ usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
     return doomed.size();
 }
 
-void updateWorldTransforms(ecs::World& world) {
+namespace {
+
+void updateWorldTransformsImpl(ecs::World& world, JobSystem* jobs) {
     auto* worldTransforms = world.storage<WorldTransform>();
     const auto* transforms = world.storage<Transform>();
     if (worldTransforms == nullptr || transforms == nullptr) {
@@ -101,13 +103,16 @@ void updateWorldTransforms(ecs::World& world) {
 
     // Every world matrix is computed once per call, parents before children,
     // whatever order entities are stored in: O(n) in the number of transforms.
-    enum class State : u8 { Pending, Visiting, Done };
+    // Written: a root whose WorldTransform the parallel pass already set.
+    enum class State : u8 { Pending, Visiting, Done, Written };
     struct Scratch {
         std::vector<Mat4> matrices;
         std::vector<State> states;
         std::vector<u32> chain;
     };
-    thread_local Scratch scratch;  // reused across frames: no per-frame allocation
+    thread_local Scratch threadScratch;  // reused across frames: no per-frame allocation
+    // Named explicitly: inside a job, `threadScratch` would be the worker's.
+    Scratch& scratch = threadScratch;
 
     u32 slotCount = 0;
     for (const u32 index : transforms->entities()) {
@@ -132,7 +137,7 @@ void updateWorldTransforms(ecs::World& world) {
         std::optional<u32> current = index;
         while (current.has_value()) {
             const u32 slot = *current;
-            if (scratch.states[slot] == State::Done) {
+            if (scratch.states[slot] == State::Done || scratch.states[slot] == State::Written) {
                 parentMatrix = scratch.matrices[slot];
                 break;
             }
@@ -154,13 +159,43 @@ void updateWorldTransforms(ecs::World& world) {
         return scratch.matrices[index];
     };
 
+    // Entities without a parent only need their local matrix: in parallel,
+    // each job writing its own entities' slots and components.
+    if (jobs != nullptr) {
+        const std::span<const u32> owners = transforms->entities();
+        jobs->parallelFor(owners.size(), 1024, [&](usize begin, usize end) {
+            for (usize i = begin; i < end; ++i) {
+                const u32 index = owners[i];
+                if (parentOf(index).has_value()) {
+                    continue;
+                }
+                scratch.matrices[index] = transforms->get(index).localMatrix();
+                WorldTransform* target = worldTransforms->tryGet(index);
+                if (target != nullptr) {
+                    target->matrix = scratch.matrices[index];
+                }
+                scratch.states[index] = target != nullptr ? State::Written : State::Done;
+            }
+        });
+    }
+
     const std::span<const u32> entities = worldTransforms->entities();
     for (usize slot = 0; slot < entities.size(); ++slot) {
         const u32 index = entities[slot];
-        if (transforms->contains(index)) {
+        if (transforms->contains(index) && scratch.states[index] != State::Written) {
             worldTransforms->get(index).matrix = resolve(index);
         }
     }
+}
+
+}  // namespace
+
+void updateWorldTransforms(ecs::World& world) {
+    updateWorldTransformsImpl(world, nullptr);
+}
+
+void updateWorldTransforms(ecs::World& world, JobSystem& jobs) {
+    updateWorldTransformsImpl(world, &jobs);
 }
 
 }  // namespace bdex::scene
