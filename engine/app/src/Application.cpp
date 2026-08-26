@@ -282,7 +282,7 @@ int Application::run(int argc, char** argv) {
         Phase::PostUpdate, "scene.world_transforms",
         [this](const FrameTime&) {
             if (scene::Scene* active = state_->scenes->active()) {
-                scene::updateWorldTransforms(active->world());
+                scene::updateWorldTransforms(active->world(), this->engine().services().get<JobSystem>());
             }
         },
         1000);
