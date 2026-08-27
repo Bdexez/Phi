@@ -1,0 +1,144 @@
+#include <bdex/physics/Physics.hpp>
+#include <bdex/scene/Components.hpp>
+
+#include <gtest/gtest.h>
+
+#include <cmath>
+
+using namespace bdex;
+using namespace bdex::physics;
+using scene::Transform;
+
+namespace {
+
+constexpr f32 kStep = 1.0f / 120.0f;
+
+ecs::Entity addBall(ecs::World& world, const Vec3& position, const RigidBody& body, f32 radius = 0.5f) {
+    const ecs::Entity ball = world.create();
+    world.emplace<Transform>(ball).position = position;
+    world.emplace<SphereCollider>(ball, radius);
+    world.emplace<RigidBody>(ball, body);
+    return ball;
+}
+
+ecs::Entity addFloor(ecs::World& world) {
+    const ecs::Entity floor = world.create();
+    world.emplace<Transform>(floor).position = Vec3(0.0f, -0.5f, 0.0f);  // top face at y = 0
+    world.emplace<BoxCollider>(floor, Vec3(50.0f, 0.5f, 50.0f));
+    return floor;
+}
+
+void simulate(ecs::World& world, f32 seconds) {
+    for (int i = 0; i < static_cast<int>(seconds / kStep); ++i) {
+        step(world, kStep);
+    }
+}
+
+}  // namespace
+
+TEST(Physics, ABallComesToRestOnTheFloor) {
+    ecs::World world;
+    addFloor(world);
+    const ecs::Entity ball = addBall(world, Vec3(0.0f, 5.0f, 0.0f), RigidBody{});
+    simulate(world, 6.0f);
+    EXPECT_NEAR(world.get<Transform>(ball).position.y, 0.5f, 0.01f);  // resting on top
+    EXPECT_LT(glm::length(world.get<RigidBody>(ball).velocity), 0.05f);
+}
+
+TEST(Physics, RestitutionSetsTheBounce) {
+    // Highest point after the first bounce, from a drop of 4 m.
+    const auto bounceHeight = [](f32 restitution) {
+        ecs::World world;
+        addFloor(world);
+        RigidBody body;
+        body.restitution = restitution;
+        const ecs::Entity ball = addBall(world, Vec3(0.0f, 4.5f, 0.0f), body);
+        f32 highest = 0.0f;
+        bool bounced = false;
+        for (int i = 0; i < 600; ++i) {
+            step(world, kStep);
+            const f32 y = world.get<Transform>(ball).position.y - 0.5f;
+            const f32 vy = world.get<RigidBody>(ball).velocity.y;
+            bounced = bounced || vy > 0.0f;
+            if (bounced) {
+                highest = std::max(highest, y);
+            }
+        }
+        return highest;
+    };
+    // Height scales with restitution squared: 4 m * 0.25 = 1 m for 0.5.
+    EXPECT_NEAR(bounceHeight(0.5f), 1.0f, 0.15f);
+    EXPECT_LT(bounceHeight(0.0f), 0.02f);
+    EXPECT_GT(bounceHeight(0.9f), 3.0f);
+}
+
+TEST(Physics, ElasticEqualMassesSwapVelocities) {
+    ecs::World world;
+    RigidBody left;
+    left.velocity = Vec3(2.0f, 0.0f, 0.0f);
+    left.restitution = 1.0f;
+    left.gravityScale = 0.0f;
+    RigidBody right = left;
+    right.velocity = Vec3(0.0f);
+    const ecs::Entity a = addBall(world, Vec3(-1.0f, 0.0f, 0.0f), left);
+    const ecs::Entity b = addBall(world, Vec3(1.0f, 0.0f, 0.0f), right);
+    simulate(world, 1.0f);
+    EXPECT_NEAR(world.get<RigidBody>(a).velocity.x, 0.0f, 1e-3f);
+    EXPECT_NEAR(world.get<RigidBody>(b).velocity.x, 2.0f, 1e-3f);
+}
+
+TEST(Physics, CollisionsConserveMomentum) {
+    ecs::World world;
+    RigidBody heavy;
+    heavy.mass = 3.0f;
+    heavy.velocity = Vec3(1.0f, 0.0f, 0.5f);
+    heavy.gravityScale = 0.0f;
+    RigidBody light;
+    light.mass = 1.0f;
+    light.velocity = Vec3(-2.0f, 0.0f, 0.0f);
+    light.gravityScale = 0.0f;
+    const ecs::Entity a = addBall(world, Vec3(-1.0f, 0.0f, 0.0f), heavy);
+    const ecs::Entity b = addBall(world, Vec3(1.0f, 0.2f, 0.0f), light);
+    const Vec3 before = heavy.velocity * heavy.mass + light.velocity * light.mass;
+    simulate(world, 2.0f);
+    const Vec3 after = world.get<RigidBody>(a).velocity * 3.0f + world.get<RigidBody>(b).velocity * 1.0f;
+    EXPECT_NEAR(glm::length(after - before), 0.0f, 1e-3f);
+    EXPECT_GT(glm::length(world.get<Transform>(b).position - world.get<Transform>(a).position), 0.99f);
+}
+
+TEST(Physics, FrictionStopsSliding) {
+    ecs::World world;
+    addFloor(world);
+    RigidBody body;
+    body.velocity = Vec3(3.0f, 0.0f, 0.0f);
+    body.restitution = 0.0f;
+    const ecs::Entity slider = addBall(world, Vec3(0.0f, 0.5f, 0.0f), body);
+    simulate(world, 3.0f);
+    EXPECT_LT(std::abs(world.get<RigidBody>(slider).velocity.x), 0.05f);
+    EXPECT_GT(world.get<Transform>(slider).position.x, 0.2f);  // it slid some distance first
+}
+
+TEST(Physics, StepsAreDeterministicAndFreeFallIsExact) {
+    const auto run = [] {
+        ecs::World world;
+        addFloor(world);
+        for (int i = 0; i < 20; ++i) {
+            RigidBody body;
+            body.velocity = Vec3(static_cast<f32>(i % 5) - 2.0f, 0.0f, static_cast<f32>(i % 3) - 1.0f);
+            addBall(world, Vec3(static_cast<f32>(i % 4), 2.0f + static_cast<f32>(i), static_cast<f32>(i / 4)), body, 0.4f);
+        }
+        simulate(world, 3.0f);
+        std::vector<Vec3> positions;
+        world.view<const Transform, const RigidBody>().each(
+            [&](const Transform& transform, const RigidBody&) { positions.push_back(transform.position); });
+        return positions;
+    };
+    EXPECT_EQ(run(), run());
+
+    // Nothing to hit: gravity only (semi-implicit Euler).
+    ecs::World world;
+    const ecs::Entity ball = addBall(world, Vec3(0.0f), RigidBody{});
+    step(world, 0.5f);
+    EXPECT_NEAR(world.get<RigidBody>(ball).velocity.y, -9.81f * 0.5f, 1e-5f);
+    EXPECT_NEAR(world.get<Transform>(ball).position.y, -9.81f * 0.25f, 1e-5f);
+}
