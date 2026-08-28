@@ -8,4 +8,5 @@ bdex_add_library(app
         bdex::rhi
         bdex::assets
         bdex::scene
-        bdex::render)
+        bdex::render
+        bdex::physics)
