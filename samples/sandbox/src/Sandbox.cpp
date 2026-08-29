@@ -12,7 +12,7 @@
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
-// shaders, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
+// shaders, F8 to throw a ball, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
@@ -20,6 +20,7 @@
 #include <bdex/app/Application.hpp>
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/JobSystem.hpp>
+#include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
@@ -92,6 +93,7 @@ protected:
         config.setDefault("input.toggle_fullscreen", "F11");
         config.setDefault("input.flashlight", "F6, GamepadX");
         config.setDefault("input.reload_shaders", "F7");
+        config.setDefault("input.throw_ball", "F8, GamepadA");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -142,6 +144,9 @@ protected:
             if (controls->pressed("flashlight")) {
                 toggleFlashlight();
             }
+            if (controls->pressed("throw_ball")) {
+                throwBall();
+            }
             if (controls->pressed("reload_shaders") && engine().services().has<render::IRenderer>()) {
                 if (const auto reloaded = renderer().reloadShaders(); !reloaded) {
                     log::error("sandbox", "{}", reloaded.error().message);
@@ -189,6 +194,7 @@ private:
     void registerSerializers() {
         serializers_ = scene::ComponentSerializers::withSceneComponents();
         render::addComponentSerializers(serializers_);
+        physics::addComponentSerializers(serializers_);
         serializers_.add<Spin>(
             "Spin",
             [](const Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
@@ -266,6 +272,30 @@ private:
             cameraPitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
         }
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
+    }
+
+    /// Throws a bouncing ball from the camera; the oldest goes once there
+    /// are too many.
+    void throwBall() {
+        if (models_.empty()) {
+            return;  // nothing to draw it with
+        }
+        ecs::World& world = scene().world();
+        const scene::Transform& eye = world.get<scene::Transform>(camera_);
+        const ecs::Entity ball = scene().createEntity("Ball");
+        scene::Transform& transform = world.get<scene::Transform>(ball);
+        transform.position = eye.position + eye.forward() * 1.0f;
+        transform.scale = Vec3(0.6f);
+        world.emplace<render::MeshRenderer>(ball, sphereMesh_, ballMaterial_);
+        world.emplace<physics::SphereCollider>(ball, 0.5f);
+        world.emplace<physics::RigidBody>(
+            ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
+                                     .restitution = 0.7f});
+        balls_.push_back(ball);
+        if (balls_.size() > kMaxBalls) {
+            world.destroy(balls_.front());
+            balls_.erase(balls_.begin());
+        }
     }
 
     /// A spot light carried by the camera, switched on and off.
@@ -430,6 +460,11 @@ private:
             moonMaterials_[i] = gfx.createMaterial(moon);
         }
 
+        render::MaterialDesc rubber;
+        rubber.baseColor = Vec4(0.95f, 0.3f, 0.2f, 1.0f);
+        rubber.specular = 0.5f;
+        ballMaterial_ = gfx.createMaterial(rubber);
+
         render::MaterialDesc glass;  // tinted and see-through
         glass.baseColor = Vec4(0.3f, 0.7f, 1.0f, 0.45f);
         glass.specular = 1.0f;
@@ -447,6 +482,7 @@ private:
         }
 
         models_ = {{"ground", planeMesh_, groundMaterial_},
+                   {"ball", sphereMesh_, ballMaterial_},
                    {"sphere", sphereMesh_, sphereMaterial_},
                    {"glass", cubeMesh_, glassMaterial_},
                    {"moon_0", sphereMesh_, moonMaterials_[0]},
@@ -480,12 +516,14 @@ private:
         // Ground
         const ecs::Entity ground = level.createEntity("Ground");
         world.emplace<render::MeshRenderer>(ground, planeMesh_, groundMaterial_);
+        world.emplace<physics::BoxCollider>(ground, Vec3(20.0f, 0.01f, 20.0f));
 
         // Centerpiece
         const ecs::Entity sphere = level.createEntity("Sphere");
         world.get<scene::Transform>(sphere).position = Vec3(0.0f, 1.4f, 0.0f);
         world.get<scene::Transform>(sphere).scale = Vec3(2.2f);
         world.emplace<render::MeshRenderer>(sphere, sphereMesh_, sphereMaterial_);
+        world.emplace<physics::SphereCollider>(sphere, 0.5f);  // static: no RigidBody
 
         // A slowly turning glass block in front of the sphere
         const ecs::Entity glassBlock = level.createEntity("Glass block");
@@ -503,6 +541,7 @@ private:
             transform.position = Vec3(std::cos(angle) * 4.5f, 0.75f, std::sin(angle) * 4.5f);
             transform.rotation = glm::angleAxis(angle, Vec3(0.0f, 1.0f, 0.0f));
             world.emplace<render::MeshRenderer>(cube, cubeMesh_, cubeMaterials_[i]);
+            world.emplace<physics::BoxCollider>(cube);  // axis-aligned, ignores the spin
             world.emplace<Spin>(cube, glm::normalize(Vec3(0.3f, 1.0f, 0.2f * static_cast<f32>(i))),
                                 0.6f + 0.15f * static_cast<f32>(i));
         }
@@ -606,6 +645,9 @@ private:
     render::MaterialHandle sphereMaterial_;
     render::MaterialHandle glassMaterial_;
     bool debugView_ = false;
+    static constexpr usize kMaxBalls = 40;
+    std::vector<ecs::Entity> balls_;
+    render::MaterialHandle ballMaterial_;
     scene::ComponentSerializers serializers_;
     std::vector<Model> models_;
     ecs::Entity selected_;

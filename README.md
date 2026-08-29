@@ -13,6 +13,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
 - **3D rendering:** perspective cameras, meshes, textures, materials with normal maps, Blinn-Phong lighting from a directional light with soft shadows and up to 16 point lights and 8 spot lights, frustum culling, draw sorting, instancing, blended transparency, and HDR rendering with bloom, ACES tone mapping, and FXAA through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
+- **Physics:** rigid bodies with gravity, sphere and box colliders, restitution, and friction, stepped deterministically in the fixed update.
 - **Assets:** a virtual file system, asset caching, OBJ, PNG, TGA, and SPIR-V loaders, plus procedural cubes, planes, spheres, and textures.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
 
@@ -29,6 +30,7 @@ engine/
 ├── assets/     Asset loading, caching, and generation
 ├── scene/      Scenes and transform hierarchies
 ├── render/     Rendering interfaces, cameras, and graphics components
+├── physics/    Rigid bodies and collisions
 └── app/        Configuration, initialization, and application loop
 modules/        Implementations of engine interfaces
 samples/        3D sandbox and sample shaders
@@ -104,6 +106,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
 | `F6` | Toggle a flashlight (a spot light carried by the camera). |
 | `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
+| `F8` | Throw a bouncing ball (rigid-body physics). |
 | `F11` | Toggle fullscreen (or start with `window.fullscreen = true`). |
 | `Escape` | Quit. |
 

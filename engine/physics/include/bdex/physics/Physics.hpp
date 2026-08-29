@@ -2,6 +2,7 @@
 
 #include <bdex/core/Math.hpp>
 #include <bdex/ecs/World.hpp>
+#include <bdex/scene/Serialization.hpp>
 
 namespace bdex::physics {
 
@@ -42,5 +43,8 @@ struct Settings {
 ///
 /// Dynamic bodies need a SphereCollider; boxes are static.
 void step(ecs::World& world, f32 dt, const Settings& settings = {});
+
+/// Registers RigidBody, SphereCollider and BoxCollider with scene files.
+void addComponentSerializers(scene::ComponentSerializers& serializers);
 
 }  // namespace bdex::physics

@@ -1,5 +1,6 @@
 #include <bdex/physics/Physics.hpp>
 #include <bdex/scene/Components.hpp>
+#include <bdex/scene/Serialization.hpp>
 
 #include <gtest/gtest.h>
 
@@ -141,4 +142,28 @@ TEST(Physics, StepsAreDeterministicAndFreeFallIsExact) {
     step(world, 0.5f);
     EXPECT_NEAR(world.get<RigidBody>(ball).velocity.y, -9.81f * 0.5f, 1e-5f);
     EXPECT_NEAR(world.get<Transform>(ball).position.y, -9.81f * 0.25f, 1e-5f);
+}
+
+TEST(Physics, SceneFilesKeepBodiesAndColliders) {
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    addComponentSerializers(serializers);
+    ecs::World world;
+    addFloor(world);
+    RigidBody body;
+    body.velocity = Vec3(1.0f, 2.0f, 3.0f);
+    body.mass = 2.5f;
+    addBall(world, Vec3(0.0f, 1.0f, 0.0f), body, 0.75f);
+
+    ecs::World copy;
+    const auto loaded = serializers.load(copy, serializers.save(world));
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().message;
+    usize bodies = 0;
+    copy.view<const RigidBody, const SphereCollider>().each([&](const RigidBody& b, const SphereCollider& c) {
+        ++bodies;
+        EXPECT_EQ(b.velocity, Vec3(1.0f, 2.0f, 3.0f));
+        EXPECT_FLOAT_EQ(b.mass, 2.5f);
+        EXPECT_FLOAT_EQ(c.radius, 0.75f);
+    });
+    EXPECT_EQ(bodies, 1u);
+    EXPECT_EQ(copy.view<const BoxCollider>().count(), 1u);
 }
