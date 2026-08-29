@@ -102,6 +102,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
     // Integrate (semi-implicit Euler).
     for (Sphere& sphere : spheres) {
         if (sphere.body != nullptr) {
+            sphere.body->previousPosition = sphere.center;
+            sphere.body->hasPrevious = true;
             sphere.body->velocity += settings.gravity * (sphere.body->gravityScale * dt);
             sphere.center += sphere.body->velocity * dt;
         }
@@ -186,6 +188,16 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
             world.get<Transform>(sphere.entity).position = sphere.center;
         }
     }
+}
+
+void interpolate(ecs::World& world, f32 alpha) {
+    alpha = std::clamp(alpha, 0.0f, 1.0f);
+    world.view<const RigidBody, const Transform, scene::WorldTransform>().each(
+        [alpha](const RigidBody& body, const Transform& transform, scene::WorldTransform& drawn) {
+            if (body.hasPrevious) {
+                drawn.matrix[3] = Vec4(glm::mix(body.previousPosition, transform.position, alpha), 1.0f);
+            }
+        });
 }
 
 void addComponentSerializers(scene::ComponentSerializers& serializers) {

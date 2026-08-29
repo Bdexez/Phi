@@ -19,6 +19,11 @@ struct RigidBody {
     /// Coulomb friction coefficient against sliding.
     f32 friction = 0.4f;
     f32 gravityScale = 1.0f;
+
+    /// Set by step(): position at the start of the last step, for
+    /// interpolate(). Not meant to be written.
+    Vec3 previousPosition{0.0f};
+    bool hasPrevious = false;
 };
 
 /// Sphere centered on the entity, scaled by the largest Transform scale.
@@ -43,6 +48,13 @@ struct Settings {
 ///
 /// Dynamic bodies need a SphereCollider; boxes are static.
 void step(ecs::World& world, f32 dt, const Settings& settings = {});
+
+/// Draws bodies between their last two steps: sets the translation of each
+/// body's WorldTransform to mix(previous, current position, `alpha`), the
+/// fraction of a fixed step accumulated since (FrameTime::fixedAlpha). Call
+/// it after scene::updateWorldTransforms. Transform, the simulated pose, is
+/// left alone, so motion looks smooth at any frame rate.
+void interpolate(ecs::World& world, f32 alpha);
 
 /// Registers RigidBody, SphereCollider and BoxCollider with scene files.
 void addComponentSerializers(scene::ComponentSerializers& serializers);
