@@ -252,3 +252,37 @@ TEST(Physics, BallsFindTheirBoxAmongMany) {
     EXPECT_NEAR(world.get<Transform>(onCrate).position.y, 1.4f, 0.02f);
     EXPECT_NEAR(world.get<Transform>(between).position.y, 0.4f, 0.02f);
 }
+
+TEST(Physics, RaysHitTheNearestCollider) {
+    ecs::World world;
+    const ecs::Entity floor = addFloor(world);  // top at y = 0
+    const ecs::Entity ball = addBall(world, Vec3(0.0f, 1.0f, -5.0f), RigidBody{}, 0.5f);
+    const ecs::Entity wall = world.create();
+    world.emplace<Transform>(wall).position = Vec3(0.0f, 1.0f, -10.0f);
+    world.emplace<BoxCollider>(wall, Vec3(2.0f, 2.0f, 0.5f));
+
+    // Along -Z at y = 1: the ball first, then the wall.
+    const auto first = raycast(world, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f));
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first->entity, ball);
+    EXPECT_NEAR(first->distance, 4.5f, 1e-4f);
+    EXPECT_NEAR(first->normal.z, 1.0f, 1e-4f);
+
+    // Beside the ball: the wall's front face (z = -9.5).
+    const auto second = raycast(world, Vec3(1.5f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f));
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(second->entity, wall);
+    EXPECT_NEAR(second->distance, 9.5f, 1e-4f);
+    EXPECT_EQ(second->normal, Vec3(0.0f, 0.0f, 1.0f));
+
+    // Straight down: the floor's top, with an upward normal.
+    const auto ground = raycast(world, Vec3(10.0f, 3.0f, 10.0f), Vec3(0.0f, -1.0f, 0.0f));
+    ASSERT_TRUE(ground.has_value());
+    EXPECT_EQ(ground->entity, floor);
+    EXPECT_NEAR(ground->point.y, 0.0f, 1e-4f);
+    EXPECT_EQ(ground->normal, Vec3(0.0f, 1.0f, 0.0f));
+
+    // Out of reach, or pointing away: nothing.
+    EXPECT_FALSE(raycast(world, Vec3(1.5f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f), 9.0f).has_value());
+    EXPECT_FALSE(raycast(world, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)).has_value());
+}

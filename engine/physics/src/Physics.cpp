@@ -244,6 +244,84 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
     }
 }
 
+std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const Vec3& direction,
+                              f32 maxDistance) {
+    std::optional<RayHit> nearest;
+    const auto consider = [&](ecs::Entity entity, f32 distance, const Vec3& normal) {
+        if (distance <= maxDistance && (!nearest || distance < nearest->distance)) {
+            nearest = RayHit{entity, distance, origin + direction * distance, normal};
+        }
+    };
+
+    const auto* spheres = world.storage<SphereCollider>();
+    const auto* transforms = world.storage<Transform>();
+    if (spheres != nullptr && transforms != nullptr) {
+        for (const u32 index : spheres->entities()) {
+            const Transform* transform = transforms->tryGet(index);
+            if (transform == nullptr) {
+                continue;
+            }
+            const f32 radius = spheres->get(index).radius * largestScale(*transform);
+            const Vec3 toCenter = transform->position - origin;
+            const f32 along = glm::dot(toCenter, direction);
+            const f32 missSquared = glm::dot(toCenter, toCenter) - along * along;
+            if (glm::dot(toCenter, toCenter) <= radius * radius) {
+                consider(world.entityAt(index), 0.0f, -direction);  // starts inside
+                continue;
+            }
+            if (along < 0.0f || missSquared > radius * radius) {
+                continue;
+            }
+            const f32 distance = along - std::sqrt(radius * radius - missSquared);
+            const Vec3 point = origin + direction * distance;
+            consider(world.entityAt(index), distance, glm::normalize(point - transform->position));
+        }
+    }
+
+    const auto* boxes = world.storage<BoxCollider>();
+    if (boxes != nullptr && transforms != nullptr) {
+        for (const u32 index : boxes->entities()) {
+            const Transform* transform = transforms->tryGet(index);
+            if (transform == nullptr) {
+                continue;
+            }
+            const Vec3 half = boxes->get(index).halfExtents * glm::abs(transform->scale);
+            const Vec3 low = transform->position - half;
+            const Vec3 high = transform->position + half;
+            // Slabs: the ray is inside the box between its latest entry and
+            // earliest exit across the three axes.
+            f32 enter = 0.0f;
+            f32 exit = maxDistance;
+            Vec3 normal = -direction;  // when starting inside
+            bool hit = true;
+            for (int axis = 0; axis < 3 && hit; ++axis) {
+                if (std::abs(direction[axis]) < 1e-9f) {
+                    hit = origin[axis] >= low[axis] && origin[axis] <= high[axis];
+                    continue;
+                }
+                f32 near = (low[axis] - origin[axis]) / direction[axis];
+                f32 far = (high[axis] - origin[axis]) / direction[axis];
+                f32 side = -1.0f;
+                if (near > far) {
+                    std::swap(near, far);
+                    side = 1.0f;
+                }
+                if (near > enter) {
+                    enter = near;
+                    normal = Vec3(0.0f);
+                    normal[axis] = side;
+                }
+                exit = std::min(exit, far);
+                hit = enter <= exit;
+            }
+            if (hit) {
+                consider(world.entityAt(index), enter, normal);
+            }
+        }
+    }
+    return nearest;
+}
+
 void interpolate(ecs::World& world, f32 alpha) {
     alpha = std::clamp(alpha, 0.0f, 1.0f);
     world.view<const RigidBody, const Transform, scene::WorldTransform>().each(
