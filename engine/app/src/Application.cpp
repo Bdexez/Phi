@@ -289,11 +289,17 @@ int Application::run(int argc, char** argv) {
             log::warn("app", "physics.gravity: {}", parsed.error().message);
         }
     }
+    physicsSettings.minimumContactImpulse = static_cast<f32>(
+        std::max(config.getFloat("physics.collision_impulse", physicsSettings.minimumContactImpulse), 0.0));
     scheduler.add(
         Phase::FixedUpdate, "physics.step",
-        [this, physicsSettings](const FrameTime& time) {
+        [this, physicsSettings, contacts = std::vector<physics::Contact>()](const FrameTime& time) mutable {
             if (scene::Scene* active = state_->scenes->active()) {
-                physics::step(active->world(), static_cast<f32>(time.delta), physicsSettings);
+                contacts.clear();
+                physics::step(active->world(), static_cast<f32>(time.delta), physicsSettings, &contacts);
+                for (const physics::Contact& contact : contacts) {
+                    this->engine().events().publish(physics::Collision{contact});
+                }
             }
         },
         100);
