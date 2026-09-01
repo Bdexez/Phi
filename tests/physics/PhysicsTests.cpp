@@ -314,3 +314,52 @@ TEST(Physics, StepsReportHardContactsOnly) {
     step(world, kStep, everything, &contacts);
     EXPECT_EQ(contacts.size(), 1u);
 }
+
+TEST(Physics, TriggersReportBodiesPassingThrough) {
+    ecs::World world;
+    const ecs::Entity gate = world.create();
+    world.emplace<Transform>(gate).position = Vec3(5.0f, 0.0f, 0.0f);
+    world.emplace<BoxCollider>(gate, Vec3(0.5f, 2.0f, 2.0f));
+    world.emplace<Trigger>(gate);
+    RigidBody body;
+    body.velocity = Vec3(10.0f, 0.0f, 0.0f);
+    body.gravityScale = 0.0f;
+    const ecs::Entity ball = addBall(world, Vec3(0.0f), body, 0.25f);
+
+    std::vector<TriggerEvent> events;
+    std::vector<f32> crossings;  // x when each event fired
+    for (int i = 0; i < 120; ++i) {  // 1 s: x goes from 0 to 10
+        const usize before = events.size();
+        step(world, kStep, {}, nullptr, &events);
+        if (events.size() > before) {
+            crossings.push_back(world.get<Transform>(ball).position.x);
+        }
+    }
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].trigger, gate);
+    EXPECT_EQ(events[0].body, ball);
+    EXPECT_TRUE(events[0].entered);
+    EXPECT_FALSE(events[1].entered);
+    EXPECT_NEAR(crossings[0], 4.25f, 0.1f);  // touching the gate's near face
+    EXPECT_NEAR(crossings[1], 5.75f, 0.1f);  // clear of its far face
+    EXPECT_FLOAT_EQ(world.get<RigidBody>(ball).velocity.x, 10.0f);  // went straight through
+
+    // A sphere zone, and a body destroyed while inside.
+    const ecs::Entity zone = world.create();
+    world.emplace<Transform>(zone).position = Vec3(0.0f, 10.0f, 0.0f);
+    world.emplace<SphereCollider>(zone, 2.0f);
+    world.emplace<Trigger>(zone);
+    RigidBody still;
+    still.gravityScale = 0.0f;
+    const ecs::Entity resident = addBall(world, Vec3(0.0f, 10.5f, 0.0f), still);
+    events.clear();
+    step(world, kStep, {}, nullptr, &events);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].body, resident);
+    EXPECT_TRUE(events[0].entered);
+    world.destroy(resident);
+    events.clear();
+    step(world, kStep, {}, nullptr, &events);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_FALSE(events[0].entered);
+}

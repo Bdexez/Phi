@@ -293,12 +293,18 @@ int Application::run(int argc, char** argv) {
         std::max(config.getFloat("physics.collision_impulse", physicsSettings.minimumContactImpulse), 0.0));
     scheduler.add(
         Phase::FixedUpdate, "physics.step",
-        [this, physicsSettings, contacts = std::vector<physics::Contact>()](const FrameTime& time) mutable {
+        [this, physicsSettings, contacts = std::vector<physics::Contact>(),
+         triggers = std::vector<physics::TriggerEvent>()](const FrameTime& time) mutable {
             if (scene::Scene* active = state_->scenes->active()) {
                 contacts.clear();
-                physics::step(active->world(), static_cast<f32>(time.delta), physicsSettings, &contacts);
+                triggers.clear();
+                physics::step(active->world(), static_cast<f32>(time.delta), physicsSettings, &contacts,
+                              &triggers);
                 for (const physics::Contact& contact : contacts) {
                     this->engine().events().publish(physics::Collision{contact});
+                }
+                for (const physics::TriggerEvent& event : triggers) {
+                    this->engine().events().publish(event);
                 }
             }
         },
