@@ -369,8 +369,8 @@ private:
         }
     }
 
-    /// Gizmos: the sun's direction, point light ranges, and the axes of
-    /// everything drawn.
+    /// Gizmos: the sun's direction, point light ranges, the axes of
+    /// everything drawn, and physics colliders.
     void drawDebugView() {
         auto* debug = engine().services().tryGet<render::DebugDraw>();
         if (debug == nullptr) {
@@ -388,6 +388,24 @@ private:
         world.view<const render::MeshRenderer, const scene::WorldTransform>().each(
             [&](const render::MeshRenderer&, const scene::WorldTransform& transform) {
                 debug->axes(transform.matrix, 0.75f);
+            });
+        // Colliders as physics sees them (boxes axis-aligned, spheres scaled
+        // by the largest axis); triggers in purple.
+        const auto colorOf = [&](ecs::Entity entity) {
+            return world.has<physics::Trigger>(entity) ? Vec4(0.8f, 0.3f, 1.0f, 1.0f)
+                   : world.has<physics::RigidBody>(entity) ? Vec4(1.0f, 0.6f, 0.1f, 1.0f)
+                                                            : Vec4(0.3f, 1.0f, 0.4f, 1.0f);
+        };
+        world.view<const scene::Transform, const physics::BoxCollider>().each(
+            [&](ecs::Entity entity, const scene::Transform& transform, const physics::BoxCollider& box) {
+                const Vec3 half = box.halfExtents * glm::abs(transform.scale);
+                debug->box(transform.position - half, transform.position + half, colorOf(entity));
+            });
+        world.view<const scene::Transform, const physics::SphereCollider>().each(
+            [&](ecs::Entity entity, const scene::Transform& transform, const physics::SphereCollider& sphere) {
+                const Vec3 scale = glm::abs(transform.scale);
+                debug->sphere(transform.position, sphere.radius * std::max({scale.x, scale.y, scale.z}),
+                              colorOf(entity), 24);
             });
     }
 
