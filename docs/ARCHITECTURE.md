@@ -224,7 +224,7 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 - A `const` component type is handed to the callback as a const reference, which documents what a system only reads.
 - `parallelEach` splits the view across the `JobSystem`; its callback may only touch the components it is given.
 - `onAdd<T>` / `onRemove<T>` observe components coming and going (including through `destroy` and `clear`), for indexes or resources that follow components.
-- `scene::updateWorldTransforms(world, jobs)` derives `WorldTransform` from `Transform` and `Parent` once per frame in O(n), computing roots in parallel.
+- `scene::updateWorldTransforms(world, jobs)` derives `WorldTransform` from `Transform` and `Parent` once per frame in O(n), computing roots in parallel. `scene::setParent` re-parents an entity (refusing cycles, optionally keeping its world pose), `scene::children` lists a node's children, and `scene::destroyHierarchy` removes a whole branch.
 
 ## Physics
 

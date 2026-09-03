@@ -593,3 +593,45 @@ TEST(Hierarchy, ParallelUpdateMatchesTheSerialOne) {
     world.view<const WorldTransform>().each([&](const WorldTransform& t) { parallel.push_back(t.matrix); });
     EXPECT_EQ(parallel, serial);
 }
+
+TEST(Hierarchy, ReparentingRejectsCyclesAndCanKeepTheWorldPose) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+    const ecs::Entity root = scene.createEntity("root");
+    const ecs::Entity arm = scene.createEntity("arm");
+    const ecs::Entity hand = scene.createEntity("hand");
+    ASSERT_TRUE(setParent(world, arm, root).has_value());
+    ASSERT_TRUE(setParent(world, hand, arm).has_value());
+    EXPECT_EQ(children(world, root), (std::vector<ecs::Entity>{arm}));
+    EXPECT_EQ(children(world, arm), (std::vector<ecs::Entity>{hand}));
+
+    // Cycles and dead parents are refused, leaving links as they were.
+    EXPECT_FALSE(setParent(world, root, hand).has_value());
+    EXPECT_FALSE(setParent(world, arm, arm).has_value());
+    const ecs::Entity gone = scene.createEntity("gone");
+    world.destroy(gone);
+    EXPECT_FALSE(setParent(world, hand, gone).has_value());
+    EXPECT_FALSE(world.has<Parent>(root));
+    EXPECT_EQ(world.get<Parent>(hand).entity, arm);
+
+    // Moving the hand to another, rotated and scaled parent without a jump.
+    world.get<Transform>(root).position = Vec3(1.0f, 2.0f, 3.0f);
+    world.get<Transform>(arm).position = Vec3(0.0f, 1.0f, 0.0f);
+    world.get<Transform>(hand).position = Vec3(0.5f, 0.0f, 0.0f);
+    const ecs::Entity holder = scene.createEntity("holder");
+    world.get<Transform>(holder).position = Vec3(-4.0f, 0.0f, 1.0f);
+    world.get<Transform>(holder).rotation = glm::angleAxis(0.8f, glm::normalize(Vec3(0.0f, 1.0f, 1.0f)));
+    world.get<Transform>(holder).scale = Vec3(2.0f);
+    updateWorldTransforms(world);
+    const Vec3 before = worldPosition(world, hand);
+    ASSERT_TRUE(setParent(world, hand, holder, true).has_value());
+    updateWorldTransforms(world);
+    expectNear(worldPosition(world, hand), before);
+    EXPECT_TRUE(children(world, arm).empty());
+
+    // Detaching keeps the pose too.
+    ASSERT_TRUE(setParent(world, hand, {}, true).has_value());
+    updateWorldTransforms(world);
+    EXPECT_FALSE(world.has<Parent>(hand));
+    expectNear(worldPosition(world, hand), before);
+}

@@ -1,5 +1,7 @@
 #include <bdex/scene/Scene.hpp>
 
+#include <glm/gtx/matrix_decompose.hpp>
+
 #include <algorithm>
 #include <optional>
 #include <span>
@@ -53,6 +55,55 @@ void SceneManager::destroy(Scene& scene) {
         active_ = nullptr;
     }
     std::erase_if(scenes_, [&scene](const auto& owned) { return owned.get() == &scene; });
+}
+
+Result<> setParent(ecs::World& world, ecs::Entity child, ecs::Entity parent, bool keepWorldTransform) {
+    if (!world.alive(child)) {
+        return fail("setParent: the child is not alive");
+    }
+    if (parent.valid() && !world.alive(parent)) {
+        return fail("setParent: the parent is not alive");
+    }
+    // Walking up from the new parent must not reach the child.
+    for (ecs::Entity ancestor = parent; ancestor.valid();) {
+        if (ancestor == child) {
+            return fail("setParent: the parent is the child or one of its descendants");
+        }
+        const Parent* link = world.tryGet<Parent>(ancestor);
+        ancestor = link != nullptr && world.alive(link->entity) ? link->entity : ecs::Entity{};
+    }
+
+    if (keepWorldTransform && world.has<Transform>(child)) {
+        const auto worldOf = [&](ecs::Entity entity) {
+            const WorldTransform* cached = world.tryGet<WorldTransform>(entity);
+            return cached != nullptr ? cached->matrix : world.get<Transform>(entity).localMatrix();
+        };
+        const Mat4 parentWorld = parent.valid() && world.has<Transform>(parent) ? worldOf(parent) : Mat4(1.0f);
+        const Mat4 local = glm::inverse(parentWorld) * worldOf(child);
+        Transform& transform = world.get<Transform>(child);
+        Vec3 skew;
+        Vec4 perspective;
+        glm::decompose(local, transform.scale, transform.rotation, transform.position, skew, perspective);
+    }
+    if (parent.valid()) {
+        world.emplace<Parent>(child, parent);
+    } else {
+        world.remove<Parent>(child);
+    }
+    return {};
+}
+
+std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
+    std::vector<ecs::Entity> found;
+    if (const auto* parents = world.storage<Parent>(); parents != nullptr && world.alive(parent)) {
+        for (const u32 index : parents->entities()) {
+            if (parents->get(index).entity == parent) {
+                found.push_back(world.entityAt(index));
+            }
+        }
+    }
+    std::sort(found.begin(), found.end(), [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
+    return found;
 }
 
 usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
