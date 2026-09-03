@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -19,11 +20,59 @@ struct Sphere {
     RigidBody* body;  ///< Null for static spheres.
 };
 
+/// Oriented box: the collider's extents in the entity's rotated frame.
 struct Box {
     ecs::Entity entity;
-    Vec3 min;
-    Vec3 max;
+    Vec3 center;
+    Vec3 half;
+    Quat rotation;
+    Vec3 boundsMin;  ///< World-space box around it, for the broad phase.
+    Vec3 boundsMax;
 };
+
+Box makeBox(ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
+    Box box{entity, transform.position, collider.halfExtents * glm::abs(transform.scale),
+            glm::normalize(transform.rotation), {}, {}};
+    const Mat3 axes = glm::mat3_cast(box.rotation);
+    const Vec3 extent = glm::abs(axes[0]) * box.half.x + glm::abs(axes[1]) * box.half.y + glm::abs(axes[2]) * box.half.z;
+    box.boundsMin = box.center - extent;
+    box.boundsMax = box.center + extent;
+    return box;
+}
+
+struct Penetration {
+    Vec3 normal;  ///< From the sphere toward the box.
+    f32 depth;
+};
+
+/// Overlap of a sphere with an oriented box, worked out in the box's frame.
+std::optional<Penetration> sphereBoxContact(const Box& box, const Vec3& center, f32 radius) {
+    const Quat toLocal = glm::conjugate(box.rotation);
+    const Vec3 local = toLocal * (center - box.center);
+    const Vec3 closest = glm::clamp(local, -box.half, box.half);
+    const Vec3 offset = local - closest;
+    const f32 distance = glm::length(offset);
+    if (distance > 1e-6f) {
+        if (distance >= radius) {
+            return std::nullopt;
+        }
+        return Penetration{box.rotation * (-offset / distance), radius - distance};
+    }
+    // Center inside the box: push out through the nearest face.
+    f32 nearest = box.half.x - local.x;
+    Vec3 normal(-1.0f, 0.0f, 0.0f);
+    for (int axis = 0; axis < 3; ++axis) {
+        for (const f32 side : {-1.0f, 1.0f}) {
+            const f32 gap = box.half[axis] - side * local[axis];
+            if (gap < nearest) {
+                nearest = gap;
+                normal = Vec3(0.0f);
+                normal[axis] = -side;
+            }
+        }
+    }
+    return Penetration{box.rotation * normal, nearest + radius};
+}
 
 f32 largestScale(const Transform& transform) {
     return std::max({std::abs(transform.scale.x), std::abs(transform.scale.y), std::abs(transform.scale.z)});
@@ -105,8 +154,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     std::vector<Box> boxes;
     world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
         [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
-            const Vec3 half = collider.halfExtents * glm::abs(transform.scale);
-            boxes.push_back({entity, transform.position - half, transform.position + half});
+            boxes.push_back(makeBox(entity, transform, collider));
         });
 
     // Integrate (semi-implicit Euler).
@@ -129,7 +177,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         // Typical box size, ignoring the large ones that set the maximum.
         std::vector<f32> sizes;
         for (const Box& box : boxes) {
-            sizes.push_back(std::max(box.max.x - box.min.x, box.max.z - box.min.z));
+            sizes.push_back(std::max(box.boundsMax.x - box.boundsMin.x, box.boundsMax.z - box.boundsMin.z));
         }
         if (!sizes.empty()) {
             std::nth_element(sizes.begin(), sizes.begin() + static_cast<std::ptrdiff_t>(sizes.size() / 2), sizes.end());
@@ -142,10 +190,10 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     std::unordered_map<u64, std::vector<u32>> grid;
     for (u32 i = 0; i < boxes.size(); ++i) {
         const Box& box = boxes[i];
-        const i64 x0 = cellOf(box.min.x);
-        const i64 x1 = cellOf(box.max.x);
-        const i64 z0 = cellOf(box.min.z);
-        const i64 z1 = cellOf(box.max.z);
+        const i64 x0 = cellOf(box.boundsMin.x);
+        const i64 x1 = cellOf(box.boundsMax.x);
+        const i64 z0 = cellOf(box.boundsMin.z);
+        const i64 z1 = cellOf(box.boundsMax.z);
         if ((x1 - x0 + 1) * (z1 - z0 + 1) > 16) {
             large.push_back(i);
             continue;
@@ -178,36 +226,12 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
 
         for (const u32 boxIndex : candidates) {
             const Box& box = boxes[boxIndex];
-            const Vec3 closest = glm::clamp(sphere.center, box.min, box.max);
-            Vec3 offset = sphere.center - closest;
-            f32 distance = glm::length(offset);
-            Vec3 normal;
-            f32 depth;
-            if (distance > 1e-6f) {
-                if (distance >= sphere.radius) {
-                    continue;
-                }
-                normal = -offset / distance;  // from the sphere toward the box
-                depth = sphere.radius - distance;
-            } else {
-                // Center inside the box: push out through the nearest face.
-                const Vec3 toMin = sphere.center - box.min;
-                const Vec3 toMax = box.max - sphere.center;
-                f32 nearest = toMin.x;
-                normal = Vec3(1.0f, 0.0f, 0.0f);
-                const auto consider = [&](f32 gap, const Vec3& axis) {
-                    if (gap < nearest) {
-                        nearest = gap;
-                        normal = axis;
-                    }
-                };
-                consider(toMin.y, Vec3(0.0f, 1.0f, 0.0f));
-                consider(toMin.z, Vec3(0.0f, 0.0f, 1.0f));
-                consider(toMax.x, Vec3(-1.0f, 0.0f, 0.0f));
-                consider(toMax.y, Vec3(0.0f, -1.0f, 0.0f));
-                consider(toMax.z, Vec3(0.0f, 0.0f, -1.0f));
-                depth = nearest + sphere.radius;
+            const auto contact = sphereBoxContact(box, sphere.center, sphere.radius);
+            if (!contact) {
+                continue;
             }
+            const Vec3 normal = contact->normal;
+            const f32 depth = contact->depth;
             separate(sphere, nullptr, normal, depth);
             report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
                    resolve(sphere.body, nullptr, normal));
@@ -256,7 +280,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
         const auto* box = world.tryGet<BoxCollider>(zone);
         const auto* ball = world.tryGet<SphereCollider>(zone);
-        const Vec3 half = box != nullptr ? box->halfExtents * glm::abs(transform.scale) : Vec3(0.0f);
+        const std::optional<Box> zoneBox = box != nullptr ? std::optional(makeBox(zone, transform, *box)) : std::nullopt;
         const f32 zoneRadius = ball != nullptr ? ball->radius * largestScale(transform) : 0.0f;
         std::vector<ecs::Entity> inside;
         for (const Sphere& sphere : spheres) {
@@ -264,9 +288,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
                 continue;
             }
             bool overlaps = false;
-            if (box != nullptr) {
-                const Vec3 closest = glm::clamp(sphere.center, transform.position - half, transform.position + half);
-                overlaps = glm::dot(sphere.center - closest, sphere.center - closest) < sphere.radius * sphere.radius;
+            if (zoneBox) {
+                overlaps = sphereBoxContact(*zoneBox, sphere.center, sphere.radius).has_value();
             } else if (ball != nullptr) {
                 const f32 reach = zoneRadius + sphere.radius;
                 overlaps = glm::dot(sphere.center - transform.position, sphere.center - transform.position) < reach * reach;
@@ -342,22 +365,26 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
             if (transform == nullptr) {
                 continue;
             }
-            const Vec3 half = boxes->get(index).halfExtents * glm::abs(transform->scale);
-            const Vec3 low = transform->position - half;
-            const Vec3 high = transform->position + half;
+            const Box box = makeBox(world.entityAt(index), *transform, boxes->get(index));
+            // In the box's frame, where it is axis-aligned.
+            const Quat toLocal = glm::conjugate(box.rotation);
+            const Vec3 localOrigin = toLocal * (origin - box.center);
+            const Vec3 localDirection = toLocal * direction;
+            const Vec3 low = -box.half;
+            const Vec3 high = box.half;
             // Slabs: the ray is inside the box between its latest entry and
             // earliest exit across the three axes.
             f32 enter = 0.0f;
             f32 exit = maxDistance;
-            Vec3 normal = -direction;  // when starting inside
+            Vec3 normal = -localDirection;  // when starting inside
             bool hit = true;
             for (int axis = 0; axis < 3 && hit; ++axis) {
-                if (std::abs(direction[axis]) < 1e-9f) {
-                    hit = origin[axis] >= low[axis] && origin[axis] <= high[axis];
+                if (std::abs(localDirection[axis]) < 1e-9f) {
+                    hit = localOrigin[axis] >= low[axis] && localOrigin[axis] <= high[axis];
                     continue;
                 }
-                f32 near = (low[axis] - origin[axis]) / direction[axis];
-                f32 far = (high[axis] - origin[axis]) / direction[axis];
+                f32 near = (low[axis] - localOrigin[axis]) / localDirection[axis];
+                f32 far = (high[axis] - localOrigin[axis]) / localDirection[axis];
                 f32 side = -1.0f;
                 if (near > far) {
                     std::swap(near, far);
@@ -372,7 +399,7 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
                 hit = enter <= exit;
             }
             if (hit) {
-                consider(world.entityAt(index), enter, normal);
+                consider(world.entityAt(index), enter, box.rotation * normal);
             }
         }
     }
