@@ -11,12 +11,15 @@ namespace bdex::physics {
 
 // --- Components -----------------------------------------------------------------
 // Bodies live in world space: their entity's Transform is their pose, so
-// they must not have a Parent. Bodies do not rotate; boxes are posed by
-// their Transform's rotation.
+// they must not have a Parent. Spheres spin from friction at their contacts
+// (solid-sphere inertia), so they roll; boxes are posed by their Transform's
+// rotation.
 
 /// Makes an entity with a collider move under gravity and collisions.
 struct RigidBody {
     Vec3 velocity{0.0f};
+    /// Radians per second, about the axis it points along.
+    Vec3 angularVelocity{0.0f};
     f32 mass = 1.0f;
     /// Bounciness: 0 stops dead on impact, 1 bounces back at full speed.
     f32 restitution = 0.4f;
@@ -27,6 +30,7 @@ struct RigidBody {
     /// Set by step(): position at the start of the last step, for
     /// interpolate(). Not meant to be written.
     Vec3 previousPosition{0.0f};
+    Quat previousRotation{1.0f, 0.0f, 0.0f, 0.0f};
     bool hasPrevious = false;
 };
 
@@ -89,8 +93,8 @@ struct Collision {
 void step(ecs::World& world, f32 dt, const Settings& settings = {}, std::vector<Contact>* contacts = nullptr,
           std::vector<TriggerEvent>* triggers = nullptr);
 
-/// Draws bodies between their last two steps: sets the translation of each
-/// body's WorldTransform to mix(previous, current position, `alpha`), the
+/// Draws bodies between their last two steps: rebuilds each body's
+/// WorldTransform from its positions mixed and rotations slerped by `alpha`, the
 /// fraction of a fixed step accumulated since (FrameTime::fixedAlpha). Call
 /// it after scene::updateWorldTransforms. Transform, the simulated pose, is
 /// left alone, so motion looks smooth at any frame rate.

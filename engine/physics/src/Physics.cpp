@@ -18,6 +18,7 @@ struct Sphere {
     Vec3 center;
     f32 radius;
     RigidBody* body;  ///< Null for static spheres.
+    Transform* transform;  ///< Stable during a step: nothing is added to the world.
 };
 
 /// Oriented box: the collider's extents in the entity's rotated frame.
@@ -78,37 +79,75 @@ f32 largestScale(const Transform& transform) {
     return std::max({std::abs(transform.scale.x), std::abs(transform.scale.y), std::abs(transform.scale.z)});
 }
 
+/// One side of a contact: its body (null for static colliders) and the arm
+/// from its center to the contact point.
+struct ContactSide {
+    RigidBody* body;
+    Vec3 arm;
+    f32 radius;  ///< Of the sphere, for its inertia; 0 for boxes.
+};
+
+f32 inverseMass(const ContactSide& side) {
+    return side.body != nullptr && side.body->mass > 0.0f ? 1.0f / side.body->mass : 0.0f;
+}
+
+/// Inverse moment of inertia of a solid sphere (2/5 m r^2), 0 when static.
+f32 inverseInertia(const ContactSide& side) {
+    const f32 inverse = inverseMass(side);
+    return inverse > 0.0f && side.radius > 0.0f ? inverse / (0.4f * side.radius * side.radius) : 0.0f;
+}
+
+Vec3 contactVelocity(const ContactSide& side) {
+    return side.body != nullptr ? side.body->velocity + glm::cross(side.body->angularVelocity, side.arm) : Vec3(0.0f);
+}
+
 /// Applies the impulse separating two bodies along `normal` (from a to b),
-/// with restitution and friction, and returns it (0 when they were already
+/// with restitution and friction at the contact point, which also spins
+/// them, and returns the normal impulse (0 when they were already
 /// separating). Static sides have no RigidBody.
-f32 resolve(RigidBody* a, RigidBody* b, const Vec3& normal) {
-    const f32 inverseA = a != nullptr && a->mass > 0.0f ? 1.0f / a->mass : 0.0f;
-    const f32 inverseB = b != nullptr && b->mass > 0.0f ? 1.0f / b->mass : 0.0f;
+f32 resolve(const ContactSide& a, const ContactSide& b, const Vec3& normal) {
+    const f32 inverseA = inverseMass(a);
+    const f32 inverseB = inverseMass(b);
     const f32 inverseSum = inverseA + inverseB;
     if (inverseSum <= 0.0f) {
         return 0.0f;
     }
-    const Vec3 velocityA = a != nullptr ? a->velocity : Vec3(0.0f);
-    const Vec3 velocityB = b != nullptr ? b->velocity : Vec3(0.0f);
-    const Vec3 relative = velocityB - velocityA;
+    // For spheres the arms lie along the normal, so spin does not change
+    // the approach speed.
+    const Vec3 relative = contactVelocity(b) - contactVelocity(a);
     const f32 approaching = glm::dot(relative, normal);
     if (approaching >= 0.0f) {
         return 0.0f;  // already separating
     }
-    const f32 restitution = std::min(a != nullptr ? a->restitution : 1.0f, b != nullptr ? b->restitution : 1.0f);
+    const f32 restitution =
+        std::min(a.body != nullptr ? a.body->restitution : 1.0f, b.body != nullptr ? b.body->restitution : 1.0f);
     const f32 impulse = -(1.0f + restitution) * approaching / inverseSum;
-    if (a != nullptr) a->velocity -= normal * (impulse * inverseA);
-    if (b != nullptr) b->velocity += normal * (impulse * inverseB);
+    if (a.body != nullptr) a.body->velocity -= normal * (impulse * inverseA);
+    if (b.body != nullptr) b.body->velocity += normal * (impulse * inverseB);
 
-    // Friction: oppose sliding, at most mu times the normal impulse.
+    // Friction: oppose sliding at the contact point, at most mu times the
+    // normal impulse. Its effective mass includes the spheres' inertia, so
+    // a sliding ball ends up rolling.
     Vec3 tangent = relative - normal * approaching;
     const f32 sliding = glm::length(tangent);
     if (sliding > 1e-6f) {
         tangent /= sliding;
-        const f32 friction = std::sqrt((a != nullptr ? a->friction : 0.5f) * (b != nullptr ? b->friction : 0.5f));
-        const f32 tangential = std::min(sliding / inverseSum, friction * impulse);
-        if (a != nullptr) a->velocity += tangent * (tangential * inverseA);
-        if (b != nullptr) b->velocity -= tangent * (tangential * inverseB);
+        const f32 friction =
+            std::sqrt((a.body != nullptr ? a.body->friction : 0.5f) * (b.body != nullptr ? b.body->friction : 0.5f));
+        const f32 inverseAInertia = inverseInertia(a);
+        const f32 inverseBInertia = inverseInertia(b);
+        const f32 effective = inverseSum + inverseAInertia * glm::dot(a.arm, a.arm) +
+                              inverseBInertia * glm::dot(b.arm, b.arm);
+        const f32 tangential = std::min(sliding / effective, friction * impulse);
+        const Vec3 push = tangent * tangential;  // on a; b gets the opposite
+        if (a.body != nullptr) {
+            a.body->velocity += push * inverseA;
+            a.body->angularVelocity += glm::cross(a.arm, push) * inverseAInertia;
+        }
+        if (b.body != nullptr) {
+            b.body->velocity -= push * inverseB;
+            b.body->angularVelocity += glm::cross(b.arm, -push) * inverseBInertia;
+        }
     }
     return impulse;
 }
@@ -149,7 +188,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     world.view<Transform, const SphereCollider>().exclude<Trigger>().each(
         [&](ecs::Entity entity, Transform& transform, const SphereCollider& collider) {
             spheres.push_back({entity, transform.position, collider.radius * largestScale(transform),
-                               world.tryGet<RigidBody>(entity)});
+                               world.tryGet<RigidBody>(entity), &transform});
         });
     std::vector<Box> boxes;
     world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
@@ -161,6 +200,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     for (Sphere& sphere : spheres) {
         if (sphere.body != nullptr) {
             sphere.body->previousPosition = sphere.center;
+            sphere.body->previousRotation = sphere.transform->rotation;
             sphere.body->hasPrevious = true;
             sphere.body->velocity += settings.gravity * (sphere.body->gravityScale * dt);
             sphere.center += sphere.body->velocity * dt;
@@ -234,7 +274,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             const f32 depth = contact->depth;
             separate(sphere, nullptr, normal, depth);
             report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
-                   resolve(sphere.body, nullptr, normal));
+                   resolve({sphere.body, normal * sphere.radius, sphere.radius}, {nullptr, Vec3(0.0f), 0.0f}, normal));
         }
     }
 
@@ -266,7 +306,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             }
             const Vec3 normal = distance > 1e-6f ? offset / distance : Vec3(0.0f, 1.0f, 0.0f);
             separate(a, &b, normal, reach - distance);
-            const f32 impulse = resolve(a.body, b.body, normal);
+            const f32 impulse =
+                resolve({a.body, normal * a.radius, a.radius}, {b.body, -normal * b.radius, b.radius}, normal);
             // Reported from the dynamic body's side.
             if (a.body != nullptr) {
                 report(a.entity, b.entity, a.center + normal * a.radius, normal, impulse);
@@ -316,10 +357,16 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         trigger.inside = std::move(inside);
     });
 
-    // Write the poses back.
+    // Write the poses back; spheres turn by their spin.
     for (const Sphere& sphere : spheres) {
-        if (sphere.body != nullptr) {
-            world.get<Transform>(sphere.entity).position = sphere.center;
+        if (sphere.body == nullptr) {
+            continue;
+        }
+        Transform& transform = *sphere.transform;
+        transform.position = sphere.center;
+        const Vec3& spin = sphere.body->angularVelocity;
+        if (const f32 rate = glm::length(spin); rate > 1e-6f) {
+            transform.rotation = glm::normalize(glm::angleAxis(rate * dt, spin / rate) * transform.rotation);
         }
     }
 }
@@ -411,7 +458,10 @@ void interpolate(ecs::World& world, f32 alpha) {
     world.view<const RigidBody, const Transform, scene::WorldTransform>().each(
         [alpha](const RigidBody& body, const Transform& transform, scene::WorldTransform& drawn) {
             if (body.hasPrevious) {
-                drawn.matrix[3] = Vec4(glm::mix(body.previousPosition, transform.position, alpha), 1.0f);
+                Transform blended = transform;
+                blended.position = glm::mix(body.previousPosition, transform.position, alpha);
+                blended.rotation = glm::slerp(body.previousRotation, transform.rotation, alpha);
+                drawn.matrix = blended.localMatrix();
             }
         });
 }
@@ -425,13 +475,16 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         "RigidBody",
         [](const RigidBody& body, Fields& out, const EntityRefs&) {
             out["velocity"] = formatField(body.velocity);
+            out["angular_velocity"] = formatField(body.angularVelocity);
             out["mass"] = formatField(body.mass);
             out["restitution"] = formatField(body.restitution);
             out["friction"] = formatField(body.friction);
             out["gravity_scale"] = formatField(body.gravityScale);
         },
         [](RigidBody& body, const Fields& in, const EntityRefs&) -> Result<> {
-            for (auto parsed : {parseField(in, "velocity", body.velocity), parseField(in, "mass", body.mass),
+            for (auto parsed : {parseField(in, "velocity", body.velocity),
+                                parseField(in, "angular_velocity", body.angularVelocity),
+                                parseField(in, "mass", body.mass),
                                 parseField(in, "restitution", body.restitution),
                                 parseField(in, "friction", body.friction),
                                 parseField(in, "gravity_scale", body.gravityScale)}) {

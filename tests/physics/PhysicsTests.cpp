@@ -111,16 +111,23 @@ TEST(Physics, CollisionsConserveMomentum) {
     EXPECT_GT(glm::length(world.get<Transform>(b).position - world.get<Transform>(a).position), 0.99f);
 }
 
-TEST(Physics, FrictionStopsSliding) {
+TEST(Physics, ASlidingBallEndsUpRolling) {
     ecs::World world;
     addFloor(world);
     RigidBody body;
-    body.velocity = Vec3(3.0f, 0.0f, 0.0f);
+    body.velocity = Vec3(7.0f, 0.0f, 0.0f);
     body.restitution = 0.0f;
-    const ecs::Entity slider = addBall(world, Vec3(0.0f, 0.5f, 0.0f), body);
+    const ecs::Entity ball = addBall(world, Vec3(0.0f, 0.5f, 0.0f), body);
+    const Quat start = world.get<Transform>(ball).rotation;
     simulate(world, 3.0f);
-    EXPECT_LT(std::abs(world.get<RigidBody>(slider).velocity.x), 0.05f);
-    EXPECT_GT(world.get<Transform>(slider).position.x, 0.2f);  // it slid some distance first
+    const RigidBody& rolled = world.get<RigidBody>(ball);
+    // Friction trades speed for spin until the contact point stops
+    // slipping: a solid sphere keeps 5/7 of its speed, then rolls on.
+    EXPECT_NEAR(rolled.velocity.x, 5.0f, 0.1f);
+    EXPECT_NEAR(rolled.angularVelocity.z, -rolled.velocity.x / 0.5f, 0.2f);  // v = w r
+    EXPECT_NEAR(rolled.angularVelocity.x, 0.0f, 1e-3f);
+    // And it visibly turned.
+    EXPECT_LT(std::abs(glm::dot(world.get<Transform>(ball).rotation, start)), 0.99f);
 }
 
 TEST(Physics, StepsAreDeterministicAndFreeFallIsExact) {
