@@ -28,6 +28,9 @@ public:
     void line(const Vec3& from, const Vec3& to, const Vec4& color = Vec4(1.0f));
     /// Axis-aligned box.
     void box(const Vec3& min, const Vec3& max, const Vec4& color = Vec4(1.0f));
+    /// Box of the given half extents, placed by `transform` (rotation and
+    /// scale included).
+    void box(const Mat4& transform, const Vec3& halfExtents, const Vec4& color = Vec4(1.0f));
     /// Three great circles, one per axis plane.
     void sphere(const Vec3& center, f32 radius, const Vec4& color = Vec4(1.0f), u32 segments = 32);
     void sphere(const BoundingSphere& bounds, const Vec4& color = Vec4(1.0f)) {

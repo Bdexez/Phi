@@ -343,6 +343,18 @@ TEST(DebugDraw, BuildsLineListsForShapes) {
         EXPECT_FLOAT_EQ(glm::length(edge), 2.0f);
     }
 
+    // Oriented: a cube turned 45 degrees about Y reaches sqrt(2) along X.
+    debug.clear();
+    Transform turned;
+    turned.rotation = glm::angleAxis(glm::radians(45.0f), Vec3(0.0f, 1.0f, 0.0f));
+    debug.box(turned.localMatrix(), Vec3(1.0f));
+    EXPECT_EQ(debug.lineCount(), 12u);
+    f32 reach = 0.0f;
+    for (const render::DebugDraw::Vertex& vertex : debug.vertices()) {
+        reach = std::max(reach, vertex.position.x);
+    }
+    EXPECT_NEAR(reach, std::sqrt(2.0f), 1e-5f);
+
     debug.clear();
     debug.sphere(Vec3(1.0f, 2.0f, 3.0f), 2.0f, Vec4(1.0f), 16);
     EXPECT_EQ(debug.lineCount(), 3u * 16u);

@@ -27,6 +27,21 @@ void DebugDraw::box(const Vec3& min, const Vec3& max, const Vec4& color) {
     }
 }
 
+void DebugDraw::box(const Mat4& transform, const Vec3& halfExtents, const Vec4& color) {
+    const auto corner = [&](int i) {
+        const Vec3 local((i & 1) != 0 ? halfExtents.x : -halfExtents.x, (i & 2) != 0 ? halfExtents.y : -halfExtents.y,
+                         (i & 4) != 0 ? halfExtents.z : -halfExtents.z);
+        return Vec3(transform * Vec4(local, 1.0f));
+    };
+    for (int i = 0; i < 8; ++i) {
+        for (const int bit : {1, 2, 4}) {
+            if ((i & bit) == 0) {
+                line(corner(i), corner(i | bit), color);
+            }
+        }
+    }
+}
+
 void DebugDraw::sphere(const Vec3& center, f32 radius, const Vec4& color, u32 segments) {
     segments = std::max(segments, 3u);
     const f32 step = 2.0f * std::numbers::pi_v<f32> / static_cast<f32>(segments);
