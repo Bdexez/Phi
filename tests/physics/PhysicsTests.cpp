@@ -419,3 +419,38 @@ TEST(Physics, BoxesFollowTheirRotation) {
     EXPECT_NE(std::find(inside.begin(), inside.end(), insideRotated), inside.end());
     EXPECT_EQ(std::find(inside.begin(), inside.end(), insideUnrotated), inside.end());
 }
+
+TEST(Physics, DampingSlowsBodiesWhateverTheStep) {
+    // In free space, velocity decays as exp(-damping * t) for any step.
+    for (const f32 dt : {1.0f / 30.0f, 1.0f / 240.0f}) {
+        ecs::World world;
+        RigidBody body;
+        body.velocity = Vec3(4.0f, 0.0f, 0.0f);
+        body.gravityScale = 0.0f;
+        body.linearDamping = 0.5f;
+        const ecs::Entity ball = addBall(world, Vec3(0.0f), body);
+        for (int i = 0; i < static_cast<int>(std::round(2.0f / dt)); ++i) {
+            step(world, dt);
+        }
+        EXPECT_NEAR(world.get<RigidBody>(ball).velocity.x, 4.0f * std::exp(-1.0f), 1e-3f);
+    }
+
+    // Angular damping brings a rolling ball to rest, still rolling (not
+    // sliding) on the way.
+    ecs::World world;
+    addFloor(world);
+    RigidBody body;
+    body.velocity = Vec3(5.0f, 0.0f, 0.0f);
+    body.angularVelocity = Vec3(0.0f, 0.0f, -10.0f);  // already rolling: v = w r
+    body.restitution = 0.0f;
+    body.angularDamping = 1.0f;
+    const ecs::Entity ball = addBall(world, Vec3(0.0f, 0.5f, 0.0f), body);
+    simulate(world, 1.0f);
+    const RigidBody& rolling = world.get<RigidBody>(ball);
+    EXPECT_LT(rolling.velocity.x, 4.0f);
+    EXPECT_NEAR(rolling.angularVelocity.z, -rolling.velocity.x / 0.5f, 0.1f);
+    // Only the spin is damped, and a rolling solid sphere keeps 2/7 of its
+    // motion in its spin (I / (I + m r^2)), so it slows at 2/7 the rate.
+    simulate(world, 10.0f);
+    EXPECT_NEAR(world.get<RigidBody>(ball).velocity.x, 5.0f * std::exp(-11.0f * 2.0f / 7.0f), 0.01f);
+}

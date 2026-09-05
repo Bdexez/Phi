@@ -203,6 +203,12 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             sphere.body->previousRotation = sphere.transform->rotation;
             sphere.body->hasPrevious = true;
             sphere.body->velocity += settings.gravity * (sphere.body->gravityScale * dt);
+            if (sphere.body->linearDamping > 0.0f) {
+                sphere.body->velocity *= std::exp(-sphere.body->linearDamping * dt);
+            }
+            if (sphere.body->angularDamping > 0.0f) {
+                sphere.body->angularVelocity *= std::exp(-sphere.body->angularDamping * dt);
+            }
             sphere.center += sphere.body->velocity * dt;
         }
     }
@@ -480,6 +486,8 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
             out["restitution"] = formatField(body.restitution);
             out["friction"] = formatField(body.friction);
             out["gravity_scale"] = formatField(body.gravityScale);
+            out["linear_damping"] = formatField(body.linearDamping);
+            out["angular_damping"] = formatField(body.angularDamping);
         },
         [](RigidBody& body, const Fields& in, const EntityRefs&) -> Result<> {
             for (auto parsed : {parseField(in, "velocity", body.velocity),
@@ -487,7 +495,9 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
                                 parseField(in, "mass", body.mass),
                                 parseField(in, "restitution", body.restitution),
                                 parseField(in, "friction", body.friction),
-                                parseField(in, "gravity_scale", body.gravityScale)}) {
+                                parseField(in, "gravity_scale", body.gravityScale),
+                                parseField(in, "linear_damping", body.linearDamping),
+                                parseField(in, "angular_damping", body.angularDamping)}) {
                 if (!parsed) {
                     return parsed;
                 }

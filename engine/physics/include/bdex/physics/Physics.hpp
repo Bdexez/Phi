@@ -26,6 +26,13 @@ struct RigidBody {
     /// Coulomb friction coefficient against sliding.
     f32 friction = 0.4f;
     f32 gravityScale = 1.0f;
+    /// Drag, per second: velocities decay as exp(-damping * t), whatever
+    /// the step. Angular damping is what brings a rolling ball to rest
+    /// (as rolling resistance would), at 2/7 of its rate since a rolling
+    /// solid sphere keeps 2/7 of its motion in its spin; 0 keeps it rolling
+    /// forever.
+    f32 linearDamping = 0.0f;
+    f32 angularDamping = 0.0f;
 
     /// Set by step(): position at the start of the last step, for
     /// interpolate(). Not meant to be written.

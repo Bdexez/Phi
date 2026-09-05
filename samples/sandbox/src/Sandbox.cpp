@@ -288,7 +288,8 @@ private:
         world.emplace<physics::SphereCollider>(ball, 0.5f);
         world.emplace<physics::RigidBody>(
             ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
-                                     .restitution = 0.7f});
+                                     .restitution = 0.7f,
+                                     .angularDamping = 1.5f});  // rolls to a stop in a few seconds
         balls_.push_back(ball);
         if (balls_.size() > kMaxBalls) {
             world.destroy(balls_.front());
