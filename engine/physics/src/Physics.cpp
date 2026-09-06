@@ -41,6 +41,54 @@ Box makeBox(ecs::Entity entity, const Transform& transform, const BoxCollider& c
     return box;
 }
 
+struct BoxRayHit {
+    f32 distance;
+    Vec3 normal;
+};
+
+/// First point where a ray (unit `direction`) enters an oriented box grown by
+/// `margin` on every side, within `maxDistance`; distance 0 when it starts
+/// inside.
+std::optional<BoxRayHit> rayBox(const Box& box, const Vec3& origin, const Vec3& direction, f32 maxDistance,
+                                f32 margin = 0.0f) {
+    // In the box's frame, where it is axis-aligned.
+    const Quat toLocal = glm::conjugate(box.rotation);
+    const Vec3 localOrigin = toLocal * (origin - box.center);
+    const Vec3 localDirection = toLocal * direction;
+    const Vec3 high = box.half + Vec3(margin);
+    const Vec3 low = -high;
+    // Slabs: the ray is inside the box between its latest entry and
+    // earliest exit across the three axes.
+    f32 enter = 0.0f;
+    f32 exit = maxDistance;
+    Vec3 normal = -localDirection;  // when starting inside
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(localDirection[axis]) < 1e-9f) {
+            if (localOrigin[axis] < low[axis] || localOrigin[axis] > high[axis]) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        f32 near = (low[axis] - localOrigin[axis]) / localDirection[axis];
+        f32 far = (high[axis] - localOrigin[axis]) / localDirection[axis];
+        f32 side = -1.0f;
+        if (near > far) {
+            std::swap(near, far);
+            side = 1.0f;
+        }
+        if (near > enter) {
+            enter = near;
+            normal = Vec3(0.0f);
+            normal[axis] = side;
+        }
+        exit = std::min(exit, far);
+        if (enter > exit) {
+            return std::nullopt;
+        }
+    }
+    return BoxRayHit{enter, box.rotation * normal};
+}
+
 struct Penetration {
     Vec3 normal;  ///< From the sphere toward the box.
     f32 depth;
@@ -267,17 +315,25 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         }
     }
 
+    // Boxes whose cells overlap a region of the XZ plane, in order, plus the
+    // large ones; all of them when the region spans more cells than there
+    // are boxes.
     std::vector<u32> candidates;
-    for (Sphere& sphere : spheres) {
-        if (sphere.body == nullptr || sphere.body->asleep) {
-            continue;
+    const auto gather = [&](const Vec3& low, const Vec3& high) {
+        const i64 x0 = cellOf(low.x);
+        const i64 x1 = cellOf(high.x);
+        const i64 z0 = cellOf(low.z);
+        const i64 z1 = cellOf(high.z);
+        candidates.clear();
+        if (static_cast<f64>(x1 - x0 + 1) * static_cast<f64>(z1 - z0 + 1) > static_cast<f64>(boxes.size())) {
+            for (u32 i = 0; i < boxes.size(); ++i) {
+                candidates.push_back(i);
+            }
+            return;
         }
-        // A correction moves the sphere by less than its radius: a margin of
-        // one radius keeps every box it may touch this step.
-        const f32 reach = sphere.radius * 2.0f;
         candidates.assign(large.begin(), large.end());
-        for (i64 x = cellOf(sphere.center.x - reach); x <= cellOf(sphere.center.x + reach); ++x) {
-            for (i64 z = cellOf(sphere.center.z - reach); z <= cellOf(sphere.center.z + reach); ++z) {
+        for (i64 x = x0; x <= x1; ++x) {
+            for (i64 z = z0; z <= z1; ++z) {
                 if (const auto found = grid.find(key(x, z)); found != grid.end()) {
                     candidates.insert(candidates.end(), found->second.begin(), found->second.end());
                 }
@@ -285,6 +341,42 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         }
         std::sort(candidates.begin(), candidates.end());
         candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    };
+    for (Sphere& sphere : spheres) {
+        if (sphere.body == nullptr || sphere.body->asleep) {
+            continue;
+        }
+        // A correction moves the sphere by less than its radius: a margin of
+        // one radius keeps every box it may touch this step.
+        const f32 reach = sphere.radius * 2.0f;
+
+        // Fast spheres could pass through a thin box between two steps:
+        // follow their path and stop it a little inside the first box it
+        // meets, so the contact below resolves the impact.
+        const Vec3 from = sphere.body->previousPosition;
+        const Vec3 travel = sphere.center - from;
+        if (const f32 length = glm::length(travel); length > sphere.radius * 0.5f) {
+            const Vec3 direction = travel / length;
+            gather(glm::min(from, sphere.center) - Vec3(reach), glm::max(from, sphere.center) + Vec3(reach));
+            f32 nearest = length;
+            for (const u32 boxIndex : candidates) {
+                const Box& box = boxes[boxIndex];
+                // The box grown by the radius is a little larger than the
+                // swept sphere's true reach at edges and corners, hence the
+                // check of an actual contact where the path enters it. Paths
+                // starting in contact (rolling on a floor) are left alone.
+                const auto hit = rayBox(box, from, direction, nearest, sphere.radius);
+                if (hit && hit->distance > 0.0f &&
+                    sphereBoxContact(box, from + direction * hit->distance, sphere.radius * 1.01f + 1e-3f)) {
+                    nearest = hit->distance;
+                }
+            }
+            if (nearest < length) {
+                sphere.center = from + direction * std::min(nearest + sphere.radius * 0.02f, length);
+            }
+        }
+
+        gather(sphere.center - Vec3(reach), sphere.center + Vec3(reach));
 
         for (const u32 boxIndex : candidates) {
             const Box& box = boxes[boxIndex];
@@ -474,40 +566,8 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
                 continue;
             }
             const Box box = makeBox(world.entityAt(index), *transform, boxes->get(index));
-            // In the box's frame, where it is axis-aligned.
-            const Quat toLocal = glm::conjugate(box.rotation);
-            const Vec3 localOrigin = toLocal * (origin - box.center);
-            const Vec3 localDirection = toLocal * direction;
-            const Vec3 low = -box.half;
-            const Vec3 high = box.half;
-            // Slabs: the ray is inside the box between its latest entry and
-            // earliest exit across the three axes.
-            f32 enter = 0.0f;
-            f32 exit = maxDistance;
-            Vec3 normal = -localDirection;  // when starting inside
-            bool hit = true;
-            for (int axis = 0; axis < 3 && hit; ++axis) {
-                if (std::abs(localDirection[axis]) < 1e-9f) {
-                    hit = localOrigin[axis] >= low[axis] && localOrigin[axis] <= high[axis];
-                    continue;
-                }
-                f32 near = (low[axis] - localOrigin[axis]) / localDirection[axis];
-                f32 far = (high[axis] - localOrigin[axis]) / localDirection[axis];
-                f32 side = -1.0f;
-                if (near > far) {
-                    std::swap(near, far);
-                    side = 1.0f;
-                }
-                if (near > enter) {
-                    enter = near;
-                    normal = Vec3(0.0f);
-                    normal[axis] = side;
-                }
-                exit = std::min(exit, far);
-                hit = enter <= exit;
-            }
-            if (hit) {
-                consider(world.entityAt(index), enter, box.rotation * normal);
+            if (const auto hit = rayBox(box, origin, direction, maxDistance)) {
+                consider(world.entityAt(index), hit->distance, hit->normal);
             }
         }
     }
