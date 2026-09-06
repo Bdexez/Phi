@@ -314,10 +314,13 @@ TEST(Physics, StepsReportHardContactsOnly) {
     // m (1 + e) v with v = sqrt(2 g h) = 9.9 m/s.
     EXPECT_NEAR(hit.impulse, std::sqrt(2.0f * 9.81f * 5.0f), 0.3f);
 
-    // With no threshold, resting contacts are reported every step.
+    // With no threshold, resting contacts are reported every step (while
+    // the ball is awake: asleep, it no longer touches anything).
+    EXPECT_TRUE(world.get<RigidBody>(ball).asleep);
     contacts.clear();
     Settings everything;
     everything.minimumContactImpulse = 0.0f;
+    everything.sleepSpeed = 0.0f;
     step(world, kStep, everything, &contacts);
     EXPECT_EQ(contacts.size(), 1u);
 }
@@ -453,4 +456,41 @@ TEST(Physics, DampingSlowsBodiesWhateverTheStep) {
     // motion in its spin (I / (I + m r^2)), so it slows at 2/7 the rate.
     simulate(world, 10.0f);
     EXPECT_NEAR(world.get<RigidBody>(ball).velocity.x, 5.0f * std::exp(-11.0f * 2.0f / 7.0f), 0.01f);
+}
+
+TEST(Physics, RestingBodiesSleepUntilHit) {
+    ecs::World world;
+    addFloor(world);
+    RigidBody body;
+    body.angularDamping = 2.0f;
+    const ecs::Entity bottom = addBall(world, Vec3(0.0f, 0.5f, 0.0f), body);
+    const ecs::Entity top = addBall(world, Vec3(0.02f, 1.6f, 0.0f), body);  // stacked, almost balanced
+    simulate(world, 0.2f);
+    EXPECT_FALSE(world.get<RigidBody>(bottom).asleep);
+    // Prop the top ball so the stack stays: a sleeping bottom ball acts as
+    // static, so the top one rests on it and falls asleep in turn.
+    world.get<Transform>(top).position.x = 0.0f;
+    simulate(world, 2.0f);
+    EXPECT_TRUE(world.get<RigidBody>(bottom).asleep);
+    EXPECT_TRUE(world.get<RigidBody>(top).asleep);
+    const Vec3 rested = world.get<Transform>(top).position;
+    simulate(world, 1.0f);
+    EXPECT_EQ(world.get<Transform>(top).position, rested);  // not even jitter
+
+    // A ball thrown at the stack wakes what it hits.
+    RigidBody thrown;
+    thrown.velocity = Vec3(-8.0f, 0.0f, 0.0f);
+    thrown.gravityScale = 0.0f;
+    addBall(world, Vec3(3.0f, 0.5f, 0.0f), thrown);
+    simulate(world, 0.5f);
+    EXPECT_FALSE(world.get<RigidBody>(bottom).asleep);
+    EXPECT_LT(world.get<Transform>(bottom).position.x, -0.5f);
+
+    // Giving a sleeper a velocity wakes it; so does turning sleep off.
+    simulate(world, 5.0f);
+    ASSERT_TRUE(world.get<RigidBody>(top).asleep);
+    world.get<RigidBody>(top).velocity = Vec3(0.0f, 3.0f, 0.0f);
+    step(world, kStep);
+    EXPECT_FALSE(world.get<RigidBody>(top).asleep);
+    EXPECT_GT(world.get<RigidBody>(top).velocity.y, 2.0f);
 }

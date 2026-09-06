@@ -196,12 +196,28 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             boxes.push_back(makeBox(entity, transform, collider));
         });
 
+    // Sleeping bodies have zero velocity; one that has been given some
+    // since was woken by its owner.
+    const bool sleeping = settings.sleepSpeed > 0.0f;
+    for (Sphere& sphere : spheres) {
+        if (sphere.body != nullptr && sphere.body->asleep &&
+            (!sleeping || sphere.body->velocity != Vec3(0.0f) || sphere.body->angularVelocity != Vec3(0.0f))) {
+            wake(*sphere.body);
+        }
+    }
+    const auto isAsleep = [](const Sphere& sphere) { return sphere.body != nullptr && sphere.body->asleep; };
+    // Faster than resting contact: what gravity adds in one step, and some.
+    const f32 wakeSpeed = 2.0f * glm::length(settings.gravity) * dt + settings.sleepSpeed;
+
     // Integrate (semi-implicit Euler).
     for (Sphere& sphere : spheres) {
         if (sphere.body != nullptr) {
             sphere.body->previousPosition = sphere.center;
             sphere.body->previousRotation = sphere.transform->rotation;
             sphere.body->hasPrevious = true;
+            if (sphere.body->asleep) {
+                continue;
+            }
             sphere.body->velocity += settings.gravity * (sphere.body->gravityScale * dt);
             if (sphere.body->linearDamping > 0.0f) {
                 sphere.body->velocity *= std::exp(-sphere.body->linearDamping * dt);
@@ -253,7 +269,7 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
 
     std::vector<u32> candidates;
     for (Sphere& sphere : spheres) {
-        if (sphere.body == nullptr) {
+        if (sphere.body == nullptr || sphere.body->asleep) {
             continue;
         }
         // A correction moves the sphere by less than its radius: a margin of
@@ -301,7 +317,9 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             if (b.center.x - b.radius > a.center.x + a.radius) {
                 break;  // no later sphere reaches back to a
             }
-            if (a.body == nullptr && b.body == nullptr) {
+            const bool aMoves = a.body != nullptr && !a.body->asleep;
+            const bool bMoves = b.body != nullptr && !b.body->asleep;
+            if (!aMoves && !bMoves) {
                 continue;
             }
             const Vec3 offset = b.center - a.center;
@@ -311,9 +329,25 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
                 continue;
             }
             const Vec3 normal = distance > 1e-6f ? offset / distance : Vec3(0.0f, 1.0f, 0.0f);
-            separate(a, &b, normal, reach - distance);
+            // A hit wakes a sleeper; merely resting on it leaves it asleep,
+            // and static, so piles can sleep.
+            Sphere* sleeper = isAsleep(a) ? &a : isAsleep(b) ? &b : nullptr;
+            if (sleeper != nullptr) {
+                const Vec3 mover = (sleeper == &a ? b : a).body->velocity;
+                if (std::abs(glm::dot(mover, normal)) > wakeSpeed) {
+                    wake(*sleeper->body);
+                    sleeper = nullptr;
+                }
+            }
+            RigidBody* bodyA = sleeper == &a ? nullptr : a.body;
+            RigidBody* bodyB = sleeper == &b ? nullptr : b.body;
+            if (sleeper == &a) {
+                separate(b, nullptr, -normal, reach - distance);
+            } else {
+                separate(a, sleeper == &b ? nullptr : &b, normal, reach - distance);
+            }
             const f32 impulse =
-                resolve({a.body, normal * a.radius, a.radius}, {b.body, -normal * b.radius, b.radius}, normal);
+                resolve({bodyA, normal * a.radius, a.radius}, {bodyB, -normal * b.radius, b.radius}, normal);
             // Reported from the dynamic body's side.
             if (a.body != nullptr) {
                 report(a.entity, b.entity, a.center + normal * a.radius, normal, impulse);
@@ -363,9 +397,30 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         trigger.inside = std::move(inside);
     });
 
+    // Bodies that kept still long enough fall asleep.
+    if (sleeping) {
+        for (const Sphere& sphere : spheres) {
+            RigidBody* body = sphere.body;
+            if (body == nullptr || body->asleep) {
+                continue;
+            }
+            const f32 surfaceSpin = glm::length(body->angularVelocity) * sphere.radius;
+            if (glm::length(body->velocity) < settings.sleepSpeed && surfaceSpin < settings.sleepSpeed) {
+                body->restingTime += dt;
+                if (body->restingTime >= settings.sleepDelay) {
+                    body->asleep = true;
+                    body->velocity = Vec3(0.0f);
+                    body->angularVelocity = Vec3(0.0f);
+                }
+            } else {
+                body->restingTime = 0.0f;
+            }
+        }
+    }
+
     // Write the poses back; spheres turn by their spin.
     for (const Sphere& sphere : spheres) {
-        if (sphere.body == nullptr) {
+        if (sphere.body == nullptr || sphere.body->asleep) {
             continue;
         }
         Transform& transform = *sphere.transform;
