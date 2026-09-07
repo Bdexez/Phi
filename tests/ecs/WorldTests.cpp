@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <memory>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -22,7 +23,16 @@ struct Tag {};
 struct Label {
     std::string text;
 };
+struct Handle {  // move-only
+    std::unique_ptr<int> value;
+};
+struct Inventory {  // claims to be copyable, cannot be
+    std::vector<std::unique_ptr<int>> items;
+};
 }  // namespace
+
+template <>
+struct bdex::ecs::Cloneable<Inventory> : std::false_type {};
 
 TEST(World, CreateDestroyAndGenerations) {
     World world;
@@ -298,5 +308,38 @@ TEST(World, HooksMayChangeTheWorld) {
     world.emplace<Position>(tagged);
     world.destroy(tagged);
     EXPECT_FALSE(world.alive(tagged));
+    EXPECT_EQ(world.entityCount(), 1u);
+}
+
+TEST(World, CloneCopiesWhatCanBeCopied) {
+    World world;
+    const Entity source = world.create();
+    world.emplace<Position>(source, 1.0f, 2.0f);
+    world.emplace<Label>(source, "crate");
+    world.emplace<Tag>(source);
+    world.emplace<Handle>(source, std::make_unique<int>(7));
+    world.emplace<Inventory>(source);
+
+    int added = 0;
+    world.onAdd<Label>([&](World& w, Entity entity) {
+        ++added;
+        EXPECT_EQ(w.get<Label>(entity).text, "crate");  // already there
+    });
+    const Entity copy = world.clone(source);
+    ASSERT_TRUE(world.alive(copy));
+    EXPECT_NE(copy, source);
+    EXPECT_EQ(added, 1);
+    EXPECT_TRUE((world.has<Position, Label, Tag>(copy)));
+    EXPECT_FALSE(world.has<Handle>(copy));     // move-only
+    EXPECT_FALSE(world.has<Inventory>(copy));  // opted out
+    EXPECT_EQ(world.get<Position>(copy).y, 2.0f);
+
+    // Copies are independent.
+    world.get<Label>(copy).text = "barrel";
+    EXPECT_EQ(world.get<Label>(source).text, "crate");
+    EXPECT_EQ(*world.get<Handle>(source).value, 7);
+
+    world.destroy(source);
+    EXPECT_FALSE(world.alive(world.clone(source)));
     EXPECT_EQ(world.entityCount(), 1u);
 }

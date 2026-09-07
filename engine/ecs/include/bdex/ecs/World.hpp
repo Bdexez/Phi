@@ -47,6 +47,12 @@ public:
     /// Destroys every entity and component.
     void clear();
 
+    /// Creates an entity with a copy of each of `source`'s components, firing
+    /// onAdd hooks as emplace would. Components that cannot be copied are
+    /// left out; entity handles inside components are copied as they are.
+    /// Returns an invalid handle if `source` is dead.
+    [[nodiscard]] Entity clone(Entity source);
+
     /// Attaches (or replaces) a component and returns it.
     template <class T, class... Args>
     T& emplace(Entity entity, Args&&... args) {
