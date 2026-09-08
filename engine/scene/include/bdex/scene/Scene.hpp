@@ -63,6 +63,12 @@ Result<> setParent(ecs::World& world, ecs::Entity child, ecs::Entity parent, boo
 /// Entities whose Parent is `parent`, by slot.
 [[nodiscard]] std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent);
 
+/// Copies `root` and every entity below it (see ecs::World::clone), with
+/// the copies' Parent links pointing at each other; the root's copy keeps
+/// the root's own parent, like duplicating in an editor. Returns the copy
+/// of `root`, or an invalid handle if it is dead.
+[[nodiscard]] ecs::Entity cloneHierarchy(ecs::World& world, ecs::Entity root);
+
 /// Destroys `root` and every entity attached below it through Parent links.
 /// (World::destroy alone leaves children behind, as roots placed at their
 /// local transform.) Returns the number of entities destroyed.
