@@ -540,3 +540,31 @@ TEST(Physics, FastBallsDoNotTunnelThroughThinWalls) {
         EXPECT_FLOAT_EQ(world.get<RigidBody>(ball).velocity.x, 40.0f);
     }
 }
+
+TEST(Physics, ClonedTriggersStartEmpty) {
+    ecs::World world;
+    const ecs::Entity zone = world.create();
+    world.emplace<Transform>(zone);
+    world.emplace<SphereCollider>(zone, 2.0f);
+    world.emplace<Trigger>(zone);
+    RigidBody still;
+    still.gravityScale = 0.0f;
+    const ecs::Entity ball = addBall(world, Vec3(0.5f, 0.0f, 0.0f), still);
+    step(world, kStep);
+    ASSERT_EQ(world.get<Trigger>(zone).inside.size(), 1u);
+
+    // A copy placed elsewhere: nothing entered it, so nothing may leave it.
+    const ecs::Entity copy = world.clone(zone);
+    world.get<Transform>(copy).position = Vec3(50.0f, 0.0f, 0.0f);
+    EXPECT_TRUE(world.get<Trigger>(copy).inside.empty());
+    std::vector<TriggerEvent> events;
+    step(world, kStep, {}, nullptr, &events);
+    EXPECT_TRUE(events.empty());
+    // And one placed over the ball sees it enter.
+    const ecs::Entity overlapping = world.clone(zone);
+    step(world, kStep, {}, nullptr, &events);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].trigger, overlapping);
+    EXPECT_EQ(events[0].body, ball);
+    EXPECT_TRUE(events[0].entered);
+}
