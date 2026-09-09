@@ -295,6 +295,7 @@ What the backend takes care of, so that renderers do not have to:
 - **Resource states.** Image layouts are tracked per texture; attachments, sampled textures, and presented images are transitioned automatically.
 - **Lifetimes.** `destroy*` is always safe: the object is released once no in-flight frame can reference it.
 - **Resizing.** The swapchain follows its window and is rebuilt when out of date.
+- **GPU timings.** Each `beginDebugGroup` / `endDebugGroup` pair is also timed on the GPU with timestamp queries, read back without stalling once the frame's slot comes around again; `lastGpuTimings()` lists them, nested under a `frame` entry, for the last frame the GPU finished (empty where the queue has no timestamps). The forward renderer's groups span whole passes (`shadows`, `scene` with its features inside, `bloom`, `tonemap`, `fxaa`), so they add up to the frame.
 
 The Vulkan backend uses Vulkan 1.3 dynamic rendering (no render pass or framebuffer objects), synchronization2, and Vulkan Memory Allocator. Clip space follows Vulkan conventions (Y down, depth in `[0, 1]`); `render::makeCameraData` flips the projection so the world stays Y-up with counter-clockwise front faces.
 

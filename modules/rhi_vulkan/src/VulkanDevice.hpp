@@ -151,6 +151,7 @@ public:
     void waitIdle() override;
 
     [[nodiscard]] rhi::FrameStats lastFrameStats() const override { return lastStats_; }
+    [[nodiscard]] std::vector<rhi::GpuTiming> lastGpuTimings() const override { return lastGpuTimings_; }
     [[nodiscard]] u32 validationErrorCount() const override {
         return validationErrors_.load(std::memory_order_relaxed);
     }
@@ -165,16 +166,32 @@ public:
     void transition(VkCommandBuffer commandBuffer, Texture& texture, VkImageLayout layout);
 
     void beginDebugLabel(VkCommandBuffer commandBuffer, std::string_view name);
+    /// Timestamps around a debug group of the frame being recorded.
+    void beginTimedSpan(std::string_view name);
+    void endTimedSpan();
     void endDebugLabel(VkCommandBuffer commandBuffer);
 
 private:
     Device() : commandList_(*this) {}
 
+    /// A debug group's timestamp queries.
+    struct TimedSpan {
+        std::string name;
+        u32 depth = 0;
+        u32 begin = 0;
+        u32 end = ~0u;  ///< Not written yet.
+    };
+
     struct FrameData {
         VkCommandPool pool = VK_NULL_HANDLE;
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
         VkFence fence = VK_NULL_HANDLE;
+        VkQueryPool timestamps = VK_NULL_HANDLE;
+        std::vector<TimedSpan> spans;
+        std::vector<usize> openSpans;  ///< Indices into spans, innermost last.
+        u32 queryCount = 0;
     };
+    static constexpr u32 kMaxTimestamps = 256;
 
     struct DeferredRelease {
         u64 frame = 0;  ///< Last frame that may reference the object.
@@ -260,6 +277,11 @@ private:
     std::deque<DeferredRelease> deferred_;
     std::vector<rhi::SwapchainHandle> acquired_;
     rhi::FrameStats lastStats_;
+    std::vector<rhi::GpuTiming> lastGpuTimings_;
+    f64 timestampPeriod_ = 0.0;  ///< Nanoseconds per tick; 0 without timestamps.
+    u64 timestampMask_ = ~0ull;
+    /// Collects the timings of the frame that last used `frame`.
+    void readTimings(FrameData& frame);
     u64 frameNumber_ = 0;
     bool inFrame_ = false;
 

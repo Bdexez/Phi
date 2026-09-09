@@ -127,6 +127,11 @@ public:
     // --- Diagnostics -------------------------------------------------------------
     /// Statistics of the last completed frame.
     [[nodiscard]] virtual FrameStats lastFrameStats() const = 0;
+    /// GPU time of each debug group of the most recent frame the GPU has
+    /// finished (a couple of frames old), in the order they began, after a
+    /// "frame" entry for the whole frame. Empty where the backend or the
+    /// hardware cannot measure it.
+    [[nodiscard]] virtual std::vector<GpuTiming> lastGpuTimings() const { return {}; }
     /// Number of errors reported by the backend's validation facilities since
     /// creation. Always 0 when validation is off.
     [[nodiscard]] virtual u32 validationErrorCount() const = 0;

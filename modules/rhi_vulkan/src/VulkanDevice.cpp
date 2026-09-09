@@ -281,6 +281,10 @@ Result<> Device::selectPhysicalDevice(const DeviceConfig& config) {
             bestScore = score;
             physicalDevice_ = candidate;
             queueFamily_ = graphicsFamily;
+            // GPU timings need timestamps on the graphics queue.
+            const u32 validBits = families[graphicsFamily].timestampValidBits;
+            timestampPeriod_ = validBits > 0 ? static_cast<f64>(properties.limits.timestampPeriod) : 0.0;
+            timestampMask_ = validBits >= 64 ? ~0ull : (1ull << validBits) - 1;
             adapterName_ = properties.deviceName;
             adapterApiVersion_ = properties.apiVersion;
         }
@@ -366,6 +370,13 @@ void Device::createFrameResources() {
         // Created signaled so the very first beginFrame does not block.
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         BDEX_VK_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &frame.fence));
+        if (timestampPeriod_ > 0.0) {
+            VkQueryPoolCreateInfo queryInfo{};
+            queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryInfo.queryCount = kMaxTimestamps;
+            BDEX_VK_CHECK(vkCreateQueryPool(device_, &queryInfo, nullptr, &frame.timestamps));
+        }
     }
 
     BDEX_VK_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &immediatePool_));
@@ -414,6 +425,7 @@ Device::~Device() {
         descriptorPools_.clear();
         for (FrameData& frame : frames_) {
             if (frame.fence != VK_NULL_HANDLE) vkDestroyFence(device_, frame.fence, nullptr);
+            if (frame.timestamps != VK_NULL_HANDLE) vkDestroyQueryPool(device_, frame.timestamps, nullptr);
             if (frame.pool != VK_NULL_HANDLE) vkDestroyCommandPool(device_, frame.pool, nullptr);
         }
         if (immediateFence_ != VK_NULL_HANDLE) vkDestroyFence(device_, immediateFence_, nullptr);
@@ -479,6 +491,58 @@ void Device::beginDebugLabel(VkCommandBuffer commandBuffer, std::string_view nam
 void Device::endDebugLabel(VkCommandBuffer commandBuffer) {
     if (cmdEndLabel_ != nullptr) {
         cmdEndLabel_(commandBuffer);
+    }
+}
+
+void Device::beginTimedSpan(std::string_view name) {
+    FrameData& frame = frames_[frameSlot()];
+    if (frame.timestamps == VK_NULL_HANDLE || frame.queryCount + 2 > kMaxTimestamps) {
+        frame.openSpans.push_back(~usize{0});  // keeps begin / end paired
+        return;
+    }
+    // Each group gets its own pair of queries: begin now, end when it closes.
+    TimedSpan span{std::string(name), static_cast<u32>(frame.openSpans.size()), frame.queryCount};
+    frame.queryCount += 2;
+    vkCmdWriteTimestamp2(frame.commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, frame.timestamps, span.begin);
+    frame.openSpans.push_back(frame.spans.size());
+    frame.spans.push_back(std::move(span));
+}
+
+void Device::endTimedSpan() {
+    FrameData& frame = frames_[frameSlot()];
+    if (frame.openSpans.empty()) {
+        return;
+    }
+    const usize index = frame.openSpans.back();
+    frame.openSpans.pop_back();
+    if (index == ~usize{0}) {
+        return;
+    }
+    TimedSpan& span = frame.spans[index];
+    span.end = span.begin + 1;
+    vkCmdWriteTimestamp2(frame.commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, frame.timestamps, span.end);
+}
+
+void Device::readTimings(FrameData& frame) {
+    if (frame.timestamps == VK_NULL_HANDLE || frame.queryCount == 0) {
+        return;
+    }
+    std::vector<u64> ticks(frame.queryCount);
+    // The frame's fence has signaled, so every written query is available.
+    const VkResult result = vkGetQueryPoolResults(device_, frame.timestamps, 0, frame.queryCount,
+                                                  ticks.size() * sizeof(u64), ticks.data(), sizeof(u64),
+                                                  VK_QUERY_RESULT_64_BIT);
+    if (result != VK_SUCCESS) {
+        return;
+    }
+    lastGpuTimings_.clear();
+    for (const TimedSpan& span : frame.spans) {
+        if (span.end == ~0u) {
+            continue;  // never closed
+        }
+        const u64 elapsed = (ticks[span.end] - ticks[span.begin]) & timestampMask_;
+        lastGpuTimings_.push_back(
+            {span.name, span.depth, static_cast<f64>(elapsed) * timestampPeriod_ / 1'000'000.0});
     }
 }
 
@@ -1262,6 +1326,7 @@ rhi::ICommandList& Device::beginFrame() {
     if (frameNumber_ >= kFramesInFlight) {
         flushDeferred(frameNumber_ - kFramesInFlight);
     }
+    readTimings(frame);
 
     BDEX_VK_CHECK(vkResetCommandPool(device_, frame.pool, 0));
     VkCommandBufferBeginInfo beginInfo{};
@@ -1269,8 +1334,15 @@ rhi::ICommandList& Device::beginFrame() {
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     BDEX_VK_CHECK(vkBeginCommandBuffer(frame.commandBuffer, &beginInfo));
 
+    frame.spans.clear();
+    frame.openSpans.clear();
+    frame.queryCount = 0;
+    if (frame.timestamps != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(frame.commandBuffer, frame.timestamps, 0, kMaxTimestamps);
+    }
     commandList_.begin(frame.commandBuffer);
     inFrame_ = true;
+    beginTimedSpan("frame");
     return commandList_;
 }
 
@@ -1301,6 +1373,11 @@ void Device::endFrame() {
     }
 
     lastStats_ = commandList_.stats();
+    // Groups left open would never get their end; then the whole frame.
+    while (frame.openSpans.size() > 1) {
+        frame.openSpans.pop_back();
+    }
+    endTimedSpan();
     commandList_.end();
     BDEX_VK_CHECK(vkEndCommandBuffer(frame.commandBuffer));
 

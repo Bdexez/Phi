@@ -282,6 +282,13 @@ struct DeviceInfo {
 };
 
 /// What the last frame recorded, for profiling overlays and tests.
+/// GPU time spent in one debug group (or "frame", around a whole frame).
+struct GpuTiming {
+    std::string name;
+    u32 depth = 0;  ///< Nesting: 0 for "frame", 1 for groups directly in it...
+    f64 milliseconds = 0.0;
+};
+
 struct FrameStats {
     u32 drawCalls = 0;
     u32 instances = 0;  ///< Summed over draw calls; equals drawCalls without instancing.
