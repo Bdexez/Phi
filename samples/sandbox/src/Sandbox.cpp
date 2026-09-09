@@ -12,7 +12,8 @@
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
-// shaders, F8 to throw a ball, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
+// shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
+// selected object, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "FlyCamera.hpp"
@@ -95,6 +96,8 @@ protected:
         config.setDefault("input.flashlight", "F6, GamepadX");
         config.setDefault("input.reload_shaders", "F7");
         config.setDefault("input.throw_ball", "F8, GamepadA");
+        config.setDefault("input.duplicate", "F10");
+        config.setDefault("input.delete", "Delete");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -149,6 +152,13 @@ protected:
             }
             if (controls->pressed("throw_ball")) {
                 throwBall();
+            }
+            if (controls->pressed("duplicate")) {
+                duplicateSelection();
+            }
+            if (controls->pressed("delete") && scene().world().alive(selected_)) {
+                scene::destroyHierarchy(scene().world(), selected_);
+                selected_ = {};
             }
             if (controls->pressed("reload_shaders") && engine().services().has<render::IRenderer>()) {
                 if (const auto reloaded = renderer().reloadShaders(); !reloaded) {
@@ -298,6 +308,20 @@ private:
     }
 
     /// A spot light carried by the camera, switched on and off.
+    /// Copies the selected object and everything attached to it, a little
+    /// above the original, and selects the copy.
+    void duplicateSelection() {
+        ecs::World& world = scene().world();
+        if (!world.alive(selected_) || selected_ == camera_) {
+            return;
+        }
+        const ecs::Entity copy = scene::cloneHierarchy(world, selected_);
+        if (auto* transform = world.tryGet<scene::Transform>(copy)) {
+            transform->position.y += 1.5f;
+        }
+        selected_ = copy;
+    }
+
     void toggleFlashlight() {
         ecs::World& world = scene().world();
         if (const ecs::Entity torch = scene().find("Flashlight"); torch.valid()) {
