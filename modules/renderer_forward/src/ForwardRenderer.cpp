@@ -469,12 +469,13 @@ void ForwardRenderer::updateShadowView(const render::CameraData& camera) {
 void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameTime& time) {
     // Runs even without shadows: clearing keeps the map in a valid state for
     // the frame bind group that references it.
+    // The group spans the whole pass, so GPU timings include the clear.
+    commands.beginDebugGroup("shadows");
     const rhi::DepthAttachment depth{shadowMap_, rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
     commands.beginRendering({{}, &depth});
     if (shadowsThisFrame_) {
         auto* scenes = engine_.services().tryGet<scene::SceneManager>();
         scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
-        commands.beginDebugGroup("shadows");
         for (u32 cascade = 0; cascade < cascades_.size(); ++cascade) {
             // Each cascade draws into its cell of the 2 x 2 atlas.
             const u32 x = (cascade & 1u) * shadowMapSize_;
@@ -496,9 +497,9 @@ void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameT
                 feature->renderShadows(context);
             }
         }
-        commands.endDebugGroup();
     }
     commands.endRendering();
+    commands.endDebugGroup();
 }
 
 void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
@@ -599,6 +600,7 @@ void ForwardRenderer::renderScene(rhi::ICommandList& commands, rhi::TextureHandl
     const rhi::DepthAttachment depthAttachment{depthTarget_, rhi::LoadOp::Clear,
                                                rhi::StoreOp::DontCare, 1.0f};
 
+    commands.beginDebugGroup("scene");  // around the pass: timings include clears
     commands.beginRendering({colorAttachments, &depthAttachment});
     commands.setViewport({0.0f, 0.0f, static_cast<f32>(extent.width),
                           static_cast<f32>(extent.height), 0.0f, 1.0f});
@@ -619,6 +621,7 @@ void ForwardRenderer::renderScene(rhi::ICommandList& commands, rhi::TextureHandl
         feature->render(context);
     }
     commands.endRendering();  // leaves a sampled (HDR) target readable
+    commands.endDebugGroup();
 }
 
 void ForwardRenderer::renderFrame(const FrameTime& time) {

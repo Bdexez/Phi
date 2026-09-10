@@ -1219,7 +1219,7 @@ TEST(VulkanHeadless, MeasuresGpuTimePerDebugGroup) {
         }
         names.push_back(timings[i].name);
     }
-    for (const char* pass : {"shadows", "forward.meshes", "tonemap"}) {
+    for (const char* pass : {"shadows", "scene", "forward.meshes", "tonemap"}) {
         EXPECT_NE(std::find(names.begin(), names.end(), pass), names.end()) << pass;
     }
     EXPECT_GT(timings.front().milliseconds, 0.0);
