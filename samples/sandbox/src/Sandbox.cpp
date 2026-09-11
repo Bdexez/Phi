@@ -452,6 +452,10 @@ private:
                       "{} buffer binds",
                       frame.drawCalls, frame.instances, frame.triangles, frame.pipelineBinds,
                       frame.bindGroupBinds, frame.bufferBinds);
+            for (const rhi::GpuTiming& timing : engine().services().get<rhi::IDevice>().lastGpuTimings()) {
+                log::info("profile", "gpu {:<28} {:>10.3f}", std::string(timing.depth * 2, ' ') + timing.name,
+                          timing.milliseconds);
+            }
         }
         scheduler.resetStats();
     }
