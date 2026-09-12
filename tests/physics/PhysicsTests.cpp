@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -567,4 +569,33 @@ TEST(Physics, ClonedTriggersStartEmpty) {
     EXPECT_EQ(events[0].trigger, overlapping);
     EXPECT_EQ(events[0].body, ball);
     EXPECT_TRUE(events[0].entered);
+}
+
+TEST(Physics, BrokenCollidersAreLeftOut) {
+    // A NaN or infinite pose (a bad scene file, a blown-up simulation) must
+    // neither crash the step nor disturb the rest of the world.
+    ecs::World world;
+    addFloor(world);
+    const f32 nan = std::numeric_limits<f32>::quiet_NaN();
+    const f32 inf = std::numeric_limits<f32>::infinity();
+    const ecs::Entity brokenBox = world.create();
+    world.emplace<Transform>(brokenBox).position = Vec3(nan, 0.0f, 0.0f);
+    world.emplace<BoxCollider>(brokenBox, Vec3(1.0f));
+    const ecs::Entity hugeBox = world.create();
+    world.emplace<Transform>(hugeBox).position = Vec3(1e30f, 0.0f, -1e30f);
+    world.emplace<BoxCollider>(hugeBox, Vec3(1.0f));
+    RigidBody body;
+    const ecs::Entity lost = addBall(world, Vec3(0.0f, inf, 0.0f), body);
+    body.velocity = Vec3(nan);
+    addBall(world, Vec3(2.0f, 1.0f, 0.0f), body);
+    const ecs::Entity healthy = addBall(world, Vec3(-2.0f, 3.0f, 0.0f), RigidBody{});
+
+    simulate(world, 3.0f);
+    EXPECT_NEAR(world.get<Transform>(healthy).position.y, 0.5f, 0.01f);  // landed as usual
+    EXPECT_TRUE(std::isinf(world.get<Transform>(lost).position.y));      // left where it was
+
+    // Rays ignore them too: a NaN box used to be hit by every ray at 0.
+    const auto hit = raycast(world, Vec3(-2.0f, 10.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->entity, healthy);
 }
