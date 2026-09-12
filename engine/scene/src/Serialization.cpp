@@ -111,10 +111,11 @@ std::string EntityRefs::save(ecs::Entity entity) const {
 ecs::Entity EntityRefs::load(std::string_view id) const {
     usize index = 0;
     const auto [end, error] = std::from_chars(id.data(), id.data() + id.size(), index);
-    if (error != std::errc{} || end != id.data() + id.size() || index >= entityOfId_.size()) {
+    if (error != std::errc{} || end != id.data() + id.size()) {
         return {};
     }
-    return entityOfId_[index];
+    const auto it = entityOfId_.find(index);
+    return it == entityOfId_.end() ? ecs::Entity{} : it->second;
 }
 
 // --- ComponentSerializers --------------------------------------------------------
@@ -229,8 +230,6 @@ Result<std::vector<ecs::Entity>> ComponentSerializers::load(ecs::World& world, s
     // Two passes: every entity exists before components refer to them.
     EntityRefs refs;
     refs.world_ = &world;
-    const usize count = entities.empty() ? 0 : entities.rbegin()->first + 1;
-    refs.entityOfId_.resize(count);
     std::vector<ecs::Entity> created;
     for (const auto& [id, components] : entities) {
         refs.entityOfId_[id] = world.create();
