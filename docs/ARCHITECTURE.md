@@ -254,6 +254,8 @@ auto sky = assets.loadAsync<assets::ImageData>("app:/textures/sky.png");  // ret
 if (sky.ready()) { auto image = sky.get(); }
 ```
 
+Built-in loaders: `.obj` (`MeshData`), `.png` and `.tga` (`ImageData`, RGBA8), `.wav` (`AudioData`: interleaved float samples, mono or stereo, from 8- to 32-bit integer or 32-bit float PCM), and `.spv` shaders. `makeTone` builds a sound without any file, as the procedural meshes and textures do for geometry.
+
 `loadAsync` reads and decodes on the `JobSystem` service. It is thread-safe: a request for an asset already being loaded joins that load, a failed load is retried on the next request, and the manager waits for loads still in flight when it is destroyed. Built-in loaders handle OBJ, PNG, TGA, and SPIR-V.
 
 ## Scene files
