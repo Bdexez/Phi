@@ -21,3 +21,7 @@ endif()
 if(BDEX_MODULE_RENDERER_FORWARD)
     add_subdirectory(renderer_forward)
 endif()
+
+if(BDEX_MODULE_AUDIO_NULL)
+    add_subdirectory(audio_null)
+endif()

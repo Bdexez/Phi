@@ -20,6 +20,7 @@ option(BDEX_MODULE_WINDOW_NULL "Build the headless window module" ON)
 option(BDEX_MODULE_RHI_VULKAN "Build the Vulkan RHI module" ON)
 option(BDEX_MODULE_RHI_NULL "Build the no-op RHI module" ON)
 option(BDEX_MODULE_RENDERER_FORWARD "Build the forward renderer module" ON)
+option(BDEX_MODULE_AUDIO_NULL "Build the silent audio module" ON)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)

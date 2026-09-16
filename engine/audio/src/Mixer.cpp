@@ -141,4 +141,20 @@ void Mixer::mix(std::span<f32> out) {
     }
 }
 
+void Mixer::advance(f64 seconds) {
+    if (!(seconds > 0.0)) {
+        return;
+    }
+    const f64 frames = seconds * sampleRate_ + advanceRemainder_;
+    usize remaining = static_cast<usize>(std::min(frames, 1e9));
+    advanceRemainder_ = frames - static_cast<f64>(remaining);
+    constexpr usize kChunk = 1024;
+    while (remaining > 0) {
+        const usize chunk = std::min(remaining, kChunk);
+        scratch_.resize(chunk * 2);
+        mix(scratch_);
+        remaining -= chunk;
+    }
+}
+
 }  // namespace bdex::audio

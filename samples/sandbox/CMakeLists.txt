@@ -14,7 +14,8 @@ bdex_target_modules(sandbox
     window_null
     rhi_vulkan
     rhi_null
-    renderer_forward)
+    renderer_forward
+    audio_null)
 
 # Application shaders, loaded from "app:/shaders/...".
 bdex_compile_shaders(sandbox_shaders
