@@ -172,7 +172,9 @@ int Application::run(int argc, char** argv) {
 
     Config config;
     config.set("app.name", executable.stem().string());
-    config.set("engine.modules", "window_glfw,rhi_vulkan,renderer_forward");
+    config.set("engine.modules", std::string("window_glfw,rhi_vulkan,renderer_forward") +
+                                     (std::string_view(BDEX_DEFAULT_AUDIO_MODULE).empty() ? "" : ",") +
+                                     BDEX_DEFAULT_AUDIO_MODULE);
     onConfigure(config);
 
     std::filesystem::path configFile = executableDir / (executable.stem().string() + ".ini");

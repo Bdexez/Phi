@@ -15,7 +15,8 @@ bdex_target_modules(sandbox
     rhi_vulkan
     rhi_null
     renderer_forward
-    audio_null)
+    audio_null
+    audio_openal)
 
 # Application shaders, loaded from "app:/shaders/...".
 bdex_compile_shaders(sandbox_shaders
@@ -26,4 +27,5 @@ bdex_compile_shaders(sandbox_shaders
 add_dependencies(sandbox sandbox_shaders)
 
 # Default configuration, picked up next to the executable.
-configure_file(sandbox.ini ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sandbox.ini COPYONLY)
+# (with the audio module this build has).
+configure_file(sandbox.ini ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sandbox.ini @ONLY)
