@@ -20,6 +20,8 @@
 #include "SkyFeature.hpp"
 
 #include <bdex/app/Application.hpp>
+#include <bdex/assets/Audio.hpp>
+#include <bdex/audio/Mixer.hpp>
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/physics/Physics.hpp>
@@ -31,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 #include <format>
 #include <limits>
 #include <numbers>
@@ -112,6 +115,7 @@ protected:
         }
         buildScene();
         registerSerializers();
+        setUpSounds();
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
             spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
@@ -122,6 +126,12 @@ protected:
     void onUpdate(const FrameTime& time) override {
         if (const auto* controls = actions(); controls != nullptr && input() != nullptr) {
             flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
+        }
+        // The ears go where the eyes are.
+        if (auto* mixer = engine().services().tryGet<audio::Mixer>();
+            mixer != nullptr && scene().world().has<scene::Transform>(camera_)) {
+            const scene::Transform& eye = scene().world().get<scene::Transform>(camera_);
+            mixer->setListener(eye.position, eye.rotation);
         }
         updateTitle(time);
 
@@ -300,11 +310,61 @@ private:
             ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
                                      .restitution = 0.7f,
                                      .angularDamping = 1.5f});  // rolls to a stop in a few seconds
+        if (auto* mixer = engine().services().tryGet<audio::Mixer>(); mixer != nullptr && throwSound_) {
+            mixer->play(throwSound_, {.volume = 0.4f});
+        }
         balls_.push_back(ball);
         if (balls_.size() > kMaxBalls) {
             world.destroy(balls_.front());
             balls_.erase(balls_.begin());
         }
+    }
+
+    /// Sounds are made here rather than loaded, like the textures: a whoosh
+    /// for throws, and a knock for impacts, played where they happen and as
+    /// loud as they are hard.
+    void setUpSounds() {
+        if (!engine().services().has<audio::Mixer>()) {
+            return;
+        }
+        constexpr u32 kRate = 48000;
+        const auto shaped = [&](f32 seconds, auto&& sample) {
+            auto sound = std::make_shared<assets::AudioData>();
+            sound->sampleRate = kRate;
+            sound->channels = 1;
+            sound->samples.resize(static_cast<usize>(seconds * kRate));
+            for (usize i = 0; i < sound->samples.size(); ++i) {
+                sound->samples[i] = sample(static_cast<f32>(i) / kRate);
+            }
+            return sound;
+        };
+        const f32 tau = 2.0f * std::numbers::pi_v<f32>;
+        // A rising chirp, faded in and out.
+        throwSound_ = shaped(0.16f, [&](f32 t) {
+            const f32 envelope = std::sin(std::numbers::pi_v<f32> * t / 0.16f);
+            return 0.3f * envelope * std::sin(tau * (250.0f * t + 1400.0f * t * t));
+        });
+        // A low tone with a click of noise, dying away quickly.
+        u32 noise = 12345;
+        impactSound_ = shaped(0.3f, [&](f32 t) {
+            noise = noise * 1664525u + 1013904223u;
+            const f32 grain = static_cast<f32>(noise >> 8) / static_cast<f32>(1u << 24) * 2.0f - 1.0f;
+            return std::exp(-t * 16.0f) * (0.7f * std::sin(tau * 150.0f * t) + 0.3f * grain * std::exp(-t * 60.0f));
+        });
+        collisions_ = engine().events().subscribe<physics::Collision>([this](const physics::Collision& event) {
+            auto* mixer = engine().services().tryGet<audio::Mixer>();
+            if (mixer == nullptr || mixer->voiceCount() >= 24) {
+                return;  // a pile of balls settling would make a racket
+            }
+            const physics::Contact& contact = event.contact;
+            mixer->play(impactSound_, {.volume = std::clamp(contact.impulse / 6.0f, 0.05f, 1.0f),
+                                       // Heavier hits sound a little lower.
+                                       .pitch = std::clamp(1.3f - contact.impulse / 30.0f, 0.7f, 1.3f),
+                                       .spatial = true,
+                                       .position = contact.point,
+                                       .minDistance = 3.0f,
+                                       .maxDistance = 60.0f});
+        });
     }
 
     /// A spot light carried by the camera, switched on and off.
@@ -644,6 +704,9 @@ private:
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
+    std::shared_ptr<const assets::AudioData> throwSound_;
+    std::shared_ptr<const assets::AudioData> impactSound_;
+    Subscription collisions_;
     render::MaterialHandle ballMaterial_;
     scene::ComponentSerializers serializers_;
     std::vector<Model> models_;
