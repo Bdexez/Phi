@@ -88,3 +88,19 @@ TEST(ServiceRegistry, RemoveAndReverseOrderDestruction) {
     services.remove<IGreeter>();
     EXPECT_FALSE(services.has<IGreeter>());
 }
+
+TEST(ServiceRegistry, SharedAccessKeepsAServiceAlive) {
+    std::vector<int> destroyed;
+    std::shared_ptr<First> kept;
+    {
+        ServiceRegistry services;
+        EXPECT_EQ(services.tryGetShared<First>(), nullptr);
+        services.provide<First>(std::make_shared<First>(&destroyed, 1));
+        kept = services.tryGetShared<First>();
+        ASSERT_NE(kept, nullptr);
+        EXPECT_EQ(kept.get(), services.tryGet<First>());
+    }
+    EXPECT_TRUE(destroyed.empty());  // outlived the registry
+    kept.reset();
+    EXPECT_EQ(destroyed, (std::vector<int>{1}));
+}
