@@ -56,6 +56,9 @@ public:
     void setVolume(VoiceId voice, f32 volume);
     void setPitch(VoiceId voice, f32 pitch);
     void setPosition(VoiceId voice, const Vec3& position);
+    /// Replaces a playing voice's volume, pitch, pan, position and distances
+    /// at once (its looping is kept).
+    void update(VoiceId voice, const PlayParams& params);
 
     /// Where the listener is and which way it faces (its -Z is forward, +X
     /// right, as for cameras).

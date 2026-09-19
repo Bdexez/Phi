@@ -64,6 +64,15 @@ void Mixer::setPosition(VoiceId voice, const Vec3& position) {
     }
 }
 
+void Mixer::update(VoiceId voice, const PlayParams& params) {
+    const std::lock_guard lock(mutex_);
+    if (Voice* found = find(voice)) {
+        const bool loop = found->params.loop;
+        found->params = params;
+        found->params.loop = loop;
+    }
+}
+
 void Mixer::setListener(const Vec3& position, const Quat& orientation) {
     const std::lock_guard lock(mutex_);
     listenerPosition_ = position;

@@ -1,4 +1,5 @@
 #include <bdex/app/Application.hpp>
+#include <bdex/audio/Components.hpp>
 
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/JobSystem.hpp>
@@ -116,6 +117,7 @@ struct Application::State {
     scene::SceneManager* scenes = nullptr;
     assets::AssetManager* assets = nullptr;
     Subscription closeSubscription;
+    std::unique_ptr<audio::AudioSystem> audio;  ///< When an audio module provides a mixer.
 };
 
 Application::Application() : state_(std::make_unique<State>()) {}
@@ -326,6 +328,18 @@ int Application::run(int argc, char** argv) {
             }
         },
         1000);
+    // Sounds follow their entities, once those have their world transforms.
+    if (auto mixer = engine.services().tryGetShared<audio::Mixer>()) {
+        state_->audio = std::make_unique<audio::AudioSystem>(std::move(mixer));
+        scheduler.add(
+            Phase::PostUpdate, "audio.update",
+            [this](const FrameTime&) {
+                if (scene::Scene* active = state_->scenes->active()) {
+                    state_->audio->update(active->world());
+                }
+            },
+            1100);
+    }
 
     if (!screenshotPath.empty()) {
         // Capture the requested frame, or the last one of a bounded run.
@@ -374,6 +388,9 @@ int Application::run(int argc, char** argv) {
 
     state_->closeSubscription.reset();
     services.remove<platform::InputActions>();  // refers to the window module's InputState
+    // Shares the mixer, which the audio module made: the module's code (and
+    // the shared_ptr's control block) goes away when modules unload.
+    state_->audio.reset();
     engine.shutdown();
     state_->scenes = nullptr;
     state_->assets = nullptr;

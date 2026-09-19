@@ -32,6 +32,7 @@ add_executable(bdex_tests
     assets/AudioTests.cpp
     assets/PngTests.cpp
     assets/ZlibTests.cpp
+    audio/AudioComponentsTests.cpp
     audio/MixerTests.cpp
     rhi/RhiTests.cpp
     scene/SceneTests.cpp
