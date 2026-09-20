@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <string_view>
 #include <system_error>
@@ -330,6 +331,13 @@ int Application::run(int argc, char** argv) {
         1000);
     // Sounds follow their entities, once those have their world transforms.
     if (auto mixer = engine.services().tryGetShared<audio::Mixer>()) {
+        // Sound settings: audio.volume for everything, audio.volume.<bus>.
+        mixer->setMasterVolume(static_cast<f32>(std::max(config.getFloat("audio.volume", 1.0), 0.0)));
+        for (usize bus = 0; bus < audio::kBusCount; ++bus) {
+            const auto id = static_cast<audio::Bus>(bus);
+            const std::string key = std::format("audio.volume.{}", audio::busName(id));
+            mixer->setBusVolume(id, static_cast<f32>(std::max(config.getFloat(key, 1.0), 0.0)));
+        }
         state_->audio = std::make_unique<audio::AudioSystem>(std::move(mixer));
         scheduler.add(
             Phase::PostUpdate, "audio.update",
