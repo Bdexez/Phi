@@ -49,14 +49,14 @@ TEST(Mixer, PansMonoWithEqualPowerAndBalancesStereo) {
     EXPECT_FLOAT_EQ(out[0], 0.5f * kCenter);
     EXPECT_FLOAT_EQ(out[1], 0.5f * kCenter);
 
-    mixer.stopAll();
+    mixer.stopAll(0.0f);  // at once: the next checks hear only the new voice
     mixer.play(constant(0.5f, 100), {.pan = -1.0f});
     out = render(mixer, 4);
     EXPECT_FLOAT_EQ(out[0], 0.5f);
     EXPECT_NEAR(out[1], 0.0f, 1e-7f);
 
     // Stereo clips keep both channels as they are when centered.
-    mixer.stopAll();
+    mixer.stopAll(0.0f);  // at once: the next checks hear only the new voice
     auto stereo = std::make_shared<assets::AudioData>();
     stereo->sampleRate = 48000;
     stereo->channels = 2;
@@ -129,8 +129,46 @@ TEST(Mixer, LoopsUntilStopped) {
         EXPECT_FLOAT_EQ(out[frame * 2], ramp->samples[frame % 4]) << frame;
     }
     EXPECT_TRUE(mixer.playing(voice));
+    mixer.stop(voice, 0.0f);
+    EXPECT_FALSE(mixer.playing(voice));
+    EXPECT_FLOAT_EQ(render(mixer, 1)[0], 0.0f);
+}
+
+TEST(Mixer, GainsGlideAndStopsFadeInsteadOfClicking) {
+    Mixer mixer(48000);
+    const VoiceId voice = mixer.play(constant(1.0f, 48000), {.pan = -1.0f, .loop = true});
+    EXPECT_FLOAT_EQ(render(mixer, 100)[0], 1.0f);  // a new voice starts at its gain
+
+    // Dropping the volume to 0 does not jump: it ramps over the buffer.
+    mixer.setVolume(voice, 0.0f);
+    std::vector<f32> out = render(mixer, 100);
+    EXPECT_NEAR(out[0], 0.99f, 1e-5f);
+    EXPECT_NEAR(out[2 * 49], 0.5f, 1e-5f);
+    EXPECT_NEAR(out[2 * 99], 0.0f, 1e-6f);
+    for (usize frame = 1; frame < 100; ++frame) {
+        EXPECT_LT(out[frame * 2], out[(frame - 1) * 2]) << frame;
+    }
+
+    // Stopping fades out over 5 ms (240 frames at 48 kHz), then the voice
+    // is gone; it no longer counts as playing from the moment it stops.
+    mixer.setVolume(voice, 1.0f);
+    render(mixer, 100);
     mixer.stop(voice);
     EXPECT_FALSE(mixer.playing(voice));
+    EXPECT_EQ(mixer.voiceCount(), 0u);
+    mixer.setVolume(voice, 1.0f);  // a stopping voice takes no more changes
+    out = render(mixer, 300);
+    EXPECT_FLOAT_EQ(out[0], 1.0f);
+    EXPECT_NEAR(out[2 * 120], 0.5f, 0.01f);
+    for (usize frame = 1; frame < 240; ++frame) {
+        EXPECT_LT(out[frame * 2], out[(frame - 1) * 2]) << frame;
+    }
+    EXPECT_FLOAT_EQ(out[2 * 240], 0.0f);
+    EXPECT_FLOAT_EQ(out[2 * 299], 0.0f);
+
+    // A voice never heard yet stops at once: there is nothing to fade.
+    const VoiceId unheard = mixer.play(constant(1.0f, 100));
+    mixer.stop(unheard);
     EXPECT_FLOAT_EQ(render(mixer, 1)[0], 0.0f);
 }
 
@@ -189,6 +227,6 @@ TEST(Mixer, IsDrivenFromAnotherThreadWhileMixing) {
     }
     done = true;
     audioThread.join();
-    mixer.stopAll();
+    mixer.stopAll(0.0f);  // at once: the next checks hear only the new voice
     EXPECT_EQ(mixer.voiceCount(), 0u);
 }
