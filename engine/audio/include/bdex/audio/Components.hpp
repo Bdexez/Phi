@@ -29,6 +29,9 @@ struct AudioSource {
     // the original's voice. Moves keep it.
     AudioSource(const AudioSource& other) : clip(other.clip), params(other.params), autoplay(other.autoplay) {}
     AudioSource& operator=(const AudioSource& other) {
+        if (this == &other) {
+            return *this;  // keeps playing
+        }
         clip = other.clip;
         params = other.params;
         autoplay = other.autoplay;

@@ -58,7 +58,16 @@ Result<> parseField(const Fields& fields, std::string_view key, f32& out) {
 
 Result<> parseField(const Fields& fields, std::string_view key, Vec3& out) {
     const auto it = fields.find(key);
-    return it == fields.end() ? Result<>{} : parseFloats(key, it->second, &out.x, 3);
+    if (it == fields.end()) {
+        return {};
+    }
+    // Through an array: indexing past out.x would leave the member.
+    f32 values[3];
+    if (auto parsed = parseFloats(key, it->second, values, 3); !parsed) {
+        return parsed;
+    }
+    out = Vec3(values[0], values[1], values[2]);
+    return {};
 }
 
 Result<> parseField(const Fields& fields, std::string_view key, Quat& out) {

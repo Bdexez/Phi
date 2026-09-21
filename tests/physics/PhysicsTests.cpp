@@ -556,6 +556,12 @@ TEST(Physics, ClonedTriggersStartEmpty) {
     ASSERT_EQ(world.get<Trigger>(zone).inside.size(), 1u);
 
     // A copy placed elsewhere: nothing entered it, so nothing may leave it.
+    // Assigning a trigger to itself keeps who is inside.
+    Trigger& original = world.get<Trigger>(zone);
+    Trigger& alias = original;
+    original = alias;
+    ASSERT_EQ(world.get<Trigger>(zone).inside.size(), 1u);
+
     const ecs::Entity copy = world.clone(zone);
     world.get<Transform>(copy).position = Vec3(50.0f, 0.0f, 0.0f);
     EXPECT_TRUE(world.get<Trigger>(copy).inside.empty());
