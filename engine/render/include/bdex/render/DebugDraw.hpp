@@ -4,6 +4,7 @@
 #include <bdex/render/Frustum.hpp>
 
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace bdex::render {
@@ -41,6 +42,17 @@ public:
     /// The edges of the volume a view-projection matrix sees (engine depth
     /// range [0, 1]).
     void frustum(const Mat4& viewProjection, const Vec4& color = Vec4(1.0f));
+
+    /// Text in a simple stroke font, drawn with lines: digits, letters
+    /// (lowercase drawn as capitals), common punctuation; other characters
+    /// show as '?', and '\n' starts a new line below. `origin` is the
+    /// bottom-left corner of the first line, `right` and `up` the directions
+    /// letters advance and stand in (the camera's, for text facing it), and
+    /// `height` the height of capitals.
+    void text(const Vec3& origin, std::string_view text, f32 height, const Vec4& color = Vec4(1.0f),
+              const Vec3& right = Vec3(1.0f, 0.0f, 0.0f), const Vec3& up = Vec3(0.0f, 1.0f, 0.0f));
+    /// Width of the longest line of `text` at that height.
+    [[nodiscard]] static f32 textWidth(std::string_view text, f32 height);
 
     /// Line list: two vertices per line.
     [[nodiscard]] std::span<const Vertex> vertices() const { return vertices_; }

@@ -712,3 +712,60 @@ TEST(Hierarchy, CloningCopiesAWholeBranch) {
     EXPECT_EQ(children(world, table).size(), 2u);
     EXPECT_FALSE(world.alive(cloneHierarchy(world, copy)));
 }
+
+TEST(DebugDraw, WritesTextWithLines) {
+    render::DebugDraw debug;
+    const auto bounds = [&]() {
+        Vec3 low(1e9f);
+        Vec3 high(-1e9f);
+        for (const render::DebugDraw::Vertex& vertex : debug.vertices()) {
+            low = glm::min(low, vertex.position);
+            high = glm::max(high, vertex.position);
+        }
+        return std::pair{low, high};
+    };
+
+    // An H, 3 high: three strokes in a 2 x 3 box (grid units of 0.5).
+    debug.text(Vec3(0.0f), "H", 3.0f);
+    EXPECT_EQ(debug.lineCount(), 3u);
+    auto [low, high] = bounds();
+    expectNear(low, Vec3(0.0f));
+    expectNear(high, Vec3(2.0f, 3.0f, 0.0f));
+
+    // Lowercase is drawn as capitals; spaces advance without drawing.
+    std::vector<render::DebugDraw::Vertex> capital(debug.vertices().begin(), debug.vertices().end());
+    debug.clear();
+    debug.text(Vec3(0.0f), "h", 3.0f);
+    ASSERT_EQ(debug.lineCount(), capital.size() / 2);
+    for (usize i = 0; i < capital.size(); ++i) {
+        expectNear(debug.vertices()[i].position, capital[i].position);
+    }
+    debug.clear();
+    debug.text(Vec3(0.0f), " H", 3.0f);
+    std::tie(low, high) = bounds();
+    EXPECT_FLOAT_EQ(low.x, 3.0f);  // one advance: 6 grid units
+
+    // New lines go down; unknown characters show as '?'.
+    debug.clear();
+    debug.text(Vec3(0.0f), "I\nI", 6.0f);
+    std::tie(low, high) = bounds();
+    EXPECT_FLOAT_EQ(low.y, -9.0f);
+    EXPECT_FLOAT_EQ(high.y, 6.0f);
+    debug.clear();
+    debug.text(Vec3(0.0f), "~", 6.0f);
+    const usize unknown = debug.lineCount();
+    debug.clear();
+    debug.text(Vec3(0.0f), "?", 6.0f);
+    EXPECT_EQ(debug.lineCount(), unknown);
+
+    // Facing another way: along -Z, standing along +X.
+    debug.clear();
+    debug.text(Vec3(1.0f, 2.0f, 3.0f), "L", 6.0f, Vec4(1.0f), Vec3(0.0f, 0.0f, -1.0f), Vec3(1.0f, 0.0f, 0.0f));
+    std::tie(low, high) = bounds();
+    expectNear(low, Vec3(1.0f, 2.0f, -1.0f));
+    expectNear(high, Vec3(7.0f, 2.0f, 3.0f));
+
+    EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("AB", 6.0f), 10.0f);
+    EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("ABC\nA", 3.0f), 8.0f);
+    EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("", 3.0f), 0.0f);
+}
