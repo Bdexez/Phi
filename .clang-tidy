@@ -1,0 +1,20 @@
+# Static analysis for bugs rather than style:
+#   run-clang-tidy -p build -quiet '/(engine|modules)/.*\.cpp$'
+# Left out: checks that mostly flag deliberate code here (bit flags on
+# signed values, macros building statements, Vulkan's zero-initialized
+# flag enums) or argue with sound conversions.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  concurrency-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-signed-bitwise,
+  -bugprone-macro-parentheses,
+  -bugprone-forward-declaration-namespace,
+  -bugprone-invalid-enum-default-initialization,
+  -performance-enum-size
+HeaderFilterRegex: '/(engine|modules|samples)/'
