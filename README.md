@@ -105,7 +105,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `Left Shift` | Move faster. |
 | `F2` | Save a screenshot as `screenshot_<frame>.png`. |
 | `F3` | Log the CPU time of every engine task, the last frame's draw statistics, and the GPU time of each render pass. |
-| `F4` | Toggle debug gizmos: the sun's direction, point light ranges, object axes, and physics colliders. |
+| `F4` | Toggle debug gizmos: the sun's direction, point light ranges, object axes and names, and physics colliders. |
 | Left click | Select the object under the cursor (logged and circled). |
 | `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
 | `F6` | Toggle a flashlight (a spot light carried by the camera). |
