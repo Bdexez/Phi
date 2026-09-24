@@ -4,6 +4,7 @@ bdex_add_module(renderer_forward
         src/ForwardRenderer.cpp
         src/ForwardRendererModule.cpp
         src/MeshFeature.cpp
+        src/Overlay.cpp
         src/PostProcess.cpp
     DEPS
         bdex::core
@@ -26,6 +27,7 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/tonemap.frag
         shaders/debug.vert
         shaders/debug.frag
+        shaders/overlay.vert
         shaders/bloom_down.frag
         shaders/bloom_up.frag
         shaders/fxaa.frag)

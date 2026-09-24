@@ -54,13 +54,29 @@ public:
     /// Width of the longest line of `text` at that height.
     [[nodiscard]] static f32 textWidth(std::string_view text, f32 height);
 
+    // --- Overlay: drawn on the final image, after post-processing, in
+    // pixels from its top-left corner, never hidden by the scene. -----------
+    void screenLine(const Vec2& from, const Vec2& to, const Vec4& color = Vec4(1.0f));
+    /// Text whose first line's top-left corner is at `position`, `height`
+    /// pixels tall.
+    void screenText(const Vec2& position, std::string_view text, f32 height, const Vec4& color = Vec4(1.0f));
+    /// Overlay line list: two vertices per line, positions in pixels (z 0).
+    [[nodiscard]] std::span<const Vertex> overlayVertices() const { return overlay_; }
+
     /// Line list: two vertices per line.
     [[nodiscard]] std::span<const Vertex> vertices() const { return vertices_; }
     [[nodiscard]] usize lineCount() const { return vertices_.size() / 2; }
-    void clear() { vertices_.clear(); }
+    void clear() {
+        vertices_.clear();
+        overlay_.clear();
+    }
 
 private:
+    static void writeText(std::vector<Vertex>& out, const Vec3& origin, std::string_view text, f32 height,
+                          const Vec4& color, const Vec3& right, const Vec3& up);
+
     std::vector<Vertex> vertices_;
+    std::vector<Vertex> overlay_;
 };
 
 }  // namespace bdex::render

@@ -765,6 +765,23 @@ TEST(DebugDraw, WritesTextWithLines) {
     expectNear(low, Vec3(1.0f, 2.0f, -1.0f));
     expectNear(high, Vec3(7.0f, 2.0f, 3.0f));
 
+    // Overlay text is in pixels: top-left corner given, rows growing down.
+    debug.clear();
+    debug.screenText(Vec2(10.0f, 20.0f), "H", 12.0f);
+    debug.screenLine(Vec2(0.0f), Vec2(5.0f, 0.0f));
+    EXPECT_EQ(debug.lineCount(), 0u);  // nothing in the world
+    ASSERT_EQ(debug.overlayVertices().size(), 8u);
+    Vec3 textLow(1e9f);
+    Vec3 textHigh(-1e9f);
+    for (usize i = 0; i < 6; ++i) {
+        textLow = glm::min(textLow, debug.overlayVertices()[i].position);
+        textHigh = glm::max(textHigh, debug.overlayVertices()[i].position);
+    }
+    expectNear(textLow, Vec3(10.0f, 20.0f, 0.0f));
+    expectNear(textHigh, Vec3(18.0f, 32.0f, 0.0f));
+    debug.clear();
+    EXPECT_TRUE(debug.overlayVertices().empty());
+
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("AB", 6.0f), 10.0f);
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("ABC\nA", 3.0f), 8.0f);
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("", 3.0f), 0.0f);

@@ -1,5 +1,7 @@
 #include "ForwardRenderer.hpp"
 
+#include <bdex/render/DebugDraw.hpp>
+
 #include "MeshFeature.hpp"
 
 #include <bdex/assets/AssetManager.hpp>
@@ -143,6 +145,11 @@ Result<> ForwardRenderer::initialize() {
         }
     }
 
+    if (const auto created = overlay_.create(device_, engine_.services().get<assets::AssetManager>(), colorFormat_);
+        !created) {
+        return created;
+    }
+
     // --- Built-in features -------------------------------------------------------------
     return addFeature(std::make_unique<MeshFeature>(*this));
 }
@@ -183,6 +190,7 @@ void ForwardRenderer::shutdown() {
     frameBuffers_.clear();
 
     postProcess_.destroy(device_);
+    overlay_.destroy(device_);
     device_.destroySampler(defaultSampler_);
     device_.destroySampler(shadowSampler_);
     device_.destroyTexture(shadowMap_);
@@ -369,6 +377,10 @@ Result<> ForwardRenderer::reloadShaders() {
         if (auto created = postProcess_.create(device_, assets, colorFormat_, settings); !created) {
             return fail("post-processing shaders failed to reload: {}", created.error().message);
         }
+    }
+    overlay_.destroy(device_);
+    if (auto created = overlay_.create(device_, assets, colorFormat_); !created) {
+        return fail("overlay shaders failed to reload: {}", created.error().message);
     }
 
     Result<> first;
@@ -685,6 +697,14 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
             renderScene(commands, target, extent_, camera, time);
             if (extraCapture) {
                 renderScene(commands, captureTarget_, extent_, camera, time);
+            }
+        }
+        // Overlay lines last, on the finished image.
+        if (const auto* debug = engine_.services().tryGet<render::DebugDraw>()) {
+            overlay_.upload(device_, debug->overlayVertices());
+            overlay_.draw(commands, target, extent_);
+            if (extraCapture) {
+                overlay_.draw(commands, captureTarget_, extent_);
             }
         }
         captured = capture;
