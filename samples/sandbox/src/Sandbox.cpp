@@ -13,7 +13,8 @@
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
 // shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
-// selected object, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
+// selected object, F11 for fullscreen, F12 for the stats panel, Escape to
+// quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "FlyCamera.hpp"
@@ -101,6 +102,7 @@ protected:
         config.setDefault("input.throw_ball", "F8, GamepadA");
         config.setDefault("input.duplicate", "F10");
         config.setDefault("input.delete", "Delete");
+        config.setDefault("input.stats", "F12");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -128,6 +130,7 @@ protected:
             flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
         }
         updateTitle(time);
+        drawStats();
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
             if (controls->pressed("quit")) {
@@ -141,6 +144,9 @@ protected:
             }
             if (controls->pressed("debug_view")) {
                 debugView_ = !debugView_;
+            }
+            if (controls->pressed("stats")) {
+                showStats_ = !showStats_;
             }
             if (controls->pressed("select")) {
                 selectUnderCursor();
@@ -703,12 +709,35 @@ private:
         if (secondsSinceTitle_ < 0.5) {
             return;
         }
+        const f64 fps = framesSinceTitle_ / secondsSinceTitle_;
         if (platform::IWindow* target = window()) {
-            const f64 fps = framesSinceTitle_ / secondsSinceTitle_;
             target->setTitle(std::format("bdex sandbox - {:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps));
         }
+        // The stats panel refreshes at the same pace, so it stays readable.
+        f64 gpu = 0.0;
+        if (const auto* device = engine().services().tryGet<rhi::IDevice>()) {
+            for (const rhi::GpuTiming& timing : device->lastGpuTimings()) {
+                if (timing.depth == 0) {
+                    gpu = timing.milliseconds;
+                }
+            }
+        }
+        const auto* mixer = engine().services().tryGet<audio::Mixer>();
+        stats_ = std::format("{:.0f} FPS  {:.2f} MS\nGPU {:.2f} MS\n{} ENTITIES  {} VOICES", fps, 1000.0 / fps, gpu,
+                             scene().world().entityCount(), mixer != nullptr ? mixer->voiceCount() : 0);
         framesSinceTitle_ = 0;
         secondsSinceTitle_ = 0.0;
+    }
+
+    /// Frame rate, GPU time and counts, in the top-left corner (F12).
+    void drawStats() {
+        auto* debug = engine().services().tryGet<render::DebugDraw>();
+        if (debug == nullptr || !showStats_ || stats_.empty()) {
+            return;
+        }
+        // A shadow one pixel off keeps the text readable on any background.
+        debug->screenText(Vec2(13.0f, 13.0f), stats_, 12.0f, Vec4(0.0f, 0.0f, 0.0f, 0.8f));
+        debug->screenText(Vec2(12.0f, 12.0f), stats_, 12.0f, Vec4(1.0f, 1.0f, 0.6f, 1.0f));
     }
 
     static constexpr u32 kCubeCount = 8;
@@ -736,6 +765,8 @@ private:
     sandbox::FlyCamera flyCamera_;
 
     u32 framesSinceTitle_ = 0;
+    std::string stats_;
+    bool showStats_ = true;
     f64 secondsSinceTitle_ = 0.0;
 };
 
