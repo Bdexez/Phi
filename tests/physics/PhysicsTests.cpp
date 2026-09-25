@@ -605,3 +605,103 @@ TEST(Physics, BrokenCollidersAreLeftOut) {
     ASSERT_TRUE(hit.has_value());
     EXPECT_EQ(hit->entity, healthy);
 }
+
+namespace {
+
+ecs::Entity addCharacter(ecs::World& world, const Vec3& position, f32 radius = 0.5f) {
+    const ecs::Entity character = world.create();
+    world.emplace<Transform>(character).position = position;
+    world.emplace<SphereCollider>(character, radius);  // no RigidBody: kinematic
+    return character;
+}
+
+ecs::Entity addBox(ecs::World& world, const Vec3& position, const Vec3& half, const Quat& rotation = Quat(1, 0, 0, 0)) {
+    const ecs::Entity box = world.create();
+    Transform& pose = world.emplace<Transform>(box);
+    pose.position = position;
+    pose.rotation = rotation;
+    world.emplace<BoxCollider>(box, half);
+    return box;
+}
+
+}  // namespace
+
+TEST(CharacterMovement, StopsAtWallsAndSlidesAlongThem) {
+    ecs::World world;
+    addFloor(world);
+    addBox(world, Vec3(3.0f, 1.0f, 0.0f), Vec3(0.5f, 1.0f, 5.0f));  // wall facing -X at x = 2.5
+    const ecs::Entity hero = addCharacter(world, Vec3(0.0f, 0.5f, 0.0f));
+
+    // Straight into it: stops a skin away, blocked, still on the ground.
+    MoveResult result = moveAndSlide(world, hero, Vec3(5.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(result.blocked);
+    EXPECT_NEAR(world.get<Transform>(hero).position.x, 2.0f, 0.01f);
+    EXPECT_NEAR(world.get<Transform>(hero).position.y, 0.5f, 1e-4f);
+
+    // Diagonally: the part along the wall goes through.
+    result = moveAndSlide(world, hero, Vec3(1.0f, 0.0f, 2.0f));
+    EXPECT_NEAR(world.get<Transform>(hero).position.x, 2.0f, 0.01f);
+    EXPECT_NEAR(world.get<Transform>(hero).position.z, 2.0f, 0.01f);
+
+    // Away from it: free.
+    result = moveAndSlide(world, hero, Vec3(-1.0f, 0.0f, 0.0f));
+    EXPECT_FALSE(result.blocked);
+    EXPECT_NEAR(result.moved.x, -1.0f, 1e-5f);
+}
+
+TEST(CharacterMovement, LandsOnTheGroundAndJumpsOffIt) {
+    ecs::World world;
+    addFloor(world);
+    const ecs::Entity hero = addCharacter(world, Vec3(0.0f, 3.0f, 0.0f));
+    MoveResult result = moveAndSlide(world, hero, Vec3(0.0f, -5.0f, 0.0f));
+    EXPECT_TRUE(result.grounded);
+    EXPECT_NEAR(result.groundNormal.y, 1.0f, 1e-5f);
+    EXPECT_NEAR(world.get<Transform>(hero).position.y, 0.5f, 0.01f);
+
+    // Pressing down while standing: stays, grounded. Walking: moves.
+    result = moveAndSlide(world, hero, Vec3(0.3f, -0.1f, 0.0f));
+    EXPECT_TRUE(result.grounded);
+    EXPECT_NEAR(world.get<Transform>(hero).position.x, 0.3f, 1e-3f);
+    EXPECT_NEAR(world.get<Transform>(hero).position.y, 0.5f, 0.01f);
+
+    // Jumping: the ground does not hold it back.
+    result = moveAndSlide(world, hero, Vec3(0.0f, 1.0f, 0.0f));
+    EXPECT_FALSE(result.blocked);
+    EXPECT_FALSE(result.grounded);
+    EXPECT_NEAR(world.get<Transform>(hero).position.y, 1.5f, 0.01f);
+}
+
+TEST(CharacterMovement, ClimbsGentleSlopesButNotSteepOnes) {
+    for (const f32 degrees : {30.0f, 60.0f}) {
+        ecs::World world;
+        addFloor(world);
+        // A slope rising toward +X from x = 1.
+        const f32 tilt = glm::radians(degrees);
+        const Quat rotation = glm::angleAxis(tilt, Vec3(0.0f, 0.0f, 1.0f));
+        addBox(world, Vec3(1.0f, 0.0f, 0.0f) + rotation * Vec3(5.0f, -0.5f, 0.0f), Vec3(5.0f, 0.5f, 5.0f), rotation);
+        const ecs::Entity hero = addCharacter(world, Vec3(0.0f, 0.5f, 0.0f));
+        f32 highest = 0.5f;
+        for (int frame = 0; frame < 60; ++frame) {
+            moveAndSlide(world, hero, Vec3(0.1f, 0.0f, 0.0f));  // walk toward the slope
+            moveAndSlide(world, hero, Vec3(0.0f, -0.05f, 0.0f));  // gravity
+            highest = std::max(highest, world.get<Transform>(hero).position.y);
+        }
+        if (degrees < 45.0f) {
+            EXPECT_GT(highest, 2.0f) << degrees;  // walked up it
+        } else {
+            EXPECT_LT(highest, 1.0f) << degrees;  // could not
+        }
+    }
+}
+
+TEST(CharacterMovement, BumpsIntoBallsAndPassesTriggers) {
+    ecs::World world;
+    addFloor(world);
+    const ecs::Entity hero = addCharacter(world, Vec3(0.0f, 0.5f, 0.0f));
+    addBall(world, Vec3(3.0f, 0.5f, 0.0f), RigidBody{});
+    const ecs::Entity zone = addBox(world, Vec3(1.5f, 0.5f, 0.0f), Vec3(0.2f, 2.0f, 2.0f));
+    world.emplace<Trigger>(zone);
+    const MoveResult result = moveAndSlide(world, hero, Vec3(5.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(result.blocked);
+    EXPECT_NEAR(world.get<Transform>(hero).position.x, 2.0f, 0.01f);  // touching the ball, through the zone
+}

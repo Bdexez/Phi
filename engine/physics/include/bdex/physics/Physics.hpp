@@ -154,6 +154,32 @@ struct RayHit {
 [[nodiscard]] std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin,
                                             const Vec3& direction, f32 maxDistance = 1e30f);
 
+struct MoveSettings {
+    /// Steepest slope walked on, in radians; steeper ones act as walls.
+    f32 maxSlope = 0.785398f;  // 45 degrees
+    /// Gap kept from surfaces, so the next move does not start touching.
+    f32 skin = 0.005f;
+    /// Slides per move: a corner takes two.
+    u32 iterations = 4;
+};
+
+struct MoveResult {
+    Vec3 moved{0.0f};       ///< Where the entity actually went.
+    bool grounded = false;  ///< Touched a walkable surface on the way.
+    Vec3 groundNormal{0.0f, 1.0f, 0.0f};
+    bool blocked = false;   ///< Something stopped part of the move.
+};
+
+/// Moves a kinematic sphere (an entity with a SphereCollider and no
+/// RigidBody: a player character) by `displacement`, colliding with static
+/// boxes and with other spheres and sliding along what it meets: along a
+/// wall, up a gentle slope, but not up a steep one. Falling onto a
+/// surface reports it as ground. Dynamic bodies are obstacles too, and the
+/// step pushes them away from the character as from any static sphere.
+/// Triggers are passed through. Writes the entity's Transform position.
+MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displacement,
+                        const MoveSettings& settings = {});
+
 /// Registers RigidBody, SphereCollider, BoxCollider and Trigger with scene
 /// files.
 void addComponentSerializers(scene::ComponentSerializers& serializers);
