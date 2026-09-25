@@ -13,8 +13,8 @@
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
 // shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
-// selected object, F11 for fullscreen, F12 for the stats panel, Escape to
-// quit. A gamepad works too: sticks to
+// selected object, F11 for fullscreen, F12 for the stats panel, G to walk
+// (Space jumps) or fly, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "FlyCamera.hpp"
@@ -103,6 +103,7 @@ protected:
         config.setDefault("input.duplicate", "F10");
         config.setDefault("input.delete", "Delete");
         config.setDefault("input.stats", "F12");
+        config.setDefault("input.walk", "G, GamepadB");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -147,6 +148,10 @@ protected:
             }
             if (controls->pressed("stats")) {
                 showStats_ = !showStats_;
+            }
+            if (controls->pressed("walk")) {
+                flyCamera_.setWalking(scene().world(), !flyCamera_.walking());
+                log::info("sandbox", "{}", flyCamera_.walking() ? "walking (G to fly)" : "flying (G to walk)");
             }
             if (controls->pressed("select")) {
                 selectUnderCursor();
@@ -290,6 +295,10 @@ private:
         camera_ = scene().find("Camera");
         selected_ = {};
         flyCamera_.adoptFacing(world, camera_);
+        // A body saved while walking would stand there, invisible.
+        if (const ecs::Entity player = scene().find("Player"); world.alive(player)) {
+            world.destroy(player);
+        }
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
     }
 

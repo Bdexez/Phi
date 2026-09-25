@@ -1,5 +1,6 @@
 #include "FlyCamera.hpp"
 
+#include <bdex/physics/Physics.hpp>
 #include <bdex/scene/Components.hpp>
 
 #include <algorithm>
@@ -59,6 +60,68 @@ void FlyCamera::update(ecs::World& world, const platform::InputActions& actions,
         applyRotation(world);
     }
 
+    if (body_.valid() && !world.alive(body_)) {
+        body_ = {};  // the scene was replaced under us
+    }
+    if (body_.valid()) {
+        walk(world, actions, deltaSeconds);
+    } else {
+        fly(world, actions, deltaSeconds);
+    }
+}
+
+void FlyCamera::setWalking(ecs::World& world, bool walking) {
+    if (walking == body_.valid() || !world.has<scene::Transform>(camera_)) {
+        return;
+    }
+    if (walking) {
+        body_ = world.create();
+        world.emplace<scene::Name>(body_, "Player");
+        world.emplace<scene::Transform>(body_).position =
+            world.get<scene::Transform>(camera_).position - Vec3(0.0f, kEyeHeight, 0.0f);
+        world.emplace<physics::SphereCollider>(body_, kBodyRadius);  // no RigidBody: kinematic
+        verticalSpeed_ = 0.0f;
+        grounded_ = false;
+    } else {
+        world.destroy(body_);
+        body_ = {};
+    }
+}
+
+void FlyCamera::walk(ecs::World& world, const platform::InputActions& actions, f32 deltaSeconds) {
+    // Walking stays level whatever the pitch.
+    const scene::Transform& eye = world.get<scene::Transform>(camera_);
+    const auto flat = [](Vec3 v) {
+        v.y = 0.0f;
+        const f32 length = glm::length(v);
+        return length > 1e-4f ? v / length : Vec3(0.0f);
+    };
+    Vec3 wish = flat(eye.forward()) * (actions.value("move_forward") - actions.value("move_back")) +
+                flat(eye.right()) * (actions.value("move_right") - actions.value("move_left"));
+    if (const f32 length = glm::length(wish); length > 1.0f) {
+        wish /= length;
+    }
+    const f32 speed = glm::mix(4.0f, 8.0f, actions.value("move_fast"));
+
+    constexpr f32 kGravity = 18.0f;  // snappier than 9.81 for a game feel
+    constexpr f32 kJumpSpeed = 6.5f;
+    if (grounded_ && actions.pressed("move_up")) {
+        verticalSpeed_ = kJumpSpeed;
+    }
+    verticalSpeed_ -= kGravity * deltaSeconds;
+    const physics::MoveResult moved =
+        physics::moveAndSlide(world, body_, wish * (speed * deltaSeconds) + Vec3(0.0f, verticalSpeed_ * deltaSeconds, 0.0f));
+    grounded_ = moved.grounded;
+    if (grounded_ && verticalSpeed_ < 0.0f) {
+        verticalSpeed_ = -1.0f;  // keep pressing on the ground, to keep touching it
+    } else if (moved.blocked && verticalSpeed_ > 0.0f && moved.moved.y < verticalSpeed_ * deltaSeconds * 0.5f) {
+        verticalSpeed_ = 0.0f;  // bumped a ceiling
+    }
+    world.get<scene::Transform>(camera_).position =
+        world.get<scene::Transform>(body_).position + Vec3(0.0f, kEyeHeight, 0.0f);
+}
+
+void FlyCamera::fly(ecs::World& world, const platform::InputActions& actions, f32 deltaSeconds) {
     scene::Transform& transform = world.get<scene::Transform>(camera_);
     Vec3 direction(0.0f);
     // Analog: a stick pushed halfway moves at half speed.
