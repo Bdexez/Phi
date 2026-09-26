@@ -15,6 +15,7 @@ target_include_directories(bdex_module_test_plugin PRIVATE ${CMAKE_CURRENT_SOURC
 add_executable(bdex_tests
     app/ApplicationTests.cpp
     core/ConfigTests.cpp
+    core/JsonTests.cpp
     core/EngineTests.cpp
     core/EventBusTests.cpp
     core/FileSystemTests.cpp
