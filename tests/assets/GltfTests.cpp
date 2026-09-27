@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -297,4 +299,32 @@ TEST(Gltf, RefusesMalformedFiles) {
     std::vector<u8> truncated = glb(json::write(json::Value(base())), file.buffer.bytes);
     truncated[12] = 0xFF;  // JSON chunk length past the end
     EXPECT_FALSE(decodeGltf(truncated).has_value());
+}
+
+TEST(Gltf, LoadsFilesNextToTheModelThroughTheFileSystem) {
+    const std::filesystem::path directory = std::filesystem::temp_directory_path() / "bdex_tests_gltf";
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory / "models");
+    QuadFile file;
+    const auto size = static_cast<f64>(file.buffer.bytes.size());
+    const auto write = [&](const std::filesystem::path& path, const std::vector<u8>& bytes) {
+        std::ofstream out(path, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    };
+    write(directory / "models" / "quad data.bin", file.buffer.bytes);
+    write(directory / "secret.bin", file.buffer.bytes);
+    write(directory / "models" / "quad.gltf",
+          bytesOf(json::write(file.withBuffer({{"byteLength", size}, {"uri", "quad%20data.bin"}}))));
+    write(directory / "models" / "escape.gltf",
+          bytesOf(json::write(file.withBuffer({{"byteLength", size}, {"uri", "../../secret.bin"}}))));
+
+    VirtualFileSystem vfs;
+    vfs.mount("test", directory / "models");
+    const auto model = loadGltf(vfs, "test:/quad.gltf");
+    ASSERT_TRUE(model.has_value()) << model.error().message;
+    expectQuad(*model);
+    // A model cannot reach outside its mount point.
+    EXPECT_FALSE(loadGltf(vfs, "test:/escape.gltf").has_value());
+    EXPECT_FALSE(loadGltf(vfs, "test:/missing.gltf").has_value());
+    std::filesystem::remove_all(directory);
 }

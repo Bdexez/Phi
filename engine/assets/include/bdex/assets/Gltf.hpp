@@ -2,6 +2,7 @@
 
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
+#include <bdex/core/FileSystem.hpp>
 #include <bdex/core/Math.hpp>
 #include <bdex/core/Result.hpp>
 
@@ -70,5 +71,10 @@ using UriReader = std::function<Result<std::vector<u8>>(std::string_view uri)>;
 /// never a crash. Unsupported features (other primitive modes, sparse
 /// accessors, skins, animations) are skipped or reported.
 [[nodiscard]] Result<ModelData> decodeGltf(std::span<const u8> bytes, const UriReader& readUri = {});
+
+/// Reads and decodes a .gltf or .glb file of the virtual file system; the
+/// files it refers to are read next to it ("app:/ships/hull.bin"), never
+/// outside its mount point.
+[[nodiscard]] Result<ModelData> loadGltf(const VirtualFileSystem& vfs, std::string_view virtualPath);
 
 }  // namespace bdex::assets
