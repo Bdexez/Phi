@@ -1,10 +1,11 @@
 // Feeds corrupted versions of valid inputs to every decoder of files that
-// come from outside: image, sound and mesh loaders, JSON and config files, scene files (then
+// come from outside: image, sound, mesh and glTF loaders, JSON and config files, scene files (then
 // steps physics over what was loaded). Decoders may reject or accept them,
 // but must never crash, throw, or touch memory they do not own; the ASan
 // preset turns any slip into a failure. The mutations are deterministic, so
 // a failure reproduces.
 #include <bdex/assets/Audio.hpp>
+#include <bdex/assets/Gltf.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/Config.hpp>
@@ -123,6 +124,15 @@ TEST(Robustness, WavDecoderSurvivesCorruptFiles) {
     const std::vector<u8> wav = assets::encodeWav(stereo);
     ASSERT_TRUE(assets::decodeWav(wav).has_value());
     fuzz(wav, false, 6, [](const std::vector<u8>& input) { (void)assets::decodeWav(input); });
+}
+
+TEST(Robustness, GltfDecoderSurvivesCorruptFiles) {
+    // A triangle with indices, a material and two nodes, its buffer inline.
+    const std::string gltf = R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"tri","mesh":0,"translation":[1,2,3],"children":[1]},{"rotation":[0,0,0,1],"scale":[2,2,2]}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1,"material":0}]}],"materials":[{"pbrMetallicRoughness":{"baseColorFactor":[1,0.5,0,1]}}],"buffers":[{"byteLength":44,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAAA="}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}]})";
+    const auto seed = assets::decodeGltf(bytesOf(gltf));
+    ASSERT_TRUE(seed.has_value()) << seed.error().message;
+    ASSERT_EQ(seed->meshes.size(), 1u);
+    fuzz(bytesOf(gltf), true, 8, [](const std::vector<u8>& input) { (void)assets::decodeGltf(input); });
 }
 
 TEST(Robustness, ObjAndConfigParsersSurviveCorruptText) {

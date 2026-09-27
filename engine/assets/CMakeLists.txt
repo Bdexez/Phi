@@ -1,6 +1,7 @@
 bdex_add_library(assets
     SOURCES
         src/AssetManager.cpp
+        src/Gltf.cpp
         src/Image.cpp
         src/Mesh.cpp
         src/ObjLoader.cpp
