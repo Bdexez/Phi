@@ -1,6 +1,7 @@
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
+#include <bdex/render/ResourceNames.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/render/Shadows.hpp>
 #include <bdex/scene/Scene.hpp>
@@ -785,4 +786,48 @@ TEST(DebugDraw, WritesTextWithLines) {
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("AB", 6.0f), 10.0f);
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("ABC\nA", 3.0f), 8.0f);
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("", 3.0f), 0.0f);
+}
+
+TEST(SceneFiles, MeshRenderersAreSavedByName) {
+    render::ResourceNames names;
+    const render::MeshHandle cube{3, 1};
+    const render::MeshHandle sphere{4, 1};
+    const render::MaterialHandle red{7, 2};
+    names.name(cube, "cube");
+    names.name(sphere, "sphere");
+    names.name(red, "red");
+    EXPECT_EQ(names.mesh("cube"), cube);
+    EXPECT_EQ(names.nameOf(red), "red");
+    EXPECT_FALSE(names.mesh("missing").valid());
+    EXPECT_TRUE(names.nameOf(render::MeshHandle{9, 9}).empty());
+
+    // One name per handle, one handle per name.
+    names.name(cube, "box");
+    EXPECT_FALSE(names.mesh("cube").valid());
+    EXPECT_EQ(names.nameOf(cube), "box");
+    names.name(sphere, "box");
+    EXPECT_EQ(names.mesh("box"), sphere);
+    EXPECT_TRUE(names.nameOf(cube).empty());
+    names.name(cube, "cube");
+
+    ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    render::addMeshRendererSerializer(serializers, names);
+    Scene source("source");
+    const ecs::Entity drawn = source.createEntity("drawn");
+    source.world().emplace<render::MeshRenderer>(drawn, cube, red, false);
+    const std::string text = serializers.save(source.world());
+    EXPECT_NE(text.find("MeshRenderer.mesh = cube"), std::string::npos) << text;
+
+    Scene loaded("loaded");
+    const auto entities = serializers.load(loaded.world(), text);
+    ASSERT_TRUE(entities.has_value()) << entities.error().message;
+    const auto& renderer = loaded.world().get<render::MeshRenderer>(entities->front());
+    EXPECT_EQ(renderer.mesh, cube);
+    EXPECT_EQ(renderer.material, red);
+    EXPECT_FALSE(renderer.visible);
+
+    // Names the registry does not know are errors that say which.
+    const auto unknown = serializers.load(loaded.world(), "[entity.0]\nMeshRenderer.mesh = teapot\nMeshRenderer.material = red\n");
+    ASSERT_FALSE(unknown.has_value());
+    EXPECT_NE(unknown.error().message.find("teapot"), std::string::npos);
 }

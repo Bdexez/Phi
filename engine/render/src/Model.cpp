@@ -25,7 +25,24 @@ MaterialDesc approximateMaterial(const assets::ModelMaterial& material) {
     return desc;
 }
 
-ModelResources uploadModel(IRenderer& renderer, const assets::ModelData& model) {
+namespace {
+
+/// A model's name for its index-th item: its own name if no other item has
+/// it, else the name and the index ("box#2"), or the index alone.
+template <class Items>
+std::string itemName(const Items& items, usize index) {
+    const std::string& name = items[index].name;
+    if (name.empty()) {
+        return std::to_string(index);
+    }
+    const auto same = std::count_if(items.begin(), items.end(), [&](const auto& item) { return item.name == name; });
+    return same > 1 ? std::format("{}#{}", name, index) : name;
+}
+
+}  // namespace
+
+ModelResources uploadModel(IRenderer& renderer, const assets::ModelData& model, ResourceNames* names,
+                           std::string_view prefix) {
     ModelResources resources;
     // One texture per image and color space it is used in.
     std::vector<std::pair<i32, TextureColorSpace>> made;
@@ -42,17 +59,28 @@ ModelResources uploadModel(IRenderer& renderer, const assets::ModelData& model) 
         resources.textures.push_back(renderer.createTexture(model.images[static_cast<usize>(image)], space));
         return resources.textures.back();
     };
-    for (const assets::ModelMaterial& material : model.materials) {
+    for (usize index = 0; index < model.materials.size(); ++index) {
+        const assets::ModelMaterial& material = model.materials[index];
         MaterialDesc desc = approximateMaterial(material);
         desc.albedo = textureFor(material.baseColorImage, TextureColorSpace::Srgb);
         desc.normalMap = textureFor(material.normalImage, TextureColorSpace::Linear);
         resources.materials.push_back(renderer.createMaterial(desc));
+        if (names != nullptr) {
+            names->name(resources.materials.back(), std::format("{}/{}", prefix, itemName(model.materials, index)));
+        }
     }
     resources.defaultMaterial = renderer.createMaterial(MaterialDesc{});
-    for (const assets::ModelMesh& mesh : model.meshes) {
+    if (names != nullptr) {
+        names->name(resources.defaultMaterial, std::format("{}/default", prefix));
+    }
+    for (usize index = 0; index < model.meshes.size(); ++index) {
+        const assets::ModelMesh& mesh = model.meshes[index];
         std::vector<MeshHandle>& parts = resources.meshes.emplace_back();
-        for (const assets::ModelPrimitive& primitive : mesh.primitives) {
-            parts.push_back(renderer.createMesh(primitive.mesh));
+        for (usize part = 0; part < mesh.primitives.size(); ++part) {
+            parts.push_back(renderer.createMesh(mesh.primitives[part].mesh));
+            if (names != nullptr) {
+                names->name(parts.back(), std::format("{}/{}/{}", prefix, itemName(model.meshes, index), part));
+            }
         }
     }
     return resources;
