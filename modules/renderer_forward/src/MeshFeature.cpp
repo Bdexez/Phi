@@ -231,9 +231,9 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
     if (context.world == nullptr) {
         return;
     }
-    // Opaque meshes, gathered once per frame (at the first cascade) and
+    // Opaque meshes, gathered once per frame (at the first shadow view) and
     // sorted by mesh (materials do not matter for depth)...
-    if (context.shadowCascade == 0) {
+    if (context.firstShadowView) {
         shadowCandidates_.clear();
         context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
             [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
@@ -266,9 +266,9 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
     for (const SortKey& entry : casterOrder_) {
         objects_.push_back(casters_[entry.draw].object);
     }
-    // The cascades of a frame share the buffer: each writes after the
+    // The shadow views of a frame share the buffer: each writes after the
     // previous one, so none overwrites what an earlier draw still reads.
-    if (context.shadowCascade == 0) {
+    if (context.firstShadowView) {
         shadowObjectsUsed_ = 0;
     }
     const usize first = shadowObjectsUsed_;

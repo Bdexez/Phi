@@ -175,6 +175,7 @@ private:
         f32 distance;  ///< From the camera, minus the light's range.
     };
     std::vector<SpotLightCandidate> spotLights_;  ///< Reused across frames.
+    std::vector<render::CameraData> spotShadowViews_;  ///< This frame's, at most kShadowedSpots.
 };
 
 }  // namespace bdex::forward

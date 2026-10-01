@@ -59,7 +59,7 @@ Result<> ForwardRenderer::initialize() {
     shadowDistance_ =
         static_cast<f32>(std::clamp(config.getFloat("renderer.shadow_distance", 100.0), 1.0, 1000.0));
     rhi::TextureDesc shadowDesc;
-    shadowDesc.width = shadowMapSize_ * 2;  // 2 x 2 cascades
+    shadowDesc.width = shadowMapSize_ * 4;  // 4 x 2: the sun's cascades, then spot lights'
     shadowDesc.height = shadowMapSize_ * 2;
     shadowDesc.format = shadowFormat_;
     shadowDesc.usage = rhi::TextureUsage::DepthStencilAttachment | rhi::TextureUsage::Sampled;
@@ -485,30 +485,40 @@ void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameT
     commands.beginDebugGroup("shadows");
     const rhi::DepthAttachment depth{shadowMap_, rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
     commands.beginRendering({{}, &depth});
-    if (shadowsThisFrame_) {
-        auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-        scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
-        for (u32 cascade = 0; cascade < cascades_.size(); ++cascade) {
-            // Each cascade draws into its cell of the 2 x 2 atlas.
-            const u32 x = (cascade & 1u) * shadowMapSize_;
-            const u32 y = (cascade >> 1u) * shadowMapSize_;
-            commands.setViewport({static_cast<f32>(x), static_cast<f32>(y), static_cast<f32>(shadowMapSize_),
-                                  static_cast<f32>(shadowMapSize_), 0.0f, 1.0f});
-            commands.setScissor({static_cast<i32>(x), static_cast<i32>(y), shadowMapSize_, shadowMapSize_});
-            const render::RenderFrameContext context{
-                device_,
-                commands,
-                activeScene != nullptr ? &activeScene->world() : nullptr,
-                cascades_[cascade],
-                {shadowMapSize_, shadowMapSize_},
-                frameBindGroups_[device_.frameSlot()],
-                time,
-                cascade,
-            };
-            for (const auto& feature : features_) {
-                feature->renderShadows(context);
-            }
+    auto* scenes = engine_.services().tryGet<scene::SceneManager>();
+    scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
+    bool first = true;
+    // Each view draws into its cell of the 4 x 2 atlas: the sun's cascades
+    // in the first row, spot lights' in the second.
+    const auto renderView = [&](u32 view, const render::CameraData& camera) {
+        const u32 x = (view % 4u) * shadowMapSize_;
+        const u32 y = (view / 4u) * shadowMapSize_;
+        commands.setViewport({static_cast<f32>(x), static_cast<f32>(y), static_cast<f32>(shadowMapSize_),
+                              static_cast<f32>(shadowMapSize_), 0.0f, 1.0f});
+        commands.setScissor({static_cast<i32>(x), static_cast<i32>(y), shadowMapSize_, shadowMapSize_});
+        render::RenderFrameContext context{
+            device_,
+            commands,
+            activeScene != nullptr ? &activeScene->world() : nullptr,
+            camera,
+            {shadowMapSize_, shadowMapSize_},
+            frameBindGroups_[device_.frameSlot()],
+            time,
+            view,
+        };
+        context.firstShadowView = first;
+        first = false;
+        for (const auto& feature : features_) {
+            feature->renderShadows(context);
         }
+    };
+    if (shadowsThisFrame_) {
+        for (u32 cascade = 0; cascade < cascades_.size(); ++cascade) {
+            renderView(cascade, cascades_[cascade]);
+        }
+    }
+    for (u32 spot = 0; spot < spotShadowViews_.size(); ++spot) {
+        renderView(render::FrameUniforms::kShadowCascades + spot, spotShadowViews_[spot]);
     }
     commands.endRendering();
     commands.endDebugGroup();
@@ -539,8 +549,9 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
             const f32 depthRange = 1.0f / std::abs(view.projection[2][2]);
             uniforms.cascadeBiases[cascade] = Vec4(texelWorld / depthRange, 1.5f * texelWorld, 0.0f, 0.0f);
         }
-        uniforms.shadowParams = Vec4(1.0f, 1.0f / static_cast<f32>(shadowMapSize_ * 2), 0.0f, 0.0f);
     }
+    uniforms.shadowParams = Vec4(shadowsThisFrame_ ? 1.0f : 0.0f, 1.0f / static_cast<f32>(shadowMapSize_ * 4),
+                                 1.0f / static_cast<f32>(shadowMapSize_ * 2), 0.0f);
     uniforms.timeAndExtent =
         Vec4(static_cast<f32>(time.elapsed), static_cast<f32>(time.delta),
              static_cast<f32>(extent.width), static_cast<f32>(extent.height));
@@ -573,6 +584,7 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
 
     // Spot lights, chosen the same way.
     spotLights_.clear();
+    spotShadowViews_.clear();
     if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
         scenes != nullptr && scenes->active() != nullptr) {
         scenes->active()->world().view<const render::SpotLight, const scene::WorldTransform>().each(
@@ -596,6 +608,26 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
         uniforms.spotLightPositions[i] = Vec4(candidate.position, std::max(spot.range, 1e-3f));
         uniforms.spotLightDirections[i] = Vec4(candidate.direction, std::cos(outer));
         uniforms.spotLightColors[i] = Vec4(spot.color * spot.intensity, std::cos(inner));
+
+        // A shadow for the closest few that ask: a perspective view down
+        // the cone, as wide as its outer edge.
+        uniforms.spotShadowParams[i] = Vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+        if (!shadowsEnabled_ || !spot.castShadows || spotShadowViews_.size() >= render::FrameUniforms::kShadowedSpots) {
+            continue;
+        }
+        const Vec3 up = std::abs(candidate.direction.y) > 0.99f ? Vec3(1.0f, 0.0f, 0.0f) : Vec3(0.0f, 1.0f, 0.0f);
+        const Mat4 world = glm::inverse(glm::lookAt(candidate.position, candidate.position + candidate.direction, up));
+        render::Camera lens;
+        lens.verticalFov = std::min(2.0f * outer + glm::radians(2.0f), glm::radians(170.0f));
+        lens.nearPlane = std::clamp(spot.range * 0.005f, 0.02f, 0.5f);
+        lens.farPlane = std::max(spot.range, lens.nearPlane * 2.0f);
+        const render::CameraData view = render::makeCameraData(world, lens, 1.0f);
+        const auto index = static_cast<u32>(spotShadowViews_.size());
+        uniforms.spotShadows[index] = view.viewProjection;
+        // One texel spans 2 tan(fov / 2) / size per unit of distance.
+        const f32 texelPerMeter = 2.0f * std::tan(lens.verticalFov * 0.5f) / static_cast<f32>(shadowMapSize_);
+        uniforms.spotShadowParams[i] = Vec4(static_cast<f32>(index), 2e-4f, 1.5f * texelPerMeter, 0.0f);
+        spotShadowViews_.push_back(view);
     }
     uniforms.pointLightCount.y = static_cast<f32>(spotLights_.size());
 

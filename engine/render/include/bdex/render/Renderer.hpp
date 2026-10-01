@@ -37,8 +37,11 @@ struct FrameUniforms {
     static constexpr u32 kMaxPointLights = 16;
     /// The same for spot lights.
     static constexpr u32 kMaxSpotLights = 8;
-    /// Cascades of the sun's shadow map, laid out 2 x 2 in one depth texture.
+    /// Cascades of the sun's shadow map: the first row of a 4 x 2 atlas.
     static constexpr u32 kShadowCascades = 4;
+    /// Spot lights casting shadows, the closest first: the atlas's second
+    /// row. Shadow views are numbered cascades first, then these.
+    static constexpr u32 kShadowedSpots = 4;
 
     Mat4 view{1.0f};
     Mat4 projection{1.0f};
@@ -56,8 +59,8 @@ struct FrameUniforms {
     Vec4 cascadeSplits{0.0f};
     /// x: depth bias, y: normal offset in world units, per cascade.
     Vec4 cascadeBiases[kShadowCascades]{};
-    /// x: 1 when the shadow map holds this frame's shadows, y: one texel of
-    /// the atlas in UV units.
+    /// x: 1 when the shadow map holds the sun's shadows this frame, y and z:
+    /// one texel of the atlas in U and V units.
     Vec4 shadowParams{0.0f};
     Vec4 pointLightCount{0.0f};  ///< x: point lights below, y: spot lights
     Vec4 pointLightPositions[kMaxPointLights]{};  ///< xyz: world position, w: range
@@ -65,6 +68,11 @@ struct FrameUniforms {
     Vec4 spotLightPositions[kMaxSpotLights]{};    ///< xyz: world position, w: range
     Vec4 spotLightDirections[kMaxSpotLights]{};   ///< xyz: unit axis, w: cos(outer angle)
     Vec4 spotLightColors[kMaxSpotLights]{};       ///< rgb premultiplied, w: cos(inner angle)
+    /// World to clip space of each spot light shadow.
+    Mat4 spotShadows[kShadowedSpots]{};
+    /// Per spot light: x: its shadow (index into spotShadows) or -1, y: depth
+    /// bias, z: normal offset per unit of distance to the light.
+    Vec4 spotShadowParams[kMaxSpotLights]{};
 };
 
 /// How a texture's values are stored: color images are authored in sRGB and
@@ -116,8 +124,12 @@ struct RenderFrameContext {
     /// Bind group for set 0 (FrameUniforms) of the current frame.
     rhi::BindGroupHandle frameBindGroup;
     FrameTime time;
-    /// In renderShadows: the cascade being drawn (see FrameUniforms).
+    /// In renderShadows: the shadow view being drawn, the sun's cascades
+    /// first (0 to 3), then spot lights' (4 and up); see FrameUniforms.
     u32 shadowCascade = 0;
+    /// In renderShadows: true for the frame's first shadow view, to gather
+    /// casters once per frame.
+    bool firstShadowView = false;
 };
 
 /// A unit of rendering plugged into a renderer: mesh drawing, a sky, debug
@@ -137,11 +149,11 @@ public:
     /// Destroy everything created in onAttach.
     virtual void onDetach(rhi::IDevice& device) = 0;
     virtual void render(const RenderFrameContext& context) = 0;
-    /// Called inside the shadow pass, before render(), once per shadow
-    /// cascade when the frame has shadows: draw shadow casters, depth only,
-    /// transformed by FrameUniforms::shadowCascades[context.shadowCascade]
-    /// (the renderer has set the viewport). `context.camera` describes that
-    /// cascade's view, for culling. The default casts no shadow.
+    /// Called inside the shadow pass, before render(), once per shadow view
+    /// (sun cascade or spot light) when the frame has shadows: draw shadow
+    /// casters, depth only, transformed by bdexShadowView(context.shadowCascade)
+    /// in GLSL (the renderer has set the viewport). `context.camera`
+    /// describes that view, for culling. The default casts no shadow.
     virtual void renderShadows(const RenderFrameContext& context) { (void)context; }
 };
 

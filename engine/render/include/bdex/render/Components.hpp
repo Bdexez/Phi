@@ -49,6 +49,9 @@ struct SpotLight {
     f32 range = 15.0f;
     f32 innerAngle = glm::radians(20.0f);
     f32 outerAngle = glm::radians(30.0f);
+    /// Opaque meshes block it, from up to FrameUniforms::kShadowedSpots
+    /// spot lights (the closest): each costs one more pass over the casters.
+    bool castShadows = false;
 };
 
 /// Sun-like light. `direction` is the direction the light travels in.

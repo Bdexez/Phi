@@ -74,6 +74,9 @@ void main() {
                                 dot(-direction, frame.spotLightDirections[i].xyz));
         float attenuation = cone * distanceFalloff(toLight, frame.spotLightPositions[i].w);
         if (attenuation > 0.0) {
+            attenuation *= bdexSpotShadow(i, inWorldPosition, geometric);
+        }
+        if (attenuation > 0.0) {
             color += shade(albedo.rgb, normal, toCamera, direction,
                            frame.spotLightColors[i].rgb * attenuation);
         }

@@ -11,6 +11,7 @@
 #define BDEX_MAX_POINT_LIGHTS 16
 #define BDEX_SHADOW_CASCADES 4
 #define BDEX_MAX_SPOT_LIGHTS 8
+#define BDEX_SHADOWED_SPOT_LIGHTS 4
 
 layout(set = 0, binding = 0) uniform FrameUniforms {
     mat4 view;
@@ -25,17 +26,26 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     mat4 shadowCascades[BDEX_SHADOW_CASCADES];  // world to each cascade's clip space
     vec4 cascadeSplits;  // far view distance of each cascade
     vec4 cascadeBiases[BDEX_SHADOW_CASCADES];  // x: depth bias, y: normal offset
-    vec4 shadowParams;  // x: shadows on, y: atlas texel size (UV)
+    vec4 shadowParams;  // x: sun shadows on, y / z: atlas texel size in U / V
     vec4 pointLightCount;  // x: point lights below, y: spot lights
     vec4 pointLightPositions[BDEX_MAX_POINT_LIGHTS];  // xyz: world position, w: range
     vec4 pointLightColors[BDEX_MAX_POINT_LIGHTS];     // rgb, premultiplied by intensity
     vec4 spotLightPositions[BDEX_MAX_SPOT_LIGHTS];    // xyz: world position, w: range
     vec4 spotLightDirections[BDEX_MAX_SPOT_LIGHTS];   // xyz: unit axis, w: cos(outer angle)
     vec4 spotLightColors[BDEX_MAX_SPOT_LIGHTS];       // rgb premultiplied, w: cos(inner angle)
+    mat4 spotShadows[BDEX_SHADOWED_SPOT_LIGHTS];      // world to each spot shadow's clip space
+    vec4 spotShadowParams[BDEX_MAX_SPOT_LIGHTS];      // x: shadow index or -1, y: depth bias, z: normal offset / m
 } frame;
 
-// Depth of the directional light's shadow casters, read with comparison
-// (see bdex/shadows.glsl).
+// World to clip space of a shadow view: the sun's cascades, then spot
+// lights' shadows.
+mat4 bdexShadowView(uint view) {
+    return view < BDEX_SHADOW_CASCADES ? frame.shadowCascades[view] : frame.spotShadows[view - BDEX_SHADOW_CASCADES];
+}
+
+// Depth of the shadow casters, read with comparison (see bdex/shadows.glsl):
+// a 4 x 2 atlas, the sun's cascades in the first row, spot lights' in the
+// second.
 layout(set = 0, binding = 1) uniform sampler2DShadow bdexShadowMap;
 
 #endif
