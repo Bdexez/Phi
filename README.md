@@ -108,7 +108,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F4` | Toggle debug gizmos: the sun's direction, point light ranges, object axes and names, and physics colliders. |
 | Left click | Select the object under the cursor (logged and circled). |
 | `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
-| `F6` | Toggle a flashlight (a spot light carried by the camera). |
+| `F6` | Toggle a flashlight (a spot light carried by the camera, casting shadows). |
 | `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
 | `F8` | Throw a bouncing ball (rigid-body physics); impacts are heard where they happen, as loud as they are hard. |
 | `F10` / `Delete` | Duplicate the selected object, with everything attached to it / delete it. |

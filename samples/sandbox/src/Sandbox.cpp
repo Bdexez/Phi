@@ -381,7 +381,8 @@ private:
                                      .intensity = 30.0f,
                                      .range = 25.0f,
                                      .innerAngle = glm::radians(12.0f),
-                                     .outerAngle = glm::radians(22.0f)});
+                                     .outerAngle = glm::radians(22.0f),
+                                     .castShadows = true});
     }
 
     /// Picks the nearest drawn object under the cursor (bounding spheres).
