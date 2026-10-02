@@ -1,0 +1,85 @@
+#include <bdex/core/Engine.hpp>
+#include <bdex/core/Json.hpp>
+#include <bdex/core/Trace.hpp>
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <thread>
+
+using namespace bdex;
+
+TEST(Trace, WritesChromeTraceEvents) {
+    TraceRecorder trace;
+    const auto start = TraceRecorder::Clock::now();
+    trace.record("frame 0", "frame", start, start + std::chrono::milliseconds(16));
+    trace.record("physics \"step\"", "FixedUpdate", start + std::chrono::milliseconds(2),
+                 start + std::chrono::milliseconds(5), 3);
+    const auto parsed = json::parse(trace.toChromeJson());
+    ASSERT_TRUE(parsed.has_value()) << parsed.error().message;
+    const json::Value& events = (*parsed)["traceEvents"];
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0]["ph"].asString(), "X");
+    EXPECT_DOUBLE_EQ(events[0]["ts"].asNumber(), 0.0);  // times from the first event
+    EXPECT_DOUBLE_EQ(events[0]["dur"].asNumber(), 16000.0);  // microseconds
+    EXPECT_EQ(events[1]["name"].asString(), "physics \"step\"");
+    EXPECT_EQ(events[1]["cat"].asString(), "FixedUpdate");
+    EXPECT_DOUBLE_EQ(events[1]["ts"].asNumber(), 2000.0);
+    EXPECT_DOUBLE_EQ(events[1]["tid"].asNumber(), 3.0);
+
+    // Bounded: past the limit, events are dropped and the trace says so.
+    TraceRecorder small(1);
+    small.record("a", "x", start, start);
+    small.record("b", "x", start, start);
+    EXPECT_EQ(small.events().size(), 1u);
+    EXPECT_TRUE(small.truncated());
+}
+
+TEST(Trace, NestsTasksInPhasesInFrames) {
+    Config config;
+    config.set("engine.forced_delta", "0.05");
+    config.set("engine.fixed_timestep", "0.025");  // two fixed steps per frame
+    Engine engine(config);
+    engine.scheduler().add(Phase::Update, "think", [](const FrameTime&) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    });
+    engine.scheduler().add(Phase::FixedUpdate, "simulate", [](const FrameTime&) {});
+    ASSERT_TRUE(engine.initialize().has_value());
+
+    TraceRecorder trace;
+    engine.setTrace(&trace);
+    engine.tick();
+    engine.tick();
+    engine.setTrace(nullptr);
+    engine.tick();  // not recorded
+
+    const auto count = [&](std::string_view name) {
+        return std::count_if(trace.events().begin(), trace.events().end(),
+                             [&](const TraceEvent& event) { return event.name == name; });
+    };
+    EXPECT_EQ(count("frame 0"), 1);
+    EXPECT_EQ(count("frame 1"), 1);
+    EXPECT_EQ(count("frame 2"), 0);
+    EXPECT_EQ(count("think"), 2);
+    EXPECT_EQ(count("simulate"), 4);
+    EXPECT_EQ(count("FixedUpdate"), 4);  // a phase span per run
+
+    // Each task lies within its phase's span, and each phase within its frame.
+    const auto find = [&](std::string_view name) {
+        return *std::find_if(trace.events().begin(), trace.events().end(),
+                             [&](const TraceEvent& event) { return event.name == name; });
+    };
+    const auto inside = [](const TraceEvent& inner, const TraceEvent& outer) {
+        return inner.startMicroseconds >= outer.startMicroseconds &&
+               inner.startMicroseconds + inner.durationMicroseconds <=
+                   outer.startMicroseconds + outer.durationMicroseconds + 1e-3;
+    };
+    const TraceEvent think = find("think");
+    const TraceEvent update = find("Update");
+    EXPECT_GE(think.durationMicroseconds, 1000.0);
+    EXPECT_TRUE(inside(think, update));
+    EXPECT_TRUE(inside(update, find("frame 0")));
+    EXPECT_EQ(update.category, "phase");
+    EXPECT_EQ(think.category, "Update");
+    engine.shutdown();
+}

@@ -46,6 +46,13 @@ public:
     [[nodiscard]] ServiceRegistry& services() { return services_; }
     [[nodiscard]] EventBus& events() { return events_; }
     [[nodiscard]] Scheduler& scheduler() { return scheduler_; }
+
+    /// Records each frame, phase and task into `trace` from now on (null
+    /// stops); see TraceRecorder. The recorder must outlive the recording.
+    void setTrace(TraceRecorder* trace) {
+        trace_ = trace;
+        scheduler_.setTrace(trace);
+    }
     [[nodiscard]] ModuleManager& modules() { return modules_; }
     [[nodiscard]] const FrameTime& time() const { return time_; }
 
@@ -76,6 +83,7 @@ private:
     ServiceRegistry services_;
     EventBus events_;
     Scheduler scheduler_;
+    TraceRecorder* trace_ = nullptr;
 
     FrameTime time_;
     Clock::time_point lastTick_;

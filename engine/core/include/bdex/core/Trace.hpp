@@ -1,0 +1,56 @@
+#pragma once
+
+#include <bdex/core/Result.hpp>
+#include <bdex/core/Types.hpp>
+
+#include <chrono>
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace bdex {
+
+/// One timed span: a frame, a phase, a task.
+struct TraceEvent {
+    std::string name;
+    std::string category;
+    f64 startMicroseconds = 0.0;  ///< Since the recorder's first event.
+    f64 durationMicroseconds = 0.0;
+    u32 thread = 0;
+};
+
+/// Collects timed spans and writes them in the Chrome trace event format,
+/// which Perfetto (ui.perfetto.dev) and chrome://tracing display as a
+/// timeline: spans of one thread nest by time, so frames contain their
+/// phases, which contain their tasks. Where averages hide a slow frame
+/// among a hundred, a trace shows which one and why.
+///
+/// Recording stops at `maxEvents` (memory stays bounded on long runs).
+/// Not thread-safe: record from one thread.
+class TraceRecorder {
+public:
+    using Clock = std::chrono::steady_clock;
+
+    explicit TraceRecorder(usize maxEvents = 2'000'000) : maxEvents_(maxEvents) {}
+
+    void record(std::string_view name, std::string_view category, Clock::time_point start, Clock::time_point end,
+                u32 thread = 0);
+
+    [[nodiscard]] const std::vector<TraceEvent>& events() const { return events_; }
+    /// Whether events were dropped for reaching `maxEvents`.
+    [[nodiscard]] bool truncated() const { return truncated_; }
+
+    /// {"traceEvents": [{"name", "cat", "ph": "X", "ts", "dur", "pid", "tid"}...]}
+    [[nodiscard]] std::string toChromeJson() const;
+    Result<> writeFile(const std::filesystem::path& path) const;
+
+private:
+    usize maxEvents_;
+    std::vector<TraceEvent> events_;
+    Clock::time_point origin_;
+    bool started_ = false;
+    bool truncated_ = false;
+};
+
+}  // namespace bdex

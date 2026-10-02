@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bdex/core/Time.hpp>
+#include <bdex/core/Trace.hpp>
 #include <bdex/core/Types.hpp>
 
 #include <array>
@@ -64,6 +65,10 @@ public:
     /// Names of the tasks of a phase, in execution order (for diagnostics).
     [[nodiscard]] std::vector<std::string> taskNames(Phase phase) const;
 
+    /// Records every phase and task run into `trace` from now on (null
+    /// stops). The recorder must outlive the recording.
+    void setTrace(TraceRecorder* trace) { trace_ = trace; }
+
     /// Timing of every task that ran, phase by phase in execution order.
     [[nodiscard]] std::vector<TaskStats> taskStats() const;
     void resetStats();
@@ -84,6 +89,7 @@ private:
     void insert(Phase phase, Entry entry);
     void settle();  // applies what was deferred while tasks ran
 
+    TraceRecorder* trace_ = nullptr;
     std::array<std::vector<Entry>, static_cast<usize>(Phase::Count)> phases_;
     // Tasks added while a phase runs: inserting them right away could shift
     // the entry being executed.
