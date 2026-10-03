@@ -33,6 +33,8 @@ constexpr const char kUsage[] =
     "  --headless           run without a window (offscreen rendering)\n"
     "  --frames <n>         exit after n frames\n"
     "  --screenshot <file>  save a PNG capture\n"
+    "  --trace <file>       record a timeline of every frame, phase and task\n"
+    "                       (Chrome trace JSON: open it in ui.perfetto.dev)\n"
     "  --log-level <level>  trace | debug | info | warn | error | off\n"
     "  --log-file <file>    also write the log to a file\n"
     "  --strict             fail if the RHI reports validation errors\n"
@@ -77,6 +79,10 @@ Result<CommandLine> parseCommandLine(int argc, char** argv) {
             const auto v = value();
             if (!v) return std::unexpected(v.error());
             cli.overrides.set("app.screenshot", *v);
+        } else if (arg == "--trace") {
+            const auto v = value();
+            if (!v) return std::unexpected(v.error());
+            cli.overrides.set("app.trace", *v);
         } else if (arg == "--log-file") {
             const auto v = value();
             if (!v) return std::unexpected(v.error());
@@ -376,7 +382,23 @@ int Application::run(int argc, char** argv) {
     int exitCode = kExitSuccess;
     if (const auto started = onStart(); started) {
         log::info("app", "running ({} modules: {})", modules.size(), joinModules(modules));
+        // A timeline of the whole run, written once it ends.
+        const std::string tracePath = config.getString("app.trace");
+        std::optional<TraceRecorder> trace;
+        if (!tracePath.empty()) {
+            trace.emplace();
+            engine.setTrace(&*trace);
+        }
         engine.run();
+        if (trace) {
+            engine.setTrace(nullptr);
+            if (const auto written = trace->writeFile(tracePath); written) {
+                log::info("app", "trace of {} spans written to {}{}", trace->events().size(), tracePath,
+                          trace->truncated() ? " (truncated: the run was too long)" : "");
+            } else {
+                log::error("app", "{}", written.error().message);
+            }
+        }
         log::info("app", "stopping after {} frames", engine.time().frame);
     } else {
         log::error("app", "startup failed: {}", started.error().message);

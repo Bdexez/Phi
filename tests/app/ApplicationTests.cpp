@@ -4,6 +4,8 @@
 #include <bdex/app/Application.hpp>
 #include <bdex/assets/Audio.hpp>
 #include <bdex/audio/Components.hpp>
+#include <bdex/core/FileSystem.hpp>
+#include <bdex/core/Json.hpp>
 #include <bdex/core/Log.hpp>
 #include <bdex/physics/Physics.hpp>
 
@@ -250,4 +252,38 @@ TEST(Application, ReadsSoundSettings) {
     EXPECT_EQ(settings.run({"--frames", "1", "--set", "audio.volume.music=0.25"}), 0);
     EXPECT_FLOAT_EQ(settings.music, 0.25f);
     EXPECT_FLOAT_EQ(settings.effects, 1.0f);
+}
+
+TEST(Application, WritesATraceOfTheRun) {
+    struct Traced final : app::Application {
+        int run(std::vector<std::string> arguments) {
+            arguments.insert(arguments.begin(), "traced");
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null"); }
+    };
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_trace.json";
+    std::filesystem::remove(path);
+    Traced traced;
+    ASSERT_EQ(traced.run({"--frames", "5", "--trace", path.string()}), 0);
+    const auto text = fs::readTextFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(text.has_value());
+    const auto parsed = json::parse(*text);
+    ASSERT_TRUE(parsed.has_value()) << parsed.error().message;
+    int frames = 0;
+    bool sawTransforms = false;
+    for (const json::Value& event : (*parsed)["traceEvents"].asArray()) {
+        frames += event["cat"].asString() == "frame";
+        sawTransforms |= event["name"].asString() == "scene.world_transforms";
+    }
+    EXPECT_EQ(frames, 5);
+    EXPECT_TRUE(sawTransforms);  // engine tasks are in it
 }
