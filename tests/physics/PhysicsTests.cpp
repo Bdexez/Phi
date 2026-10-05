@@ -862,3 +862,67 @@ TEST(BoxDynamics, FastCratesDoNotFallThroughThinFloors) {
     EXPECT_NEAR(world.get<Transform>(crate).position.y, 0.01f + 0.35f, 0.02f);
     EXPECT_GT(flatness(world.get<Transform>(crate).rotation), 0.995f);
 }
+
+TEST(BoxDynamics, CratesStackAndThePileSleeps) {
+    ecs::World world;
+    addFloor(world);
+    RigidBody body;
+    body.restitution = 0.0f;
+    body.friction = 0.6f;
+    std::vector<ecs::Entity> stack;
+    for (int level = 0; level < 3; ++level) {
+        stack.push_back(addCrate(world, Vec3(0.0f, 0.51f + static_cast<f32>(level) * 1.01f, 0.0f), body));
+    }
+    simulate(world, 4.0f);
+    for (int level = 0; level < 3; ++level) {
+        const Transform& pose = world.get<Transform>(stack[static_cast<usize>(level)]);
+        EXPECT_NEAR(pose.position.y, 0.5f + static_cast<f32>(level), 0.03f) << level;
+        EXPECT_LT(std::abs(pose.position.x) + std::abs(pose.position.z), 0.05f) << level;
+        EXPECT_GT(flatness(pose.rotation), 0.999f) << level;
+        EXPECT_TRUE(world.get<RigidBody>(stack[static_cast<usize>(level)]).asleep) << level;
+    }
+
+    // A crate thrown at the top one knocks it off, waking the pile.
+    RigidBody thrown;
+    thrown.velocity = Vec3(-12.0f, 0.0f, 0.0f);
+    thrown.gravityScale = 0.0f;
+    addCrate(world, Vec3(3.0f, 2.5f, 0.0f), thrown, Quat(1, 0, 0, 0), Vec3(0.3f));
+    simulate(world, 1.0f);
+    EXPECT_FALSE(world.get<RigidBody>(stack[2]).asleep);
+    EXPECT_LT(world.get<Transform>(stack[2]).position.x, -0.5f);
+}
+
+TEST(BoxDynamics, BallsAndCratesPushEachOther) {
+    // A ball rolled hard into a crate shoves it along the floor.
+    ecs::World world;
+    addFloor(world);
+    RigidBody crateBody;
+    crateBody.friction = 0.4f;
+    const ecs::Entity crate = addCrate(world, Vec3(0.0f, 0.5f, 0.0f), crateBody);
+    RigidBody ballBody;
+    ballBody.velocity = Vec3(-10.0f, 0.0f, 0.0f);
+    ballBody.mass = 2.0f;
+    ballBody.restitution = 0.3f;
+    const ecs::Entity ball = addBall(world, Vec3(3.0f, 0.5f, 0.0f), ballBody, 0.5f);
+    simulate(world, 1.5f);
+    EXPECT_LT(world.get<Transform>(crate).position.x, -0.5f);  // shoved
+    EXPECT_GT(world.get<Transform>(ball).position.x, world.get<Transform>(crate).position.x + 0.9f);  // not through it
+
+    // Two crates meeting head on in free fall swap their speeds.
+    ecs::World space;
+    RigidBody left;
+    left.gravityScale = 0.0f;
+    left.restitution = 1.0f;
+    left.velocity = Vec3(3.0f, 0.0f, 0.0f);
+    RigidBody right = left;
+    right.velocity = Vec3(-3.0f, 0.0f, 0.0f);
+    const ecs::Entity a = addCrate(space, Vec3(-2.0f, 0.0f, 0.0f), left);
+    const ecs::Entity b = addCrate(space, Vec3(2.0f, 0.0f, 0.0f), right);
+    simulate(space, 1.0f);
+    const f32 va = space.get<RigidBody>(a).velocity.x;
+    const f32 vb = space.get<RigidBody>(b).velocity.x;
+    EXPECT_NEAR(va + vb, 0.0f, 1e-3f);  // momentum kept
+    EXPECT_NEAR(va, -3.0f, 0.3f);
+    EXPECT_NEAR(vb, 3.0f, 0.3f);
+    EXPECT_GT(space.get<Transform>(b).position.x - space.get<Transform>(a).position.x, 1.0f);  // never overlapped
+}

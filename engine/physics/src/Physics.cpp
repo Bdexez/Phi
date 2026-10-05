@@ -361,14 +361,13 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         }
     }
 
-    // Dynamic boxes, against the same static boxes and spheres.
-    std::vector<SphereShape> staticSpheres;
+    // Dynamic boxes, against the same static boxes and every sphere.
+    std::vector<SphereShape> shapes;
+    shapes.reserve(spheres.size());
     for (const Sphere& sphere : spheres) {
-        if (sphere.body == nullptr) {
-            staticSpheres.push_back({sphere.entity, sphere.center, sphere.radius});
-        }
+        shapes.push_back({sphere.entity, sphere.center, sphere.radius, sphere.body});
     }
-    stepBoxes(world, dt, settings, boxes, staticSpheres, contacts);
+    stepBoxes(world, dt, settings, boxes, shapes, contacts);
 
     // Triggers: which bodies overlap each zone now, compared with before.
     world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
