@@ -13,7 +13,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
 - **3D rendering:** perspective cameras, meshes, textures, materials with normal maps, Blinn-Phong lighting from a directional light with soft shadows and up to 16 point lights and 8 spot lights, frustum culling, draw sorting, instancing, blended transparency, and HDR rendering with bloom, ACES tone mapping, and FXAA through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
-- **Physics:** rigid bodies with gravity, sphere and oriented box colliders, triggers, raycasts, a collide-and-slide character controller, restitution, and friction that sets balls rolling, stepped deterministically in the fixed update.
+- **Physics:** rigid bodies with gravity, sphere and oriented box colliders, tumbling dynamic boxes, triggers, raycasts, a collide-and-slide character controller, restitution, and friction that sets balls rolling, stepped deterministically in the fixed update.
 - **Audio:** a software mixer with any number of voices, resampling, pitch, looping, and 3D panning and attenuation around a listener.
 - **Assets:** a virtual file system, asset caching, glTF 2.0 (`.gltf`, `.glb`), OBJ, PNG, TGA, WAV, and SPIR-V loaders, plus procedural cubes, planes, spheres, textures, and tones.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
@@ -112,6 +112,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
 | `F8` | Throw a bouncing ball (rigid-body physics); impacts are heard where they happen, as loud as they are hard. |
 | `F10` / `Delete` | Duplicate the selected object, with everything attached to it / delete it. |
+| `C` | Throw a tumbling crate (a dynamic box). |
 | `G` | Walk instead of flying: the camera gets a body that falls, walks on what it stands on (collide and slide), and jumps with `Space`; `G` again to fly. |
 | `F12` | Toggle the stats panel: frame rate, GPU time, entity and voice counts. |
 | `F11` | Toggle fullscreen (or start with `window.fullscreen = true`). |
