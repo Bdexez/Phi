@@ -121,6 +121,35 @@ inline std::optional<Penetration> sphereBoxContact(const Box& box, const Vec3& c
     return Penetration{box.rotation * normal, nearest + radius};
 }
 
+/// Whether two oriented boxes overlap, by separating axes: the three face
+/// axes of each and the nine products of their edges.
+inline bool boxesOverlap(const Box& a, const Box& b) {
+    const Mat3 axesA = glm::mat3_cast(a.rotation);
+    const Mat3 axesB = glm::mat3_cast(b.rotation);
+    const Vec3 between = b.center - a.center;
+    const auto separates = [&](const Vec3& axis) {
+        f32 radius = 0.0f;
+        for (int i = 0; i < 3; ++i) {
+            radius += std::abs(glm::dot(axis, axesA[i])) * a.half[i] + std::abs(glm::dot(axis, axesB[i])) * b.half[i];
+        }
+        return std::abs(glm::dot(between, axis)) > radius;
+    };
+    for (int i = 0; i < 3; ++i) {
+        if (separates(axesA[i]) || separates(axesB[i])) {
+            return false;
+        }
+    }
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            const Vec3 cross = glm::cross(axesA[i], axesB[j]);
+            if (glm::dot(cross, cross) > 1e-8f && separates(glm::normalize(cross))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /// A sphere collider as boxes meet it: static (no body) or dynamic.
 struct SphereShape {
     ecs::Entity entity;

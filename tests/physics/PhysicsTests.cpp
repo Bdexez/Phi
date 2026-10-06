@@ -926,3 +926,39 @@ TEST(BoxDynamics, BallsAndCratesPushEachOther) {
     EXPECT_NEAR(vb, 3.0f, 0.3f);
     EXPECT_GT(space.get<Transform>(b).position.x - space.get<Transform>(a).position.x, 1.0f);  // never overlapped
 }
+
+TEST(BoxDynamics, CratesPassTriggersAndBlockCharacters) {
+    ecs::World world;
+    addFloor(world);
+    // A crate sliding across a gate zone, and a spherical zone it ends in.
+    const ecs::Entity gate = world.create();
+    world.emplace<Transform>(gate).position = Vec3(3.0f, 1.0f, 0.0f);
+    world.emplace<BoxCollider>(gate, Vec3(0.1f, 2.0f, 2.0f));
+    world.emplace<Trigger>(gate);
+    RigidBody slick;
+    slick.friction = 0.0f;
+    slick.velocity = Vec3(4.0f, 0.0f, 0.0f);
+    const ecs::Entity crate = addCrate(world, Vec3(0.0f, 0.5f, 0.0f), slick);
+    std::vector<TriggerEvent> events;
+    for (int i = 0; i < static_cast<int>(1.5f / kStep); ++i) {
+        step(world, kStep, {}, nullptr, &events);
+    }
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].body, crate);
+    EXPECT_TRUE(events[0].entered);
+    EXPECT_FALSE(events[1].entered);
+
+    const ecs::Entity zone = world.create();
+    world.emplace<Transform>(zone).position = world.get<Transform>(crate).position + Vec3(0.0f, 1.2f, 0.0f);
+    world.emplace<SphereCollider>(zone, 1.0f);
+    world.emplace<Trigger>(zone);
+    world.get<RigidBody>(crate).velocity = Vec3(0.0f);
+    step(world, kStep);
+    EXPECT_EQ(world.get<Trigger>(zone).inside, (std::vector<ecs::Entity>{crate}));
+
+    // A character walking into the crate stops at it.
+    const Vec3 at = world.get<Transform>(crate).position;
+    const ecs::Entity hero = addCharacter(world, at + Vec3(-3.0f, 0.0f, 0.0f));
+    moveAndSlide(world, hero, Vec3(5.0f, 0.0f, 0.0f));
+    EXPECT_NEAR(world.get<Transform>(hero).position.x, at.x - 1.0f, 0.02f);
+}
