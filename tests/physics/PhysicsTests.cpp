@@ -962,3 +962,28 @@ TEST(BoxDynamics, CratesPassTriggersAndBlockCharacters) {
     moveAndSlide(world, hero, Vec3(5.0f, 0.0f, 0.0f));
     EXPECT_NEAR(world.get<Transform>(hero).position.x, at.x - 1.0f, 0.02f);
 }
+
+TEST(BoxDynamics, CratesMeetingEdgeToEdgeDoNotSinkIn) {
+    // A static box turned 45 degrees about Z shows an edge along Z toward
+    // +X; a crate turned 45 degrees about Y shows an edge along Y toward -X.
+    // Thrown at it, they cross edge on edge, where no corner of either is
+    // inside the other.
+    ecs::World world;
+    const ecs::Entity post = world.create();
+    world.emplace<Transform>(post).rotation = glm::angleAxis(glm::radians(45.0f), Vec3(0.0f, 0.0f, 1.0f));
+    world.emplace<BoxCollider>(post, Vec3(0.5f));
+    RigidBody body;
+    body.gravityScale = 0.0f;
+    body.restitution = 0.5f;
+    body.velocity = Vec3(-3.0f, 0.0f, 0.0f);
+    const ecs::Entity crate =
+        addCrate(world, Vec3(3.0f, 0.0f, 0.0f), body, glm::angleAxis(glm::radians(45.0f), Vec3(0.0f, 1.0f, 0.0f)));
+    // The edges touch when the centers are 2 x 0.707 apart.
+    f32 closest = 1e9f;
+    for (int i = 0; i < static_cast<int>(1.5f / kStep); ++i) {
+        step(world, kStep);
+        closest = std::min(closest, world.get<Transform>(crate).position.x);
+    }
+    EXPECT_GT(closest, 2.0f * 0.7071f - 0.03f);
+    EXPECT_GT(world.get<RigidBody>(crate).velocity.x, 0.5f);  // bounced back
+}

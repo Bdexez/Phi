@@ -86,9 +86,10 @@ struct FacePoint {
 /// against it is clipped to the reference face's rectangle, and the
 /// clipped points on the near side are the contacts. All share one normal,
 /// which pushes `incidentIsB ? b : a` away from the other: what keeps a
-/// stack of crates square. Nothing when the boxes are apart, or when an
-/// edge-to-edge axis separates them less than any face does (the caller
-/// then falls back to corners).
+/// stack of crates square. When an edge-to-edge axis overlaps least, the
+/// boxes meet edge on edge: one contact between the edges' closest points.
+/// Nothing when the boxes are apart (or in the rare degenerate cases where
+/// the caller falls back to corners).
 struct FaceContact {
     bool found = false;
     bool incidentIsB = true;
@@ -124,17 +125,56 @@ FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
         return result;  // apart, beyond this step's reach
     }
     f32 bestEdge = -1e30f;
+    int edgeA = 0;
+    int edgeB = 0;
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
             const Vec3 cross = glm::cross(axesA[i], axesB[j]);
             const f32 length = glm::length(cross);
             if (length > 1e-3f) {
-                bestEdge = std::max(bestEdge, separation(cross / length));
+                if (const f32 apart = separation(cross / length); apart > bestEdge) {
+                    bestEdge = apart;
+                    edgeA = i;
+                    edgeB = j;
+                }
             }
         }
     }
-    if (bestEdge > margin || bestEdge > best + 0.02f) {
-        return result;  // apart along an edge axis, or meeting edge to edge
+    if (bestEdge > margin) {
+        return result;  // apart along an edge axis
+    }
+    if (bestEdge > best + 0.02f) {
+        // Meeting edge to edge: one contact, between the two edges' closest
+        // points, along their common perpendicular.
+        Vec3 normal = glm::normalize(glm::cross(axesA[edgeA], axesB[edgeB]));
+        if (glm::dot(normal, between) < 0.0f) {
+            normal = -normal;  // from A toward B
+        }
+        // Each box's edge along that axis reaching furthest toward the other.
+        Vec3 onA = a.center;
+        Vec3 onB = b.center;
+        for (int k = 0; k < 3; ++k) {
+            if (k != edgeA) onA += axesA[k] * (a.half[k] * (glm::dot(axesA[k], normal) > 0.0f ? 1.0f : -1.0f));
+            if (k != edgeB) onB += axesB[k] * (b.half[k] * (glm::dot(axesB[k], normal) < 0.0f ? 1.0f : -1.0f));
+        }
+        const Vec3& da = axesA[edgeA];
+        const Vec3& db = axesB[edgeB];
+        const Vec3 offset = onA - onB;
+        const f32 cosine = glm::dot(da, db);
+        const f32 denominator = 1.0f - cosine * cosine;
+        if (denominator < 1e-6f) {
+            return result;  // parallel edges: the caller falls back to corners
+        }
+        const f32 c = glm::dot(da, offset);
+        const f32 f = glm::dot(db, offset);
+        const f32 alongA = std::clamp((cosine * f - c) / denominator, -a.half[edgeA], a.half[edgeA]);
+        const f32 alongB = std::clamp((f - cosine * c) / denominator, -b.half[edgeB], b.half[edgeB]);
+        const Vec3 point = ((onA + da * alongA) + (onB + db * alongB)) * 0.5f;
+        result.found = true;
+        result.incidentIsB = true;  // pushes B away from A along the normal
+        result.normal = normal;
+        result.points.push_back({point, -bestEdge});
+        return result;
     }
 
     // Reference face: on the reference box, facing the other one.
