@@ -177,6 +177,11 @@ TEST(Robustness, SceneFilesSurviveCorruptionAndSimulation) {
     world.get<scene::Transform>(ball).position = Vec3(0.0f, 3.0f, 0.0f);
     world.emplace<physics::SphereCollider>(ball, 0.5f);
     world.emplace<physics::RigidBody>(ball);
+    const ecs::Entity crate = source.createEntity("Crate");
+    world.get<scene::Transform>(crate).position = Vec3(1.0f, 2.0f, 0.0f);
+    world.get<scene::Transform>(crate).rotation = glm::angleAxis(0.5f, glm::normalize(Vec3(1.0f, 1.0f, 0.0f)));
+    world.emplace<physics::BoxCollider>(crate, Vec3(0.4f));
+    world.emplace<physics::RigidBody>(crate).angularVelocity = Vec3(0.0f, 2.0f, 0.0f);
     const ecs::Entity zone = source.createEntity("Zone");
     world.emplace<physics::SphereCollider>(zone, 2.0f);
     world.emplace<physics::Trigger>(zone);
