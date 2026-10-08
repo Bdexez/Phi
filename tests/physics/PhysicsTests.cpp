@@ -987,3 +987,25 @@ TEST(BoxDynamics, CratesMeetingEdgeToEdgeDoNotSinkIn) {
     EXPECT_GT(closest, 2.0f * 0.7071f - 0.03f);
     EXPECT_GT(world.get<RigidBody>(crate).velocity.x, 0.5f);  // bounced back
 }
+
+TEST(BoxDynamics, BrokenCratesAreLeftOut) {
+    // NaN or infinite velocities, from a bad scene file or a blown-up
+    // simulation, must not disturb the rest: they would poison the broad
+    // phase's sort.
+    ecs::World world;
+    addFloor(world);
+    const f32 nan = std::numeric_limits<f32>::quiet_NaN();
+    const f32 inf = std::numeric_limits<f32>::infinity();
+    RigidBody broken;
+    broken.velocity = Vec3(nan, 0.0f, 0.0f);
+    addCrate(world, Vec3(0.0f, 0.5f, 0.0f), broken);
+    broken.velocity = Vec3(0.0f);
+    broken.angularVelocity = Vec3(0.0f, inf, 0.0f);
+    addCrate(world, Vec3(1.2f, 0.5f, 0.0f), broken);
+    RigidBody brokenBall;
+    brokenBall.velocity = Vec3(0.0f, nan, 0.0f);
+    addBall(world, Vec3(-1.2f, 0.5f, 0.0f), brokenBall);
+    const ecs::Entity healthy = addCrate(world, Vec3(4.0f, 3.0f, 0.0f));
+    simulate(world, 2.0f);
+    EXPECT_NEAR(world.get<Transform>(healthy).position.y, 0.5f, 0.02f);
+}

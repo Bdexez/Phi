@@ -257,7 +257,12 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
     world.view<Transform, const BoxCollider, RigidBody>().exclude<Trigger>().each(
         [&](ecs::Entity entity, Transform& transform, const BoxCollider& collider, RigidBody& body) {
             const Vec3 half = collider.halfExtents * glm::abs(transform.scale);
-            if (!finite(transform.position) || !finite(half) || !(body.mass > 0.0f) || !std::isfinite(body.mass)) {
+            // Broken bodies (NaN or infinite state, from a bad file or a
+            // blown-up simulation) are left out, as in the sphere step:
+            // their bounds would poison the broad phase's sort.
+            const bool brokenRotation = !std::isfinite(glm::dot(transform.rotation, transform.rotation));
+            if (!finite(transform.position) || !finite(half) || !(body.mass > 0.0f) || !std::isfinite(body.mass) ||
+                !finite(body.velocity) || !finite(body.angularVelocity) || brokenRotation) {
                 return;
             }
             // A solid box: I = m / 12 (h^2 + d^2) about the x axis, and so on.
@@ -310,8 +315,9 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
     std::vector<std::optional<usize>> sphereBody(spheres.size());
     const auto sphereSolver = [&](usize s) -> std::optional<usize> {
         const SphereShape& sphere = spheres[s];
-        if (sphere.body == nullptr || !(sphere.body->mass > 0.0f)) {
-            return std::nullopt;  // static
+        if (sphere.body == nullptr || !(sphere.body->mass > 0.0f) || !finite(sphere.body->velocity) ||
+            !finite(sphere.body->angularVelocity)) {
+            return std::nullopt;  // static, or broken: met as static
         }
         if (!sphereBody[s]) {
             SolverBody solver{sphere.entity, sphere.body, sphere.center, 0.0f, Mat3(0.0f), sphere.radius};
@@ -387,7 +393,8 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
     }
     for (usize i = 0; i < spheres.size(); ++i) {
         const SphereShape& sphere = spheres[i];
-        const f32 reach = sphere.radius + (sphere.body != nullptr ? 1.5f * dt * glm::length(sphere.body->velocity) : 0.0f);
+        const f32 speed = sphere.body != nullptr ? glm::length(sphere.body->velocity) : 0.0f;
+        const f32 reach = sphere.radius + (std::isfinite(speed) ? 1.5f * dt * speed : 0.0f);
         proxies.push_back({sphere.center - Vec3(reach), sphere.center + Vec3(reach), Kind::Sphere, i});
     }
     std::sort(proxies.begin(), proxies.end(), [](const Proxy& a, const Proxy& b) {
@@ -422,7 +429,8 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
                 if (asleep(box) && !sphereMoves) {
                     break;
                 }
-                const f32 margin = box.margin + (sphere.body != nullptr ? 1.5f * dt * glm::length(sphere.body->velocity) : 0.0f);
+                const f32 sphereSpeed = sphere.body != nullptr ? glm::length(sphere.body->velocity) : 0.0f;
+                const f32 margin = box.margin + (std::isfinite(sphereSpeed) ? 1.5f * dt * sphereSpeed : 0.0f);
                 if (const auto touch = sphereBoxContact(box.shape, sphere.center, sphere.radius + margin)) {
                     found.push_back({box.body, sphereSolver(q.index), sphere.entity,
                                      sphere.center + touch->normal * sphere.radius, touch->normal, touch->depth - margin});
