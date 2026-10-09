@@ -251,6 +251,7 @@ Window modules publish keyboard, mouse, and gamepad events; `platform::InputStat
 - `Scheduler::taskStats()`: CPU time of every task; the `benchmark` sample prints it for a reproducible scene.
 - `TraceRecorder` (`Engine::setTrace`, or `--trace <file>` / `app.trace`): every frame, phase and task as a timed span, written in the Chrome trace event format for ui.perfetto.dev or chrome://tracing. Spans nest by time (frame, phase, task), so a slow frame among many shows which task made it slow. Recording is bounded (two million spans by default).
 - `IRenderer::reloadShaders()`: rebuilds pipelines from the shader files on disk.
+- `FileWatcher`: reports files modified, created or removed under watched files or directories, by polling their modification times, for hot reloading; the sandbox reloads its lamp model when the file changes and its shaders when they are rebuilt.
 - `log.file`: a copy of the log on disk.
 
 ## Assets

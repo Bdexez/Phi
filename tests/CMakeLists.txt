@@ -19,6 +19,7 @@ add_executable(bdex_tests
     core/EngineTests.cpp
     core/EventBusTests.cpp
     core/FileSystemTests.cpp
+    core/FileWatcherTests.cpp
     core/HandleTests.cpp
     core/JobSystemTests.cpp
     core/LogTests.cpp
