@@ -13,7 +13,8 @@
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
 // shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
-// selected object, F11 for fullscreen, F12 for the stats panel, G to walk
+// selected object, F11 for fullscreen, F12 for the stats panel, F1 for this
+// list on screen, G to walk
 // (Space jumps) or fly, C to throw a crate, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
@@ -107,6 +108,7 @@ protected:
         config.setDefault("input.duplicate", "F10");
         config.setDefault("input.delete", "Delete");
         config.setDefault("input.stats", "F12");
+        config.setDefault("input.help", "F1");
         config.setDefault("input.walk", "G, GamepadB");
         config.setDefault("input.throw_crate", "C");
         config.setDefault("input.quit", "Escape, GamepadBack");
@@ -155,6 +157,9 @@ protected:
             }
             if (controls->pressed("stats")) {
                 showStats_ = !showStats_;
+            }
+            if (controls->pressed("help")) {
+                showHelp_ = !showHelp_;
             }
             if (controls->pressed("walk")) {
                 flyCamera_.setWalking(scene().world(), !flyCamera_.walking());
@@ -864,15 +869,52 @@ private:
         secondsSinceTitle_ = 0.0;
     }
 
-    /// Frame rate, GPU time and counts, in the top-left corner (F12).
+    /// Frame rate, GPU time and counts, in the top-left corner (F12), and
+    /// the controls under it (F1).
     void drawStats() {
         auto* debug = engine().services().tryGet<render::DebugDraw>();
-        if (debug == nullptr || !showStats_ || stats_.empty()) {
+        if (debug == nullptr) {
             return;
         }
         // A shadow one pixel off keeps the text readable on any background.
-        debug->screenText(Vec2(13.0f, 13.0f), stats_, 12.0f, Vec4(0.0f, 0.0f, 0.0f, 0.8f));
-        debug->screenText(Vec2(12.0f, 12.0f), stats_, 12.0f, Vec4(1.0f, 1.0f, 0.6f, 1.0f));
+        const auto write = [&](const Vec2& at, std::string_view text, const Vec4& color) {
+            debug->screenText(at + Vec2(1.0f), text, 12.0f, Vec4(0.0f, 0.0f, 0.0f, 0.8f));
+            debug->screenText(at, text, 12.0f, color);
+        };
+        if (showStats_ && !stats_.empty()) {
+            write(Vec2(12.0f), stats_ + (showHelp_ ? "" : "\nF1 HELP"), Vec4(1.0f, 1.0f, 0.6f, 1.0f));
+        }
+        if (showHelp_) {
+            write(Vec2(12.0f, 100.0f), helpText(), Vec4(0.75f, 0.95f, 1.0f, 1.0f));
+        }
+    }
+
+    /// Every action and what drives it now, from the [input] bindings: a
+    /// rebound key shows as rebound.
+    [[nodiscard]] std::string helpText() {
+        static constexpr std::pair<const char*, const char*> kActions[] = {
+            {"move_forward", "forward"},  {"move_back", "back"},         {"move_left", "left"},
+            {"move_right", "right"},      {"move_up", "up / jump"},      {"move_down", "down"},
+            {"move_fast", "faster"},      {"look", "look around"},       {"select", "select"},
+            {"throw_ball", "throw a ball"}, {"throw_crate", "throw a crate"}, {"walk", "walk / fly"},
+            {"flashlight", "flashlight"}, {"duplicate", "duplicate"},    {"delete", "delete"},
+            {"debug_view", "gizmos"},     {"save_scene", "save scene"},  {"load_scene", "load scene"},
+            {"screenshot", "screenshot"}, {"profile", "log profile"},    {"reload_shaders", "reload shaders"},
+            {"stats", "stats"},           {"toggle_fullscreen", "fullscreen"}, {"help", "this help"},
+            {"quit", "quit"},
+        };
+        const platform::InputActions* controls = actions();
+        std::string text;
+        for (const auto& [action, description] : kActions) {
+            std::string keys;
+            if (controls != nullptr) {
+                for (const std::string& binding : controls->bindings(action)) {
+                    keys += (keys.empty() ? "" : ", ") + binding;
+                }
+            }
+            text += std::format("{:<16}{}\n", description, keys.empty() ? "-" : keys);
+        }
+        return text;
     }
 
     static constexpr u32 kCubeCount = 8;
@@ -908,6 +950,7 @@ private:
     u32 framesSinceTitle_ = 0;
     std::string stats_;
     bool showStats_ = true;
+    bool showHelp_ = false;
     f64 secondsSinceTitle_ = 0.0;
 };
 
