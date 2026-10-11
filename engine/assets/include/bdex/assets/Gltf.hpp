@@ -46,6 +46,32 @@ struct ModelNode {
     std::vector<u32> children;
 };
 
+enum class AnimatedProperty : u8 { Translation, Rotation, Scale };
+enum class Interpolation : u8 { Linear, Step, CubicSpline };
+
+/// One property of one node over time: keyframes at `times` (seconds,
+/// ascending). Values are xyz for translation and scale, a quaternion
+/// (x, y, z, w) for rotation; with CubicSpline each key has three values:
+/// in-tangent, value, out-tangent.
+struct AnimationChannel {
+    u32 node = 0;
+    AnimatedProperty property = AnimatedProperty::Translation;
+    Interpolation interpolation = Interpolation::Linear;
+    std::vector<f32> times;
+    std::vector<Vec4> values;
+};
+
+struct ModelAnimation {
+    std::string name;
+    f32 duration = 0.0f;  ///< Its last keyframe.
+    std::vector<AnimationChannel> channels;
+};
+
+/// A channel's value at `time` (clamped to its keys): xyz for translation
+/// and scale; for rotation, a unit quaternion as (x, y, z, w). Linear
+/// rotations are slerped, as glTF specifies.
+[[nodiscard]] Vec4 sampleChannel(const AnimationChannel& channel, f32 time);
+
 /// A glTF scene's content, renderer-agnostic: a node tree whose nodes may
 /// draw meshes made of primitives, each with a material.
 struct ModelData {
@@ -56,6 +82,7 @@ struct ModelData {
     /// Decoded images; an image the engine cannot decode (JPEG...) is left
     /// empty (not valid()) and named in `warnings`.
     std::vector<ImageData> images;
+    std::vector<ModelAnimation> animations;
     std::vector<std::string> warnings;
 };
 

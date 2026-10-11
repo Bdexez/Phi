@@ -328,3 +328,78 @@ TEST(Gltf, LoadsFilesNextToTheModelThroughTheFileSystem) {
     EXPECT_FALSE(loadGltf(vfs, "test:/missing.gltf").has_value());
     std::filesystem::remove_all(directory);
 }
+
+TEST(Gltf, ReadsAndSamplesAnimations) {
+    Buffer buffer;
+    const f32 times[] = {0.0f, 2.0f};
+    const f32 moves[] = {0, 0, 0, 4, 2, 0};
+    const f32 c = std::cos(glm::radians(45.0f));
+    const f32 s = std::sin(glm::radians(45.0f));
+    const f32 turns[] = {0, 0, 0, 1, 0, s, 0, c};  // none, then 90 degrees about Y (x, y, z, w)
+    const f32 steps[] = {1, 1, 1, 3, 3, 3};
+    const usize timeView = buffer.view(times, sizeof(times));
+    buffer.accessor(timeView, 5126, "SCALAR", 2);                        // 0
+    buffer.accessor(buffer.view(moves, sizeof(moves)), 5126, "VEC3", 2);  // 1
+    buffer.accessor(buffer.view(turns, sizeof(turns)), 5126, "VEC4", 2);  // 2
+    buffer.accessor(buffer.view(steps, sizeof(steps)), 5126, "VEC3", 2);  // 3
+    const auto sampler = [](f64 output, const char* interpolation) {
+        return json::Object{{"input", 0}, {"output", output}, {"interpolation", interpolation}};
+    };
+    const auto channel = [](f64 samplerIndex, const char* path) {
+        return json::Object{{"sampler", samplerIndex}, {"target", json::Object{{"node", 0}, {"path", path}}}};
+    };
+    const json::Object animation = {
+        {"name", "wave"},
+        {"samplers", json::Array{sampler(1, "LINEAR"), sampler(2, "LINEAR"), sampler(3, "STEP")}},
+        {"channels", json::Array{channel(0, "translation"), channel(1, "rotation"), channel(2, "scale"),
+                                 channel(0, "weights")}},
+    };
+    const json::Object root = {
+        {"asset", json::Object{{"version", "2.0"}}},
+        {"buffers", json::Array{json::Object{{"byteLength", static_cast<f64>(buffer.bytes.size())}}}},
+        {"bufferViews", buffer.views},
+        {"accessors", buffer.accessors},
+        {"nodes", json::Array{json::Object{{"name", "flag"}}}},
+        {"animations", json::Array{animation}},
+    };
+    const auto model = decodeGltf(glb(json::write(json::Value(root)), buffer.bytes));
+    ASSERT_TRUE(model.has_value()) << model.error().message;
+    ASSERT_EQ(model->animations.size(), 1u);
+    const ModelAnimation& wave = model->animations[0];
+    EXPECT_EQ(wave.name, "wave");
+    EXPECT_FLOAT_EQ(wave.duration, 2.0f);
+    ASSERT_EQ(wave.channels.size(), 3u);  // the weights channel is reported, not read
+    EXPECT_EQ(model->warnings.size(), 1u);
+
+    const AnimationChannel& move = wave.channels[0];
+    EXPECT_EQ(sampleChannel(move, -1.0f), Vec4(0.0f));                   // clamped before
+    EXPECT_EQ(sampleChannel(move, 1.0f), Vec4(2.0f, 1.0f, 0.0f, 0.0f));  // halfway
+    EXPECT_EQ(sampleChannel(move, 5.0f), Vec4(4.0f, 2.0f, 0.0f, 0.0f));  // clamped after
+    const Vec4 half = sampleChannel(wave.channels[1], 1.0f);  // slerped: 45 degrees
+    EXPECT_NEAR(glm::angle(Quat(half.w, half.x, half.y, half.z)), glm::radians(45.0f), 1e-4f);
+    EXPECT_EQ(sampleChannel(wave.channels[2], 1.99f), Vec4(1.0f, 1.0f, 1.0f, 0.0f));  // step holds
+    EXPECT_EQ(sampleChannel(wave.channels[2], 2.0f), Vec4(3.0f, 3.0f, 3.0f, 0.0f));
+
+    // Cubic spline with flat tangents eases in and out.
+    AnimationChannel eased;
+    eased.interpolation = Interpolation::CubicSpline;
+    eased.times = {0.0f, 1.0f};
+    eased.values = {Vec4(0.0f), Vec4(0.0f), Vec4(0.0f), Vec4(0.0f), Vec4(10.0f), Vec4(0.0f)};
+    EXPECT_NEAR(sampleChannel(eased, 0.5f).x, 5.0f, 1e-5f);
+    EXPECT_NEAR(sampleChannel(eased, 0.25f).x, 10.0f * (3.0f * 0.0625f - 2.0f * 0.015625f), 1e-5f);
+
+    // Times running backwards, or values that do not match them, are refused.
+    json::Object backwards = root;
+    const f32 reversed[] = {2.0f, 0.0f};
+    Buffer other = buffer;
+    std::memcpy(other.bytes.data(), reversed, sizeof(reversed));
+    EXPECT_FALSE(decodeGltf(glb(json::write(json::Value(backwards)), other.bytes)).has_value());
+    json::Array badSamplers = {sampler(0, "LINEAR")};  // two times, two scalars: not VEC3
+    json::Object mismatch = root;
+    for (auto& [key, value] : mismatch) {
+        if (key == "animations") {
+            value = json::Array{json::Object{{"samplers", badSamplers}, {"channels", json::Array{channel(0, "translation")}}}};
+        }
+    }
+    EXPECT_FALSE(decodeGltf(glb(json::write(json::Value(mismatch)), buffer.bytes)).has_value());
+}

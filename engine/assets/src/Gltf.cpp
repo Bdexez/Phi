@@ -537,7 +537,122 @@ Result<ModelData> decodeGltf(std::span<const u8> bytes, const UriReader& readUri
             }
         }
     }
+    // Animations: each channel samples one property of one node.
+    for (usize a = 0; a < root["animations"].size(); ++a) {
+        const json::Value& animation = root["animations"][a];
+        ModelAnimation out;
+        out.name = std::string(animation["name"].asString());
+        for (const json::Value& channel : animation["channels"].asArray()) {
+            const json::Value& target = channel["target"];
+            const std::string_view path = target["path"].asString();
+            const auto node = integer(target["node"]);
+            if (path == "weights") {
+                model.warnings.push_back(std::format("gltf: animation {} morphs weights, which is not supported", a));
+                continue;
+            }
+            if (!node || *node >= model.nodes.size() || (path != "translation" && path != "rotation" && path != "scale")) {
+                return fail("gltf: animation {} has a malformed channel", a);
+            }
+            const auto samplerIndex = integer(channel["sampler"]);
+            const json::Value& sampler = animation["samplers"][static_cast<usize>(samplerIndex.value_or(~0ull))];
+            const auto input = integer(sampler["input"]);
+            const auto output = integer(sampler["output"]);
+            if (!sampler.isObject() || !input || !output) {
+                return fail("gltf: animation {} has a malformed sampler", a);
+            }
+            AnimationChannel track;
+            track.node = static_cast<u32>(*node);
+            track.property = path == "translation" ? AnimatedProperty::Translation
+                             : path == "rotation"  ? AnimatedProperty::Rotation
+                                                   : AnimatedProperty::Scale;
+            const std::string_view interpolation = sampler["interpolation"].asString("LINEAR");
+            track.interpolation = interpolation == "STEP"          ? Interpolation::Step
+                                  : interpolation == "CUBICSPLINE" ? Interpolation::CubicSpline
+                                                                   : Interpolation::Linear;
+            auto times = decoder.floats(*input, 1);
+            if (!times) {
+                return std::unexpected(times.error());
+            }
+            const u32 components = track.property == AnimatedProperty::Rotation ? 4 : 3;
+            auto values = decoder.floats(*output, components);
+            if (!values) {
+                return std::unexpected(values.error());
+            }
+            const usize perKey = track.interpolation == Interpolation::CubicSpline ? 3 : 1;
+            if (times->empty() || values->size() != times->size() * perKey * components) {
+                return fail("gltf: animation {}: keyframe times and values do not match", a);
+            }
+            for (usize k = 0; k < times->size(); ++k) {
+                if (!std::isfinite((*times)[k]) || (k > 0 && (*times)[k] < (*times)[k - 1])) {
+                    return fail("gltf: animation {}: keyframe times must rise", a);
+                }
+            }
+            track.times = std::move(*times);
+            track.values.resize(values->size() / components);
+            for (usize v = 0; v < track.values.size(); ++v) {
+                track.values[v] = Vec4((*values)[v * components], (*values)[v * components + 1],
+                                       (*values)[v * components + 2], components == 4 ? (*values)[v * components + 3] : 0.0f);
+            }
+            out.duration = std::max(out.duration, track.times.back());
+            out.channels.push_back(std::move(track));
+        }
+        model.animations.push_back(std::move(out));
+    }
     return model;
+}
+
+Vec4 sampleChannel(const AnimationChannel& channel, f32 time) {
+    if (channel.times.empty() || channel.values.empty()) {
+        return channel.property == AnimatedProperty::Rotation ? Vec4(0.0f, 0.0f, 0.0f, 1.0f)
+               : channel.property == AnimatedProperty::Scale  ? Vec4(1.0f)
+                                                              : Vec4(0.0f);
+    }
+    const bool cubic = channel.interpolation == Interpolation::CubicSpline;
+    const auto key = [&](usize index) { return channel.values[cubic ? index * 3 + 1 : index]; };
+    const auto unit = [&](Vec4 value) {
+        if (channel.property != AnimatedProperty::Rotation) {
+            return value;
+        }
+        const f32 length = glm::length(value);
+        return length > 1e-8f ? value / length : Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    };
+    const usize last = channel.times.size() - 1;
+    if (!(time > channel.times.front())) {
+        return unit(key(0));
+    }
+    if (time >= channel.times[last]) {
+        return unit(key(last));
+    }
+    // The keys around `time`.
+    const usize next = static_cast<usize>(std::upper_bound(channel.times.begin(), channel.times.end(), time) -
+                                          channel.times.begin());
+    const usize previous = next - 1;
+    const f32 span = channel.times[next] - channel.times[previous];
+    const f32 t = span > 0.0f ? (time - channel.times[previous]) / span : 0.0f;
+    switch (channel.interpolation) {
+        case Interpolation::Step:
+            return unit(key(previous));
+        case Interpolation::CubicSpline: {
+            // Hermite, with tangents scaled by the keys' spacing.
+            const Vec4 p0 = key(previous);
+            const Vec4 m0 = channel.values[previous * 3 + 2] * span;  // out-tangent
+            const Vec4 p1 = key(next);
+            const Vec4 m1 = channel.values[next * 3] * span;  // in-tangent
+            const f32 t2 = t * t;
+            const f32 t3 = t2 * t;
+            return unit((2.0f * t3 - 3.0f * t2 + 1.0f) * p0 + (t3 - 2.0f * t2 + t) * m0 + (-2.0f * t3 + 3.0f * t2) * p1 +
+                        (t3 - t2) * m1);
+        }
+        case Interpolation::Linear:
+            break;
+    }
+    if (channel.property == AnimatedProperty::Rotation) {
+        const Vec4 a = key(previous);
+        const Vec4 b = key(next);
+        const Quat q = glm::slerp(Quat(a.w, a.x, a.y, a.z), Quat(b.w, b.x, b.y, b.z), t);
+        return unit(Vec4(q.x, q.y, q.z, q.w));
+    }
+    return key(previous) + (key(next) - key(previous)) * t;
 }
 
 Result<ModelData> loadGltf(const VirtualFileSystem& vfs, std::string_view virtualPath) {
