@@ -35,6 +35,12 @@ struct Parent {
     ecs::Entity entity;
 };
 
+/// Which node of a model an entity was made from (render::instantiateModel
+/// sets it), so a model's animation finds its nodes in any copy of it.
+struct ModelNode {
+    u32 index = 0;
+};
+
 /// Local-to-world matrix, derived from Transform (and Parent) by
 /// updateWorldTransforms(). Read-only for gameplay code.
 struct WorldTransform {

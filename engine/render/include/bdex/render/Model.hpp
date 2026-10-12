@@ -35,7 +35,8 @@ struct ModelResources {
 void releaseModel(IRenderer& renderer, ModelResources& resources);
 
 /// Creates an entity per node of the model's scene under one root entity
-/// named `name` (returned), with Name, Transform and Parent; a node's mesh
+/// named `name` (returned), with Name, Transform, Parent and ModelNode (its
+/// node index, which animations find nodes by); a node's mesh
 /// becomes a MeshRenderer on it, or on one child per primitive when the
 /// mesh has several.
 ecs::Entity instantiateModel(scene::Scene& scene, const assets::ModelData& model, const ModelResources& resources,
