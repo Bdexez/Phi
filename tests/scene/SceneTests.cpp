@@ -491,6 +491,18 @@ TEST(SceneFiles, EntityIdsAreNamesNotSizes) {
     EXPECT_FALSE(serializers.load(world, "[entity.3000000000]\nParent.entity = 3000000001\n").has_value());
 }
 
+TEST(SceneFiles, KeepModelNodeIndices) {
+    const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    Scene source("source");
+    source.world().emplace<ModelNode>(source.createEntity("hook"), 4u);
+    Scene loaded("loaded");
+    const auto entities = serializers.load(loaded.world(), serializers.save(source.world()));
+    ASSERT_TRUE(entities.has_value()) << entities.error().message;
+    EXPECT_EQ(loaded.world().get<ModelNode>(entities->front()).index, 4u);
+    EXPECT_FALSE(serializers.load(loaded.world(), "[entity.0]\nModelNode.index = -2\n").has_value());
+    EXPECT_FALSE(serializers.load(loaded.world(), "[entity.0]\nModelNode.index = 1.5\n").has_value());
+}
+
 TEST(SceneFiles, ApplicationsRegisterTheirComponents) {
     struct Health {
         f32 points = 100.0f;

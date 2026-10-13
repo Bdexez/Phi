@@ -78,7 +78,7 @@ public:
         entries_.push_back(std::move(entry));
     }
 
-    /// Name, Transform and Parent. (render::addComponentSerializers adds
+    /// Name, Transform, Parent and ModelNode. (render::addComponentSerializers adds
     /// cameras and lights.)
     [[nodiscard]] static ComponentSerializers withSceneComponents();
 
