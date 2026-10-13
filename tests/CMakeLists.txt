@@ -13,6 +13,7 @@ bdex_add_module(test_plugin
 target_include_directories(bdex_module_test_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(bdex_tests
+    animation/AnimationTests.cpp
     app/ApplicationTests.cpp
     core/ConfigTests.cpp
     core/JsonTests.cpp
@@ -50,6 +51,7 @@ target_link_libraries(bdex_tests PRIVATE
     bdex::rhi
     bdex::assets
     bdex::audio
+    bdex::animation
     bdex::scene
     bdex::render
     bdex::app

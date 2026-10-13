@@ -1,0 +1,87 @@
+#include <bdex/animation/Animation.hpp>
+
+#include <bdex/scene/Components.hpp>
+#include <bdex/scene/Scene.hpp>
+
+#include <algorithm>
+#include <cmath>
+
+namespace bdex::animation {
+
+namespace {
+
+/// node index -> entity, for the nodes below `root`.
+std::vector<ecs::Entity> findTargets(const ecs::World& world, ecs::Entity root) {
+    std::vector<ecs::Entity> targets;
+    for (const ecs::Entity entity : scene::branch(world, root)) {
+        if (const auto* node = world.tryGet<scene::ModelNode>(entity)) {
+            if (node->index >= targets.size()) {
+                targets.resize(static_cast<usize>(node->index) + 1);
+            }
+            if (!targets[node->index].valid()) {
+                targets[node->index] = entity;  // the nearest copy of a node wins
+            }
+        }
+    }
+    return targets;
+}
+
+void pose(ecs::World& world, const std::vector<ecs::Entity>& targets, const assets::ModelAnimation& clip, f32 time) {
+    for (const assets::AnimationChannel& channel : clip.channels) {
+        if (channel.node >= targets.size()) {
+            continue;
+        }
+        auto* transform = world.tryGet<scene::Transform>(targets[channel.node]);
+        if (transform == nullptr) {
+            continue;
+        }
+        const Vec4 value = assets::sampleChannel(channel, time);
+        switch (channel.property) {
+            case assets::AnimatedProperty::Translation: transform->position = Vec3(value); break;
+            case assets::AnimatedProperty::Rotation: transform->rotation = Quat(value.w, value.x, value.y, value.z); break;
+            case assets::AnimatedProperty::Scale: transform->scale = Vec3(value); break;
+        }
+    }
+}
+
+}  // namespace
+
+void applyAnimation(ecs::World& world, ecs::Entity root, const assets::ModelAnimation& clip, f32 time) {
+    pose(world, findTargets(world, root), clip, time);
+}
+
+void updateAnimations(ecs::World& world, f32 dt) {
+    // Players first, then their poses: finding targets walks the hierarchy,
+    // which is no business of a view's iteration.
+    std::vector<std::pair<ecs::Entity, AnimationPlayer*>> players;
+    world.view<AnimationPlayer>().each([&](ecs::Entity entity, AnimationPlayer& player) {
+        if (player.clip != nullptr) {
+            players.emplace_back(entity, &player);
+        }
+    });
+    for (const auto& [entity, player] : players) {
+        const f32 duration = player->clip->duration;
+        if (player->playing && std::isfinite(player->speed) && std::isfinite(dt)) {
+            player->time += dt * player->speed;
+            if (player->loop && duration > 0.0f) {
+                player->time = std::fmod(player->time, duration);
+                if (player->time < 0.0f) {
+                    player->time += duration;
+                }
+            } else if (player->time >= duration || player->time <= 0.0f) {
+                player->time = std::clamp(player->time, 0.0f, duration);
+                player->playing = player->speed > 0.0f ? player->time < duration : player->time > 0.0f;
+            }
+        }
+        // Targets are found once, and again when one disappears.
+        const bool stale = player->targets.empty() ||
+                           std::any_of(player->targets.begin(), player->targets.end(),
+                                       [&](ecs::Entity target) { return target.valid() && !world.alive(target); });
+        if (stale) {
+            player->targets = findTargets(world, entity);
+        }
+        pose(world, player->targets, *player->clip, player->time);
+    }
+}
+
+}  // namespace bdex::animation
