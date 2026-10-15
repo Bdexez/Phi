@@ -2,21 +2,22 @@
 
 A modular 3D game engine written in **C++23**, featuring a **Vulkan 1.3** backend, an entity component system, and a sandbox for exploring rendering and simulation.
 
-The project separates engine interfaces from their implementations: windowing, graphics backends, and rendering are modules selected at startup. The same application can display a scene in a window, render an image offscreen, or run its simulation without a GPU.
+The project separates engine interfaces from their implementations: windowing, graphics backends, rendering, and audio output are modules selected at startup. The same application can display a scene in a window, render an image offscreen, or run its simulation without a GPU.
 
 **Project status:** in development, currently version `0.1.0`. The repository includes the engine, its modules, a sample application, and unit and integration tests.
 
 ## Features
 
-- **Modular core:** plugin loading, module dependency resolution, a service registry, an event bus, and INI configuration.
+- **Modular core:** plugin loading, module dependency resolution, a service registry, an event bus, INI configuration, and a JSON reader and writer.
 - **Simulation loop:** ordered execution phases, fixed timestep updates, and a multithreaded job system.
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
-- **3D rendering:** perspective cameras, meshes, textures, materials with normal maps, Blinn-Phong lighting from a directional light with soft shadows and up to 16 point lights and 8 spot lights, frustum culling, draw sorting, instancing, blended transparency, and HDR rendering with bloom, ACES tone mapping, and FXAA through an extensible forward renderer.
+- **3D rendering:** perspective cameras, meshes, textures, materials with normal maps, Blinn-Phong lighting from a directional light with soft cascaded shadows and up to 16 point lights and 8 spot lights (four of them casting shadows), frustum culling, draw sorting, instancing, blended transparency, and HDR rendering with bloom, ACES tone mapping, and FXAA through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Physics:** rigid bodies with gravity, sphere and oriented box colliders, tumbling dynamic boxes, triggers, raycasts, a collide-and-slide character controller, restitution, and friction that sets balls rolling, stepped deterministically in the fixed update.
 - **Audio:** a software mixer with any number of voices, resampling, pitch, looping, and 3D panning and attenuation around a listener.
 - **Animation:** glTF keyframe animations (linear, step, cubic spline) played on model instances, copies included.
 - **Assets:** a virtual file system, asset caching, glTF 2.0 (`.gltf`, `.glb`), OBJ, PNG, TGA, WAV, and SPIR-V loaders, plus procedural cubes, planes, spheres, textures, and tones.
+- **Tools:** debug lines, shapes and text in the world or on screen, per-task CPU and per-pass GPU timings, Chrome/Perfetto traces of whole runs, hot reloading of changed files, and robustness tests fuzzing every loader.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
 
 ## Architecture
@@ -31,8 +32,10 @@ engine/
 ├── rhi/        Render hardware abstraction
 ├── assets/     Asset loading, caching, and generation
 ├── scene/      Scenes and transform hierarchies
+├── audio/      Software mixer, sound sources and listeners
+├── animation/  Keyframe animation of model nodes
 ├── render/     Rendering interfaces, cameras, and graphics components
-├── physics/    Rigid bodies and collisions
+├── physics/    Rigid bodies, colliders, and character movement
 └── app/        Configuration, initialization, and application loop
 modules/        Implementations of engine interfaces
 samples/        3D sandbox and sample shaders
@@ -239,7 +242,7 @@ With GoogleTest installed and `BDEX_BUILD_TESTS=ON`:
 ctest --test-dir build --output-on-failure
 ```
 
-Tests cover the core, plugin loading, ECS, assets, scenes, physics, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, glTF, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run).
+Tests cover the core, plugin loading, ECS, assets, scenes, physics, audio, animation, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, glTF, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run).
 
 If GoogleTest is missing, CMake prints a warning and continues configuration without building the tests.
 

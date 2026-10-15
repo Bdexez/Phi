@@ -13,7 +13,8 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
                                         │ uses interfaces only
                  ┌──────────────────────▼───────────────────────┐
   engine         │ app                                          │
-  libraries      │ render    physics  scene    audio  assets    │
+  libraries      │ render  physics  animation  audio  scene     │
+                 │ assets                                       │
   (interfaces    │ rhi       platform ecs                       │
    + shared      │ core  ← kernel: modules, services, events,   │
    logic)        │         scheduler, config, jobs, filesystem  │
