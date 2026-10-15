@@ -1009,3 +1009,59 @@ TEST(BoxDynamics, BrokenCratesAreLeftOut) {
     simulate(world, 2.0f);
     EXPECT_NEAR(world.get<Transform>(healthy).position.y, 0.5f, 0.02f);
 }
+
+TEST(Kinematic, PlatformsCarryWhatRestsOnThem) {
+    ecs::World world;
+    addFloor(world);
+    // A slab moved by the game: 1 m/s along X.
+    const ecs::Entity platform = world.create();
+    world.emplace<Transform>(platform).position = Vec3(0.0f, 0.5f, 0.0f);
+    world.emplace<BoxCollider>(platform, Vec3(3.0f, 0.25f, 3.0f));
+    world.emplace<Kinematic>(platform);
+    RigidBody grippy;
+    grippy.friction = 0.8f;
+    grippy.restitution = 0.0f;
+    const ecs::Entity crate = addCrate(world, Vec3(-1.0f, 1.25f, 1.0f), grippy);
+    const ecs::Entity ball = addBall(world, Vec3(-1.0f, 1.25f, -1.0f), grippy);
+    simulate(world, 2.0f);  // settle, still: both fall asleep
+    ASSERT_TRUE(world.get<RigidBody>(crate).asleep);
+    const Vec3 crateStart = world.get<Transform>(crate).position;
+    const Vec3 ballStart = world.get<Transform>(ball).position;
+
+    for (int i = 0; i < static_cast<int>(2.0f / kStep); ++i) {
+        world.get<Transform>(platform).position.x += 1.0f * kStep;
+        step(world, kStep);
+    }
+    EXPECT_NEAR(world.get<Kinematic>(platform).velocity.x, 1.0f, 1e-3f);
+    // The crate rides along, woken and carried by friction...
+    EXPECT_NEAR(world.get<Transform>(crate).position.x - crateStart.x, 2.0f, 0.1f);
+    EXPECT_NEAR(world.get<Transform>(crate).position.y, crateStart.y, 0.02f);
+    // ...and the ball, which rolls, lags: it keeps 2/7 of the speed as it
+    // spins up.
+    const f32 ballMoved = world.get<Transform>(ball).position.x - ballStart.x;
+    EXPECT_GT(ballMoved, 0.3f);
+    EXPECT_LT(ballMoved, 1.5f);
+
+    // A character standing on it learns how the ground moves.
+    const ecs::Entity hero = addCharacter(world, world.get<Transform>(platform).position + Vec3(1.5f, 0.76f, -1.5f));
+    const MoveResult standing = moveAndSlide(world, hero, Vec3(0.0f, -0.05f, 0.0f));
+    EXPECT_TRUE(standing.grounded);
+    EXPECT_NEAR(standing.groundVelocity.x, 1.0f, 1e-3f);
+}
+
+TEST(Kinematic, LiftsRaiseCratesWithoutSinkingIntoThem) {
+    ecs::World world;
+    const ecs::Entity lift = world.create();
+    world.emplace<Transform>(lift);
+    world.emplace<BoxCollider>(lift, Vec3(2.0f, 0.1f, 2.0f));
+    world.emplace<Kinematic>(lift);
+    const ecs::Entity crate = addCrate(world, Vec3(0.0f, 0.6f, 0.0f));
+    simulate(world, 1.0f);
+    for (int i = 0; i < static_cast<int>(2.0f / kStep); ++i) {
+        world.get<Transform>(lift).position.y += 1.5f * kStep;  // up 3 m
+        step(world, kStep);
+        // Resting on top, never sinking into it.
+        EXPECT_GT(world.get<Transform>(crate).position.y - world.get<Transform>(lift).position.y, 0.58f) << i;
+    }
+    EXPECT_NEAR(world.get<Transform>(crate).position.y, 3.0f + 0.6f, 0.05f);
+}

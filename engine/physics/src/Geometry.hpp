@@ -27,11 +27,23 @@ struct Box {
     Quat rotation;
     Vec3 boundsMin;  ///< World-space box around it, for the broad phase.
     Vec3 boundsMax;
+    Vec3 velocity{0.0f};  ///< Kinematic boxes only.
+    Vec3 angularVelocity{0.0f};
+
+    /// The surface's velocity at `point` (zero for still boxes).
+    [[nodiscard]] Vec3 velocityAt(const Vec3& point) const {
+        return velocity + glm::cross(angularVelocity, point - center);
+    }
 };
 
-inline Box makeBox(ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
+inline Box makeBox(ecs::Entity entity, const Transform& transform, const BoxCollider& collider,
+                   const Kinematic* motion = nullptr) {
     Box box{entity, transform.position, collider.halfExtents * glm::abs(transform.scale),
             glm::normalize(transform.rotation), {}, {}};
+    if (motion != nullptr) {
+        box.velocity = motion->velocity;
+        box.angularVelocity = motion->angularVelocity;
+    }
     const Mat3 axes = glm::mat3_cast(box.rotation);
     const Vec3 extent = glm::abs(axes[0]) * box.half.x + glm::abs(axes[1]) * box.half.y + glm::abs(axes[2]) * box.half.z;
     box.boundsMin = box.center - extent;

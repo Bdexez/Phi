@@ -1,6 +1,7 @@
 #include "BoxDynamics.hpp"
 
 #include <array>
+#include <unordered_map>
 
 namespace bdex::physics::detail {
 
@@ -40,6 +41,7 @@ struct ContactPoint {
     Vec3 point;
     Vec3 normal;
     f32 depth;  ///< Overlap; negative for a gap (a speculative contact).
+    Vec3 surface{0.0f};  ///< Velocity of a static side there (a Kinematic box).
     Vec3 armA{0.0f};
     Vec3 armB{0.0f};
     std::array<Vec3, 2> tangents{};
@@ -292,8 +294,14 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
     for (BoxShape& box : boxes) {
         SolverBody& solver = bodies[box.body];
         RigidBody& body = *solver.body;
-        if (body.asleep && (!sleeping || body.velocity != Vec3(0.0f) || body.angularVelocity != Vec3(0.0f))) {
-            wake(body);
+        const bool onMoving = body.asleep && std::any_of(staticBoxes.begin(), staticBoxes.end(), [&](const Box& other) {
+            return (other.velocity != Vec3(0.0f) || other.angularVelocity != Vec3(0.0f)) &&
+                   boxesOverlap(makeBox(solver.entity, *box.transform, *box.collider), Box{other.entity, other.center,
+                                other.half + Vec3(0.05f), other.rotation, {}, {}});
+        });
+        if (body.asleep &&
+            (!sleeping || body.velocity != Vec3(0.0f) || body.angularVelocity != Vec3(0.0f) || onMoving)) {
+            wake(body);  // given a velocity, or resting on a moving platform
         }
         body.previousPosition = box.transform->position;
         body.previousRotation = box.transform->rotation;
@@ -449,6 +457,22 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
         }
     }
 
+    // A moving (Kinematic) static box carries what touches it: its surface
+    // velocity enters the contact.
+    std::unordered_map<u32, const Box*> moving;
+    for (const Box& box : staticBoxes) {
+        if (box.velocity != Vec3(0.0f) || box.angularVelocity != Vec3(0.0f)) {
+            moving[box.entity.index] = &box;
+        }
+    }
+    if (!moving.empty()) {
+        for (ContactPoint& contact : found) {
+            if (const auto it = moving.find(contact.other.index); !contact.b && it != moving.end()) {
+                contact.surface = it->second->velocityAt(contact.point);
+            }
+        }
+    }
+
     // A sleeper hit harder than resting contact wakes and joins the solve;
     // merely resting on it leaves it asleep, and static, so piles can sleep.
     for (const ContactPoint& contact : found) {
@@ -480,6 +504,8 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
         Vec3 velocity = velocityAt(bodies[contact.a], contact.armA);
         if (const SolverBody* b = bodyOf(contact.b)) {
             velocity -= velocityAt(*b, contact.armB);
+        } else {
+            velocity -= contact.surface;
         }
         return velocity;
     };

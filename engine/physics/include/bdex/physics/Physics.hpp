@@ -67,6 +67,20 @@ struct BoxCollider {
 /// Turns a static collider (box or sphere, without RigidBody) into a zone
 /// that bodies pass through, reporting when they enter and leave it:
 /// finish lines, damage zones, checkpoints.
+/// A static collider (box, without RigidBody) moved by the game or an
+/// animation rather than by physics: a moving platform, a door, a lift.
+/// Each step derives its velocity from how its Transform moved since the
+/// last one, so bodies resting on it are carried along by friction and
+/// pushed without sinking in. Move it in FixedUpdate for even motion.
+struct Kinematic {
+    /// Derived by step(): world velocity, and spin in radians per second.
+    Vec3 velocity{0.0f};
+    Vec3 angularVelocity{0.0f};
+    Vec3 previousPosition{0.0f};
+    Quat previousRotation{1.0f, 0.0f, 0.0f, 0.0f};
+    bool hasPrevious = false;
+};
+
 struct Trigger {
     /// Bodies inside after the last step (maintained by step()).
     std::vector<ecs::Entity> inside;
@@ -167,6 +181,9 @@ struct MoveResult {
     Vec3 moved{0.0f};       ///< Where the entity actually went.
     bool grounded = false;  ///< Touched a walkable surface on the way.
     Vec3 groundNormal{0.0f, 1.0f, 0.0f};
+    /// How the ground moves where the character touches it (a Kinematic
+    /// platform); add it to the next move to ride along.
+    Vec3 groundVelocity{0.0f};
     bool blocked = false;   ///< Something stopped part of the move.
 };
 
