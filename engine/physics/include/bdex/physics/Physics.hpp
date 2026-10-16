@@ -197,8 +197,8 @@ struct MoveResult {
 MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displacement,
                         const MoveSettings& settings = {});
 
-/// Registers RigidBody, SphereCollider, BoxCollider and Trigger with scene
-/// files.
+/// Registers RigidBody, SphereCollider, BoxCollider, Kinematic and Trigger
+/// with scene files.
 void addComponentSerializers(scene::ComponentSerializers& serializers);
 
 }  // namespace bdex::physics

@@ -719,6 +719,10 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         "SphereCollider",
         [](const SphereCollider& sphere, Fields& out, const EntityRefs&) { out["radius"] = formatField(sphere.radius); },
         [](SphereCollider& sphere, const Fields& in, const EntityRefs&) { return parseField(in, "radius", sphere.radius); });
+    // Its velocity is derived each step: only the marker is saved.
+    serializers.add<Kinematic>(
+        "Kinematic", [](const Kinematic&, Fields&, const EntityRefs&) {},
+        [](Kinematic&, const Fields&, const EntityRefs&) -> Result<> { return {}; });
     // Who is inside is runtime state: a loaded trigger starts empty.
     serializers.add<Trigger>(
         "Trigger", [](const Trigger&, Fields&, const EntityRefs&) {},
