@@ -285,6 +285,7 @@ private:
         camera_ = scene().find("Camera");
         selected_ = {};
         flyCamera_.adoptFacing(world, camera_);
+        platform_ = scene().find("Platform");
         // Players are not saved; the lamps' nodes are, so they sway again.
         if (lampSway_ != nullptr) {
             for (const ecs::Entity lamp : lampRoots()) {
@@ -633,6 +634,16 @@ private:
         world.emplace<render::MeshRenderer>(ground, planeMesh_, groundMaterial_);
         world.emplace<physics::BoxCollider>(ground, Vec3(20.0f, 0.01f, 20.0f));
 
+        // A platform gliding back and forth beside the scene (moved in
+        // onFixedUpdate): throw things onto it, or walk onto it (G).
+        platform_ = level.createEntity("Platform");
+        scene::Transform& slab = world.get<scene::Transform>(platform_);
+        slab.position = kPlatformBase;
+        slab.scale = Vec3(2.4f, 0.3f, 2.4f);
+        world.emplace<render::MeshRenderer>(platform_, cubeMesh_, groundMaterial_);
+        world.emplace<physics::BoxCollider>(platform_, Vec3(0.5f));
+        world.emplace<physics::Kinematic>(platform_);
+
         // Centerpiece
         const ecs::Entity sphere = level.createEntity("Sphere");
         world.get<scene::Transform>(sphere).position = Vec3(0.0f, 1.4f, 0.0f);
@@ -814,6 +825,14 @@ private:
         }
     }
 
+    void onFixedUpdate(const FrameTime& time) override {
+        // Ten seconds there and back, easing at the ends.
+        if (auto* slab = scene().world().tryGet<scene::Transform>(platform_)) {
+            const f32 phase = static_cast<f32>(time.elapsed) * 2.0f * std::numbers::pi_v<f32> / 10.0f;
+            slab->position = kPlatformBase + Vec3(0.0f, 0.0f, 3.0f * std::sin(phase));
+        }
+    }
+
     void onStop() override {
         if (engine().services().has<render::IRenderer>()) {
             render::releaseModel(renderer(), lampResources_);
@@ -833,6 +852,8 @@ private:
     std::vector<ecs::Entity> balls_;
     std::vector<ecs::Entity> crates_;
     render::ModelResources lampResources_;
+    ecs::Entity platform_;
+    static constexpr Vec3 kPlatformBase{-7.5f, 0.16f, 1.0f};
     std::shared_ptr<const assets::ModelAnimation> lampSway_;
     static constexpr const char* kLampModel = "app:/models/lamp.gltf";
     FileWatcher watcher_;
