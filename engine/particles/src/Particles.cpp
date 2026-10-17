@@ -1,0 +1,98 @@
+#include <bdex/particles/Particles.hpp>
+
+#include <bdex/scene/Components.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+
+namespace bdex::particles {
+
+namespace {
+
+/// Uniform in [0, 1), from the emitter's own seed (xorshift).
+f32 random(u32& seed) {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return static_cast<f32>(seed >> 8) / static_cast<f32>(1u << 24);
+}
+
+/// A unit direction within `spread` of `axis`, uniform over the cone's cap.
+Vec3 inCone(const Vec3& axis, f32 spread, u32& seed) {
+    const f32 length = glm::length(axis);
+    const Vec3 up = length > 1e-6f ? axis / length : Vec3(0.0f, 1.0f, 0.0f);
+    const f32 cosine = 1.0f - random(seed) * (1.0f - std::cos(std::clamp(spread, 0.0f, std::numbers::pi_v<f32>)));
+    const f32 sine = std::sqrt(std::max(0.0f, 1.0f - cosine * cosine));
+    const f32 turn = random(seed) * 2.0f * std::numbers::pi_v<f32>;
+    const Vec3 helper = std::abs(up.y) < 0.99f ? Vec3(0.0f, 1.0f, 0.0f) : Vec3(1.0f, 0.0f, 0.0f);
+    const Vec3 side = glm::normalize(glm::cross(helper, up));
+    const Vec3 other = glm::cross(up, side);
+    return up * cosine + (side * std::cos(turn) + other * std::sin(turn)) * sine;
+}
+
+void emit(ParticleEmitter& emitter, const Vec3& origin) {
+    if (emitter.particles.size() >= emitter.maxParticles) {
+        return;
+    }
+    u32& seed = emitter.seed;
+    if (seed == 0) {
+        seed = 1;  // xorshift's one stuck state
+    }
+    Particle particle;
+    particle.position = origin;
+    if (emitter.emitRadius > 0.0f) {
+        particle.position += inCone(Vec3(0.0f, 1.0f, 0.0f), std::numbers::pi_v<f32>, seed) *
+                             (emitter.emitRadius * std::cbrt(random(seed)));
+    }
+    const f32 speed = emitter.speed * (1.0f + emitter.speedVariance * (2.0f * random(seed) - 1.0f));
+    particle.velocity = inCone(emitter.direction, emitter.spread, seed) * speed;
+    particle.lifetime =
+        std::max(emitter.lifetime * (1.0f + emitter.lifetimeVariance * (2.0f * random(seed) - 1.0f)), 1e-3f);
+    emitter.particles.push_back(particle);
+}
+
+}  // namespace
+
+void updateParticles(ecs::World& world, f32 dt) {
+    if (!(dt >= 0.0f) || !std::isfinite(dt)) {
+        return;
+    }
+    world.view<ParticleEmitter>().each([&](ecs::Entity entity, ParticleEmitter& emitter) {
+        // Age and move; the expired go (order does not matter for drawing,
+        // so swap with the last).
+        const f32 keep = emitter.drag > 0.0f ? std::exp(-emitter.drag * dt) : 1.0f;
+        for (usize i = 0; i < emitter.particles.size();) {
+            Particle& particle = emitter.particles[i];
+            particle.age += dt;
+            if (particle.age >= particle.lifetime) {
+                particle = emitter.particles.back();
+                emitter.particles.pop_back();
+                continue;
+            }
+            particle.velocity = (particle.velocity + emitter.gravity * dt) * keep;
+            particle.position += particle.velocity * dt;
+            ++i;
+        }
+
+        Vec3 origin(0.0f);
+        if (const auto* placed = world.tryGet<scene::WorldTransform>(entity)) {
+            origin = Vec3(placed->matrix[3]);
+        } else if (const auto* local = world.tryGet<scene::Transform>(entity)) {
+            origin = local->position;
+        }
+        for (; emitter.burst > 0; --emitter.burst) {
+            emit(emitter, origin);
+        }
+        if (emitter.emitting && emitter.rate > 0.0f && std::isfinite(emitter.rate)) {
+            emitter.pending += emitter.rate * dt;
+            // Bounded: a long frame should not emit thousands in one go.
+            emitter.pending = std::min(emitter.pending, static_cast<f32>(emitter.maxParticles));
+            for (; emitter.pending >= 1.0f; emitter.pending -= 1.0f) {
+                emit(emitter, origin);
+            }
+        }
+    });
+}
+
+}  // namespace bdex::particles

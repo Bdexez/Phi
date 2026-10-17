@@ -40,6 +40,7 @@ Each library is one CMake target (`bdex::<name>`) with its public headers under 
 | `assets` | `MeshData`, `ImageData`, `AudioData`, loaders, `AssetManager`, procedural primitives | `core` |
 | `audio` | `Mixer`: voices, resampling, panning, 3D attenuation | `core`, `assets` |
 | `animation` | `AnimationPlayer`, `updateAnimations`: keyframe animation of model nodes | `core`, `ecs`, `assets`, `scene` |
+| `particles` | `ParticleEmitter`, `updateParticles`: particle emission and motion | `core`, `ecs`, `scene` |
 | `scene` | `Scene`, `SceneManager`, `Transform`, hierarchy | `core`, `ecs` |
 | `render` | `IRenderer`, `IRenderFeature`, render components, shared GLSL headers | `core`, `ecs`, `rhi`, `assets`, `scene` |
 | `physics` | Rigid bodies, colliders, triggers, `step`, `raycast` | `core`, `ecs`, `scene` |
@@ -245,6 +246,10 @@ Entities make sounds through components. An `audio::AudioSource` holds a clip an
 ## Animation
 
 Models carry their animations (`assets::ModelAnimation`: keyframed translation, rotation and scale channels, each naming a node). `render::instantiateModel` tags each entity it makes with `scene::ModelNode`, its node index, and an `animation::AnimationPlayer` on the model's root plays a clip: it finds its nodes among the entities below it by those indices, so a copied model (`scene::cloneHierarchy`) animates its own nodes, and `animation::updateAnimations` (run by `Application` in `PostUpdate`, before world transforms) advances it, looping or stopping at the end, and writes the sampled values into the nodes' `Transform`. `applyAnimation` poses a model at a given time without a player.
+
+## Particles
+
+A `particles::ParticleEmitter` emits from its entity's world position, continuously (`rate`) or in bursts (`burst`), up to `maxParticles`: each particle leaves within a cone (`direction`, `spread`) at a varied speed, lives a varied lifetime, falls with its `gravity` and slows with its `drag`, its color and size blending from start to end values with age (`colorAt`, `sizeAt`). Particles live in world space, so a moving emitter leaves a trail. Each emitter draws from its own seed, so a run replays identically. `Application` runs `updateParticles` in `PostUpdate`, after world transforms.
 
 ## Input
 

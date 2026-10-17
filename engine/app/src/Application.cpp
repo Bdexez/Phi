@@ -3,6 +3,7 @@
 #include <bdex/audio/Components.hpp>
 
 #include <bdex/core/FileSystem.hpp>
+#include <bdex/particles/Particles.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/core/Log.hpp>
 #include <bdex/physics/Physics.hpp>
@@ -345,6 +346,15 @@ int Application::run(int argc, char** argv) {
             }
         },
         1000);
+    // Particles leave from where their emitters now are.
+    scheduler.add(
+        Phase::PostUpdate, "particles.update",
+        [this](const FrameTime& time) {
+            if (scene::Scene* active = state_->scenes->active()) {
+                particles::updateParticles(active->world(), static_cast<f32>(time.delta));
+            }
+        },
+        1050);
     // Sounds follow their entities, once those have their world transforms.
     if (auto mixer = engine.services().tryGetShared<audio::Mixer>()) {
         // Sound settings: audio.volume for everything, audio.volume.<bus>.
