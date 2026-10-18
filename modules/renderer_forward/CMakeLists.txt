@@ -5,6 +5,7 @@ bdex_add_module(renderer_forward
         src/ForwardRendererModule.cpp
         src/MeshFeature.cpp
         src/Overlay.cpp
+        src/ParticleFeature.cpp
         src/PostProcess.cpp
     DEPS
         bdex::core
@@ -13,7 +14,8 @@ bdex_add_module(renderer_forward
         bdex::rhi
         bdex::assets
         bdex::scene
-        bdex::render)
+        bdex::render
+        bdex::particles)
 
 # Shaders are loaded at runtime from "engine:/shaders/...".
 bdex_compile_shaders(bdex_renderer_forward_shaders
@@ -28,6 +30,8 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/debug.vert
         shaders/debug.frag
         shaders/overlay.vert
+        shaders/particle.vert
+        shaders/particle.frag
         shaders/bloom_down.frag
         shaders/bloom_up.frag
         shaders/fxaa.frag)

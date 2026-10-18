@@ -249,7 +249,7 @@ Models carry their animations (`assets::ModelAnimation`: keyframed translation, 
 
 ## Particles
 
-A `particles::ParticleEmitter` emits from its entity's world position, continuously (`rate`) or in bursts (`burst`), up to `maxParticles`: each particle leaves within a cone (`direction`, `spread`) at a varied speed, lives a varied lifetime, falls with its `gravity` and slows with its `drag`, its color and size blending from start to end values with age (`colorAt`, `sizeAt`). Particles live in world space, so a moving emitter leaves a trail. Each emitter draws from its own seed, so a run replays identically. `Application` runs `updateParticles` in `PostUpdate`, after world transforms.
+A `particles::ParticleEmitter` emits from its entity's world position, continuously (`rate`) or in bursts (`burst`), up to `maxParticles`: each particle leaves within a cone (`direction`, `spread`) at a varied speed, lives a varied lifetime, falls with its `gravity` and slows with its `drag`, its color and size blending from start to end values with age (`colorAt`, `sizeAt`). Particles live in world space, so a moving emitter leaves a trail. Each emitter draws from its own seed, so a run replays identically. `Application` runs `updateParticles` in `PostUpdate`, after world transforms. The forward renderer's particle feature draws them after scene geometry as soft camera-facing discs, tested against depth but not writing it: blended emitters back to front, then `additive` ones, which add light (and glow under bloom when their color exceeds 1).
 
 ## Input
 

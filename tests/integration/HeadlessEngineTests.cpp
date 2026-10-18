@@ -15,6 +15,7 @@
 #include <bdex/platform/Window.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Model.hpp>
+#include <bdex/particles/Particles.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/rhi/Device.hpp>
 #include <bdex/scene/Scene.hpp>
@@ -552,6 +553,30 @@ TEST(HeadlessEngine, ModelsBecomeEntityTreesSharingGpuResources) {
     EXPECT_EQ(names.material("robot/0"), resources.materials[0]);  // unnamed: its index
     EXPECT_EQ(names.material("robot/default"), resources.defaultMaterial);
     render::releaseModel(test.renderer(), resources);
+}
+
+TEST(HeadlessEngine, ParticlesAreDrawnPerBlendMode) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(0);  // a camera
+    test.engine->tick();
+    const u32 without = test.device().lastFrameStats().drawCalls;
+
+    particles::ParticleEmitter sparks;
+    sparks.rate = 0.0f;
+    sparks.burst = 20;
+    sparks.lifetime = 10.0f;
+    const ecs::Entity first = test.scene().createEntity("sparks");
+    test.world().emplace<particles::ParticleEmitter>(first, sparks);
+    particles::updateParticles(test.world(), 0.0f);
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, without + 1);  // the additive ones
+
+    sparks.additive = false;  // smoke, blended
+    test.world().emplace<particles::ParticleEmitter>(test.scene().createEntity("smoke"), sparks);
+    particles::updateParticles(test.world(), 0.0f);
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, without + 2);  // one per blend mode
 }
 
 TEST(HeadlessEngine, SilentAudioPlaysSoundsInRealTime) {
@@ -1477,4 +1502,47 @@ TEST(VulkanHeadless, SpotLightsCastShadows) {
     EXPECT_GT(beside, 40);
     const auto [unblocked, besideAgain] = render(false);
     EXPECT_GE(unblocked, besideAgain);  // without shadows, the light passes through the cube
+}
+
+TEST(VulkanHeadless, ParticlesGlowWhereTheyAre) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    test.populate(0);  // camera at z = 6 looking at the origin
+    // A still cloud of orange sparks at the origin.
+    particles::ParticleEmitter sparks;
+    sparks.rate = 0.0f;
+    sparks.burst = 30;
+    sparks.speed = 0.0f;
+    sparks.emitRadius = 0.2f;
+    sparks.gravity = Vec3(0.0f);
+    sparks.lifetime = 10.0f;
+    // Dim each: they add up (without HDR, past 1 everything turns white).
+    sparks.startColor = sparks.endColor = Vec4(0.25f, 0.12f, 0.03f, 1.0f);
+    sparks.startSize = sparks.endSize = 0.3f;
+    test.world().emplace<particles::ParticleEmitter>(test.scene().createEntity("sparks"), sparks);
+    particles::updateParticles(test.world(), 0.0f);  // the burst (Application does this each frame)
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_particles.png";
+    test.engine->tick();
+    test.renderer().requestScreenshot(path);
+    test.engine->tick();
+    const auto png = fs::readBinaryFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(png.has_value());
+    const auto image = assets::decodePng(*png);
+    ASSERT_TRUE(image.has_value());
+    const u8* center = image->pixels.data() + ((image->height / 2) * image->width + image->width / 2) * 4;
+    const u8* corner = image->pixels.data() + (4 * image->width + 4) * 4;
+    EXPECT_GT(center[0], 150);         // added up: bright
+    EXPECT_GT(center[0], center[2]);   // and orange
+    EXPECT_LT(corner[0], 10);          // nothing far from them
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+    test.engine->shutdown();
 }
