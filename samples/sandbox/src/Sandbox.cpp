@@ -22,6 +22,7 @@
 #include "Hud.hpp"
 #include "SkyFeature.hpp"
 #include "Sounds.hpp"
+#include "Sparks.hpp"
 
 #include <bdex/animation/Animation.hpp>
 #include <bdex/app/Application.hpp>
@@ -130,6 +131,7 @@ protected:
         registerSerializers();
         setUpHotReload();
         sounds_.start(engine());
+        sparks_.start(engine());
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
             spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
@@ -142,6 +144,7 @@ protected:
             flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
         }
         hud_.update(engine(), time, scene().world().entityCount(), actions(), window());
+        sparks_.update(scene().world());
         pollHotReload(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
@@ -871,6 +874,7 @@ private:
 
     sandbox::Hud hud_;
     sandbox::Sounds sounds_;
+    sandbox::Sparks sparks_;
 };
 
 BDEX_MAIN(Sandbox)
