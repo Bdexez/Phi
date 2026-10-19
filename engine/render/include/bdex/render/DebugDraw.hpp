@@ -60,8 +60,13 @@ public:
     /// Text whose first line's top-left corner is at `position`, `height`
     /// pixels tall.
     void screenText(const Vec2& position, std::string_view text, f32 height, const Vec4& color = Vec4(1.0f));
+    /// A filled rectangle between two corners, drawn under overlay lines
+    /// and text (panels, bars, buttons).
+    void screenRect(const Vec2& min, const Vec2& max, const Vec4& color);
     /// Overlay line list: two vertices per line, positions in pixels (z 0).
     [[nodiscard]] std::span<const Vertex> overlayVertices() const { return overlay_; }
+    /// Overlay triangle list: three vertices per triangle, in pixels.
+    [[nodiscard]] std::span<const Vertex> overlayTriangles() const { return overlayTriangles_; }
 
     /// Line list: two vertices per line.
     [[nodiscard]] std::span<const Vertex> vertices() const { return vertices_; }
@@ -69,6 +74,7 @@ public:
     void clear() {
         vertices_.clear();
         overlay_.clear();
+        overlayTriangles_.clear();
     }
 
 private:
@@ -77,6 +83,7 @@ private:
 
     std::vector<Vertex> vertices_;
     std::vector<Vertex> overlay_;
+    std::vector<Vertex> overlayTriangles_;
 };
 
 }  // namespace bdex::render

@@ -792,8 +792,11 @@ TEST(DebugDraw, WritesTextWithLines) {
     }
     expectNear(textLow, Vec3(10.0f, 20.0f, 0.0f));
     expectNear(textHigh, Vec3(18.0f, 32.0f, 0.0f));
+    debug.screenRect(Vec2(0.0f), Vec2(10.0f, 5.0f), Vec4(1.0f));
+    EXPECT_EQ(debug.overlayTriangles().size(), 6u);  // two triangles
     debug.clear();
     EXPECT_TRUE(debug.overlayVertices().empty());
+    EXPECT_TRUE(debug.overlayTriangles().empty());
 
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("AB", 6.0f), 10.0f);
     EXPECT_FLOAT_EQ(render::DebugDraw::textWidth("ABC\nA", 3.0f), 8.0f);
