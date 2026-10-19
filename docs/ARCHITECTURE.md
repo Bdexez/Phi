@@ -44,6 +44,7 @@ Each library is one CMake target (`bdex::<name>`) with its public headers under 
 | `scene` | `Scene`, `SceneManager`, `Transform`, hierarchy | `core`, `ecs` |
 | `render` | `IRenderer`, `IRenderFeature`, render components, shared GLSL headers | `core`, `ecs`, `rhi`, `assets`, `scene` |
 | `physics` | Rigid bodies, colliders, triggers, `step`, `raycast` | `core`, `ecs`, `scene` |
+| `ui` | `Context`: an immediate-mode interface (panels, labels, buttons, checkboxes, sliders) on the overlay | `core`, `platform`, `render` |
 | `app` | `Application`: configuration, services, module loading, main loop | all of the above |
 
 ## The kernel
@@ -260,6 +261,7 @@ Window modules publish keyboard, mouse, and gamepad events; `platform::InputStat
 - `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, frusta, and text in a stroke font (`text`, facing any direction, for labels in the world) drawn for one frame; `screenLine`, `screenText` and `screenRect` (filled, under the lines and text) draw in pixels on the finished image, after tone mapping and FXAA, crisp and never hidden, for heads-up debug panels.
 - `render::rayThroughPixel` and `render::intersect`, with `IRenderer::meshBounds`, for picking.
 - `Scheduler::taskStats()`: CPU time of every task; the `benchmark` sample prints it for a reproducible scene.
+- `ui::Context`: an immediate-mode interface drawn on the overlay, for tools and tweaking: describe panels with labels, buttons, checkboxes and sliders every frame from a `ui::Input` (`fromInputState` reads the mouse), and each widget reports whether it changed; `wantsPointer` tells the game to leave clicks over it alone.
 - `TraceRecorder` (`Engine::setTrace`, or `--trace <file>` / `app.trace`): every frame, phase and task as a timed span, written in the Chrome trace event format for ui.perfetto.dev or chrome://tracing. Spans nest by time (frame, phase, task), so a slow frame among many shows which task made it slow. Recording is bounded (two million spans by default).
 - `IRenderer::reloadShaders()`: rebuilds pipelines from the shader files on disk.
 - `FileWatcher`: reports files modified, created or removed under watched files or directories, by polling their modification times, for hot reloading; the sandbox reloads its lamp model when the file changes and its shaders when they are rebuilt.
