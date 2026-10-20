@@ -5,7 +5,7 @@ add_executable(sandbox
     src/SkyFeature.cpp
     src/Sounds.cpp
     src/Sparks.cpp)
-target_link_libraries(sandbox PRIVATE bdex::app)
+target_link_libraries(sandbox PRIVATE bdex::app bdex::ui)
 bdex_configure_target(sandbox)
 
 # The executable does not link against any module: these are the ones it can

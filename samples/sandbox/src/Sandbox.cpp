@@ -14,7 +14,7 @@
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
 // shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
 // selected object, F11 for fullscreen, F12 for the stats panel, F1 for this
-// list on screen, G to walk
+// list on screen, Tab for the settings panel, G to walk
 // (Space jumps) or fly, C to throw a crate, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
@@ -35,6 +35,7 @@
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Model.hpp>
 #include <bdex/render/ResourceNames.hpp>
+#include <bdex/ui/Ui.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
 #include <bdex/core/Log.hpp>
@@ -113,6 +114,7 @@ protected:
         config.setDefault("input.delete", "Delete");
         config.setDefault("input.stats", "F12");
         config.setDefault("input.help", "F1");
+        config.setDefault("input.panel", "Tab");
         config.setDefault("input.walk", "G, GamepadB");
         config.setDefault("input.throw_crate", "C");
         config.setDefault("input.quit", "Escape, GamepadBack");
@@ -145,6 +147,7 @@ protected:
         }
         hud_.update(engine(), time, scene().world().entityCount(), actions(), window());
         sparks_.update(scene().world());
+        drawPanel();
         pollHotReload(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
@@ -166,12 +169,15 @@ protected:
             if (controls->pressed("help")) {
                 hud_.toggleHelp();
             }
+            if (controls->pressed("panel")) {
+                showPanel_ = !showPanel_;
+            }
             if (controls->pressed("walk")) {
                 flyCamera_.setWalking(scene().world(), !flyCamera_.walking());
                 log::info("sandbox", "{}", flyCamera_.walking() ? "walking (G to fly)" : "flying (G to walk)");
             }
-            if (controls->pressed("select")) {
-                selectUnderCursor();
+            if (controls->pressed("select") && !ui_.wantsPointer()) {
+                selectUnderCursor();  // unless the click was on the panel
             }
             if (controls->pressed("save_scene")) {
                 saveScene();
@@ -624,6 +630,15 @@ private:
                                           .color = Vec3(1.0f, 0.96f, 0.9f),
                                           .intensity = 1.1f,
                                           .ambient = Vec3(0.16f, 0.19f, 0.25f)});
+        {
+            // The panel's angles for that direction (toward the sun).
+            const Vec3 toward = -glm::normalize(Vec3(-0.45f, -0.8f, -0.35f));
+            sunElevation_ = glm::degrees(std::asin(toward.y));
+            sunAzimuth_ = glm::degrees(std::atan2(toward.x, toward.z));
+            if (sunAzimuth_ < 0.0f) {
+                sunAzimuth_ += 360.0f;
+            }
+        }
 
         // Camera
         camera_ = level.createEntity("Camera");
@@ -828,10 +843,76 @@ private:
         }
     }
 
+    /// Live settings, on the right (Tab hides it).
+    void drawPanel() {
+        auto* debug = engine().services().tryGet<render::DebugDraw>();
+        const platform::InputState* pointer = input();
+        if (!showPanel_ || debug == nullptr || pointer == nullptr) {
+            return;
+        }
+        ecs::World& world = scene().world();
+        constexpr f32 kWidth = 230.0f;
+        const f32 right = engine().services().has<render::IRenderer>()
+                              ? static_cast<f32>(renderer().renderExtent().width)
+                              : 1280.0f;
+        ui_.begin(ui::fromInputState(*pointer), *debug);
+
+        ui_.panel("SUN", Vec2(right - kWidth - 12.0f, 12.0f), kWidth);
+        if (auto* sun = world.tryGet<render::DirectionalLight>(scene().find("Sun"))) {
+            bool moved = ui_.slider("height", sunElevation_, 5.0f, 85.0f);
+            moved |= ui_.slider("bearing", sunAzimuth_, 0.0f, 360.0f);
+            if (moved) {
+                // The direction the light travels in: down from that height.
+                const f32 elevation = glm::radians(sunElevation_);
+                const f32 azimuth = glm::radians(sunAzimuth_);
+                sun->direction = -Vec3(std::cos(elevation) * std::sin(azimuth), std::sin(elevation),
+                                       std::cos(elevation) * std::cos(azimuth));
+            }
+            ui_.slider("strength", sun->intensity, 0.0f, 3.0f);
+            f32 ambient = sun->ambient.b;
+            if (ui_.slider("ambient", ambient, 0.0f, 0.6f)) {
+                sun->ambient = Vec3(0.64f, 0.76f, 1.0f) * ambient;  // a cool sky tint
+            }
+        }
+        ui_.endPanel();
+
+        ui_.panel("SCENE", Vec2(right - kWidth - 12.0f, 190.0f), kWidth);
+        ui_.checkbox("platform moves", platformMoving_);
+        if (ui_.checkbox("lanterns sway", lanternsSway_)) {
+            world.view<animation::AnimationPlayer>().each([&](animation::AnimationPlayer& player) {
+                player.playing = lanternsSway_;
+            });
+        }
+        ui_.checkbox("sparks", sparks_.enabled);
+        ui_.checkbox("gizmos", debugView_);
+        if (ui_.button("throw a crate")) {
+            throwCrate();
+        }
+        if (ui_.button("throw a ball")) {
+            throwBall();
+        }
+        if (ui_.button("clear throws")) {
+            for (const ecs::Entity thrown : balls_) {
+                world.destroy(thrown);
+            }
+            for (const ecs::Entity thrown : crates_) {
+                world.destroy(thrown);
+            }
+            balls_.clear();
+            crates_.clear();
+        }
+        ui_.endPanel();
+        ui_.end();
+    }
+
     void onFixedUpdate(const FrameTime& time) override {
         // Ten seconds there and back, easing at the ends.
+        if (!platformMoving_) {
+            return;
+        }
         if (auto* slab = scene().world().tryGet<scene::Transform>(platform_)) {
-            const f32 phase = static_cast<f32>(time.elapsed) * 2.0f * std::numbers::pi_v<f32> / 10.0f;
+            platformTime_ += time.delta;
+            const f32 phase = static_cast<f32>(platformTime_) * 2.0f * std::numbers::pi_v<f32> / 10.0f;
             slab->position = kPlatformBase + Vec3(0.0f, 0.0f, 3.0f * std::sin(phase));
         }
     }
@@ -856,6 +937,13 @@ private:
     std::vector<ecs::Entity> crates_;
     render::ModelResources lampResources_;
     ecs::Entity platform_;
+    f64 platformTime_ = 0.0;  ///< Paused with the platform.
+    ui::Context ui_;
+    bool showPanel_ = true;
+    bool platformMoving_ = true;
+    bool lanternsSway_ = true;
+    f32 sunElevation_ = 0.0f;
+    f32 sunAzimuth_ = 0.0f;
     static constexpr Vec3 kPlatformBase{-7.5f, 0.16f, 1.0f};
     std::shared_ptr<const assets::ModelAnimation> lampSway_;
     static constexpr const char* kLampModel = "app:/models/lamp.gltf";
