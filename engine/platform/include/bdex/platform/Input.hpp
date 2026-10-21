@@ -46,6 +46,7 @@ public:
     /// Raw value, without dead zone (see InputActions for one).
     [[nodiscard]] f32 gamepadAxis(GamepadAxis axis, u32 gamepad = 0) const;
 
+    /// In framebuffer pixels (see MouseMoved).
     [[nodiscard]] Vec2 mousePosition() const { return mousePosition_; }
     /// Cursor motion accumulated since beginFrame().
     [[nodiscard]] Vec2 mouseDelta() const { return mouseDelta_; }
