@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <limits>
 
 #include <string>
 #include <vector>
@@ -46,6 +47,48 @@ TEST(Engine, ForcedDeltaDrivesFrameTime) {
     EXPECT_DOUBLE_EQ(seen[1].elapsed, 0.5);
     EXPECT_EQ(seen[0].frame, 0u);
     EXPECT_EQ(seen[1].frame, 1u);
+}
+
+TEST(Engine, TheTimeScaleSlowsAndPausesGameTimeButNotRealTime) {
+    Config config;
+    config.set("engine.forced_delta", "0.5");
+    config.set("engine.fixed_timestep", "0.25");
+    config.set("engine.time_scale", "0.5");
+    Engine engine(config);
+    ASSERT_TRUE(engine.initialize().has_value());
+    EXPECT_DOUBLE_EQ(engine.timeScale(), 0.5);
+
+    FrameTime seen;
+    int steps = 0;
+    engine.scheduler().add(Phase::Update, "capture", [&](const FrameTime& time) { seen = time; });
+    engine.scheduler().add(Phase::FixedUpdate, "count", [&](const FrameTime&) { ++steps; });
+
+    // Half speed: 0.25 s of game time, one fixed step, 0.5 s of real time.
+    engine.tick();
+    EXPECT_DOUBLE_EQ(seen.delta, 0.25);
+    EXPECT_DOUBLE_EQ(seen.unscaledDelta, 0.5);
+    EXPECT_DOUBLE_EQ(seen.elapsed, 0.25);
+    EXPECT_EQ(steps, 1);
+
+    // Paused: no game time, no steps; real time goes on.
+    engine.setTimeScale(0.0);
+    engine.tick();
+    EXPECT_DOUBLE_EQ(seen.delta, 0.0);
+    EXPECT_DOUBLE_EQ(seen.unscaledDelta, 0.5);
+    EXPECT_DOUBLE_EQ(seen.elapsed, 0.25);
+    EXPECT_EQ(steps, 1);
+
+    // Double speed: four steps in one frame.
+    engine.setTimeScale(2.0);
+    engine.tick();
+    EXPECT_DOUBLE_EQ(seen.delta, 1.0);
+    EXPECT_EQ(steps, 5);
+
+    // Nonsense scales are refused.
+    engine.setTimeScale(-3.0);
+    EXPECT_DOUBLE_EQ(engine.timeScale(), 0.0);
+    engine.setTimeScale(std::numeric_limits<f64>::quiet_NaN());
+    EXPECT_DOUBLE_EQ(engine.timeScale(), 1.0);
 }
 
 TEST(Engine, FixedUpdateReceivesTheFixedStep) {

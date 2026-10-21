@@ -23,6 +23,7 @@ Engine::~Engine() {
 Result<> Engine::initialize() {
     fixedTimestep_ = std::max(config_.getFloat("engine.fixed_timestep", 1.0 / 60.0), 1e-4);
     forcedDelta_ = std::max(config_.getFloat("engine.forced_delta", 0.0), 0.0);
+    setTimeScale(config_.getFloat("engine.time_scale", 1.0));
     maxFrames_ = static_cast<u64>(std::max<i64>(config_.getInt("engine.max_frames", 0), 0));
     maxFixedSteps_ = static_cast<u32>(std::clamp<i64>(config_.getInt("engine.max_fixed_steps", 8), 1, 1000));
     if (const f64 maxFps = config_.getFloat("engine.max_fps", 0.0); maxFps > 0.0) {
@@ -55,7 +56,8 @@ bool Engine::tick() {
     }
     const f64 wallDelta = std::chrono::duration<f64>(now - lastTick_).count();
     lastTick_ = now;
-    time_.delta = forcedDelta_ > 0.0 ? forcedDelta_ : std::min(wallDelta, kMaxFrameDelta);
+    time_.unscaledDelta = forcedDelta_ > 0.0 ? forcedDelta_ : std::min(wallDelta, kMaxFrameDelta);
+    time_.delta = time_.unscaledDelta * timeScale_;
     time_.elapsed += time_.delta;
 
     scheduler_.run(Phase::BeginFrame, time_);

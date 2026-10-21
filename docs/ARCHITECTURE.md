@@ -104,7 +104,7 @@ engine.scheduler().add(Phase::Update, "game.ai", [](const FrameTime& time) { ...
 
 Within a phase, tasks run by ascending `order`, then by registration order.
 
-`FixedUpdate` has its own clock: each step receives `delta = engine.fixed_timestep` and an `elapsed` that advances by exactly one step, so a simulation driven from it is deterministic. At most `engine.max_fixed_steps` steps (8 by default) run per frame; beyond that the backlog is dropped. The other phases receive `FrameTime::fixedAlpha`, the fraction of a step accumulated but not simulated yet, to interpolate between the last two fixed-step states when rendering.
+`FixedUpdate` has its own clock: each step receives `delta = engine.fixed_timestep` and an `elapsed` that advances by exactly one step, so a simulation driven from it is deterministic. At most `engine.max_fixed_steps` steps (8 by default) run per frame; beyond that the backlog is dropped. The other phases receive `FrameTime::fixedAlpha`, the fraction of a step accumulated but not simulated yet, to interpolate between the last two fixed-step states when rendering. `Engine::setTimeScale` (config `engine.time_scale`, 1 by default) runs game time at a multiple of real time: 0.25 for slow motion, 0 to pause. `FrameTime::delta` and `elapsed`, and so fixed steps, animations and particles, follow it; `FrameTime::unscaledDelta` keeps real time, for what must not slow down: a camera, menus, the interface.
 
 ### Identity across plugin boundaries
 
