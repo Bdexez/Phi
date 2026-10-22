@@ -109,7 +109,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `Space` / `Left Ctrl` | Move up / down. |
 | `Left Shift` | Move faster. |
 | `F1` | Show every control on screen, with the keys actually bound (rebinding in `sandbox.ini` shows there). |
-| `Tab` | Show or hide the settings panel: the sun's height, bearing, strength and ambient light, the platform, the lanterns, sparks, gizmos, and buttons to throw and clear. |
+| `Tab` | Show or hide the settings panel: the sun's height, bearing, strength and ambient light, the platform, the lanterns, sparks, gizmos, slow motion and pause, and buttons to throw and clear. |
 | `F2` | Save a screenshot as `screenshot_<frame>.png`. |
 | `F3` | Log the CPU time of every engine task, the last frame's draw statistics, and the GPU time of each render pass. |
 | `F4` | Toggle debug gizmos: the sun's direction, point light ranges, object axes and names, and physics colliders. |
