@@ -254,6 +254,37 @@ TEST(Application, ReadsSoundSettings) {
     EXPECT_FLOAT_EQ(settings.effects, 1.0f);
 }
 
+TEST(Application, GameSoundsFollowTheTimeScaleButMusicDoesNot) {
+    struct Slowed final : app::Application {
+        f32 effects = -1.0f;
+        f32 ambience = -1.0f;
+        f32 music = -1.0f;
+        int run() {
+            std::vector<std::string> arguments{"slowed", "--frames", "2", "--set", "engine.time_scale=0.25"};
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null,audio_null"); }
+        void onStop() override {
+            const auto& mixer = engine().services().get<audio::Mixer>();
+            effects = mixer.busSpeed(audio::Bus::Effects);
+            ambience = mixer.busSpeed(audio::Bus::Ambience);
+            music = mixer.busSpeed(audio::Bus::Music);
+        }
+    };
+    Slowed slowed;
+    EXPECT_EQ(slowed.run(), 0);
+    EXPECT_FLOAT_EQ(slowed.effects, 0.25f);
+    EXPECT_FLOAT_EQ(slowed.ambience, 0.25f);
+    EXPECT_FLOAT_EQ(slowed.music, 1.0f);
+}
+
 TEST(Application, WritesATraceOfTheRun) {
     struct Traced final : app::Application {
         int run(std::vector<std::string> arguments) {
