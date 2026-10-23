@@ -142,6 +142,16 @@ f32 Mixer::busVolume(Bus bus) const {
     return busVolumes_[static_cast<usize>(bus) % kBusCount];
 }
 
+void Mixer::setBusSpeed(Bus bus, f32 speed) {
+    const std::lock_guard lock(mutex_);
+    busSpeeds_[static_cast<usize>(bus) % kBusCount] = std::isfinite(speed) ? std::clamp(speed, 0.0f, 16.0f) : 1.0f;
+}
+
+f32 Mixer::busSpeed(Bus bus) const {
+    const std::lock_guard lock(mutex_);
+    return busSpeeds_[static_cast<usize>(bus) % kBusCount];
+}
+
 std::pair<f32, f32> Mixer::gains(const Voice& voice) const {
     const PlayParams& params = voice.params;
     const f32 bus = busVolumes_[static_cast<usize>(params.bus) % kBusCount];
@@ -174,7 +184,10 @@ void Mixer::mix(std::span<f32> out) {
     const std::lock_guard lock(mutex_);
     for (Voice& voice : voices_) {
         const assets::AudioData& clip = *voice.clip;
-        const auto [left, right] = gains(voice);
+        const f32 busSpeed = busSpeeds_[static_cast<usize>(voice.params.bus) % kBusCount];
+        const bool paused = busSpeed <= 0.0f;
+        // A paused voice glides to silence over this buffer, holding its place.
+        const auto [left, right] = paused ? std::pair(0.0f, 0.0f) : gains(voice);
         // Glide from the last buffer's gains to these over this buffer.
         const f32 startLeft = voice.mixed ? voice.gainLeft : left;
         const f32 startRight = voice.mixed ? voice.gainRight : right;
@@ -185,8 +198,14 @@ void Mixer::mix(std::span<f32> out) {
         const f32 stepRight = (right - startRight) / static_cast<f32>(std::max<usize>(frames, 1));
         f32 gainLeft = startLeft;
         f32 gainRight = startRight;
-        const f32 pitch = std::isfinite(voice.params.pitch) ? std::clamp(voice.params.pitch, 0.01f, 16.0f) : 1.0f;
-        const f64 step = static_cast<f64>(clip.sampleRate) / sampleRate_ * pitch;
+        const f32 pitch = std::isfinite(voice.params.pitch) ? std::clamp(voice.params.pitch * busSpeed, 0.01f, 16.0f) : 1.0f;
+        const f64 step = paused ? 0.0 : static_cast<f64>(clip.sampleRate) / sampleRate_ * pitch;
+        if (paused && startLeft == 0.0f && startRight == 0.0f) {
+            if (voice.stopping()) {
+                voice.fadeLeft = 0;  // stopped while silent: gone at once
+            }
+            continue;  // silent already: nothing to fade
+        }
         const usize length = clip.frameCount();
         const auto sample = [&](usize frame, u32 channel) {
             return clip.samples[frame * clip.channels + std::min(channel, clip.channels - 1)];
