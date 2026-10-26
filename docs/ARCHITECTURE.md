@@ -229,6 +229,7 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 ```
 
 - A `const` component type is handed to the callback as a const reference, which documents what a system only reads.
+- A `const World` gives views of `const` types only (anything else fails to compile) and creates no pool: a type no entity ever had makes the view empty. Functions that only read the world take it as `const World&`.
 - `parallelEach` splits the view across the `JobSystem`; its callback may only touch the components it is given.
 - `onAdd<T>` / `onRemove<T>` observe components coming and going (including through `destroy` and `clear`), for indexes or resources that follow components.
 - `clone(entity)` creates an entity with a copy of every copyable component, firing `onAdd` hooks; move-only components are left out, and a type whose copy constructor cannot compile (holding a `std::vector<std::unique_ptr<...>>`, say) opts out by specializing `ecs::Cloneable<T>` as `std::false_type`.

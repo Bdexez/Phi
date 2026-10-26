@@ -191,6 +191,36 @@ TEST(World, ConstViewsAndQueries) {
     EXPECT_EQ(readOnly.tryGet<Position>(Entity{}), nullptr);
 }
 
+TEST(World, AConstWorldGivesReadOnlyViewsAndCreatesNoPool) {
+    World world;
+    const Entity a = world.create();
+    const Entity b = world.create();
+    world.emplace<Position>(a, 1.0f, 2.0f);
+    world.emplace<Velocity>(a, 3.0f, 4.0f);
+    world.emplace<Position>(b, 5.0f, 6.0f);
+    world.emplace<Tag>(b);
+
+    const World& readOnly = world;
+    float sum = 0.0f;
+    std::vector<Entity> seen;
+    readOnly.view<const Position>().each([&](Entity entity, const Position& p) {
+        sum += p.x;
+        seen.push_back(entity);
+    });
+    EXPECT_FLOAT_EQ(sum, 6.0f);
+    EXPECT_EQ(seen.size(), 2u);
+    EXPECT_EQ((readOnly.view<const Position, const Velocity>().count()), 1u);
+    EXPECT_EQ(readOnly.view<const Position>().exclude<Tag>().count(), 1u);
+
+    // A type no entity ever had: an empty view, and still no pool for it.
+    int visits = 0;
+    readOnly.view<const Label>().each([&](const Label&) { ++visits; });
+    readOnly.view<const Position, const Label>().each([&](const Position&, const Label&) { ++visits; });
+    EXPECT_EQ(visits, 0);
+    EXPECT_EQ((readOnly.view<const Position, const Label>().count()), 0u);
+    EXPECT_EQ(readOnly.storage<Label>(), nullptr);
+}
+
 TEST(World, RemovingAnUnknownComponentIsANoOp) {
     World world;
     const Entity e = world.create();

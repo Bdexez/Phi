@@ -94,7 +94,7 @@ void Lamps::release(render::IRenderer& renderer) {
     sway_ = nullptr;
 }
 
-std::vector<ecs::Entity> Lamps::roots(ecs::World& world) {
+std::vector<ecs::Entity> Lamps::roots(const ecs::World& world) {
     std::vector<ecs::Entity> found;
     world.view<const scene::Name>().each([&](ecs::Entity entity, const scene::Name& name) {
         if (name.value == "Lamp") {
