@@ -496,55 +496,45 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
                               f32 maxDistance) {
     std::optional<RayHit> nearest;
     const auto consider = [&](ecs::Entity entity, f32 distance, const Vec3& normal) {
-        if (distance <= maxDistance && (!nearest || distance < nearest->distance)) {
+        // Ties go to the lowest entity index, whatever order colliders are visited in.
+        if (distance <= maxDistance &&
+            (!nearest || distance < nearest->distance ||
+             (distance == nearest->distance && entity.index < nearest->entity.index))) {
             nearest = RayHit{entity, distance, origin + direction * distance, normal};
         }
     };
 
-    const auto* spheres = world.storage<SphereCollider>();
-    const auto* transforms = world.storage<Transform>();
-    if (spheres != nullptr && transforms != nullptr) {
-        for (const u32 index : spheres->entities()) {
-            const Transform* transform = transforms->tryGet(index);
-            if (transform == nullptr) {
-                continue;
+    world.view<const SphereCollider, const Transform>().each(
+        [&](ecs::Entity entity, const SphereCollider& sphere, const Transform& transform) {
+            const f32 radius = sphere.radius * largestScale(transform);
+            if (!finite(transform.position) || !std::isfinite(radius)) {
+                return;  // as in step(): broken colliders are left out
             }
-            const f32 radius = spheres->get(index).radius * largestScale(*transform);
-            if (!finite(transform->position) || !std::isfinite(radius)) {
-                continue;  // as in step(): broken colliders are left out
-            }
-            const Vec3 toCenter = transform->position - origin;
+            const Vec3 toCenter = transform.position - origin;
             const f32 along = glm::dot(toCenter, direction);
             const f32 missSquared = glm::dot(toCenter, toCenter) - along * along;
             if (glm::dot(toCenter, toCenter) <= radius * radius) {
-                consider(world.entityAt(index), 0.0f, -direction);  // starts inside
-                continue;
+                consider(entity, 0.0f, -direction);  // starts inside
+                return;
             }
             if (along < 0.0f || missSquared > radius * radius) {
-                continue;
+                return;
             }
             const f32 distance = along - std::sqrt(radius * radius - missSquared);
             const Vec3 point = origin + direction * distance;
-            consider(world.entityAt(index), distance, glm::normalize(point - transform->position));
-        }
-    }
+            consider(entity, distance, glm::normalize(point - transform.position));
+        });
 
-    const auto* boxes = world.storage<BoxCollider>();
-    if (boxes != nullptr && transforms != nullptr) {
-        for (const u32 index : boxes->entities()) {
-            const Transform* transform = transforms->tryGet(index);
-            if (transform == nullptr) {
-                continue;
-            }
-            const Box box = makeBox(world.entityAt(index), *transform, boxes->get(index));
+    world.view<const BoxCollider, const Transform>().each(
+        [&](ecs::Entity entity, const BoxCollider& collider, const Transform& transform) {
+            const Box box = makeBox(entity, transform, collider);
             if (!finite(box.boundsMin) || !finite(box.boundsMax)) {
-                continue;  // NaN fails every slab comparison: it would be hit at distance 0
+                return;  // NaN fails every slab comparison: it would be hit at distance 0
             }
             if (const auto hit = rayBox(box, origin, direction, maxDistance)) {
-                consider(world.entityAt(index), hit->distance, hit->normal);
+                consider(entity, hit->distance, hit->normal);
             }
-        }
-    }
+        });
     return nearest;
 }
 

@@ -683,6 +683,25 @@ TEST(Hierarchy, ReparentingRejectsCyclesAndCanKeepTheWorldPose) {
     expectNear(worldPosition(world, hand), before);
 }
 
+TEST(Hierarchy, BranchesListSiblingsInIndexOrder) {
+    ecs::World world;
+    const ecs::Entity root = world.create();
+    const ecs::Entity a = world.create();
+    const ecs::Entity b = world.create();
+    const ecs::Entity c = world.create();
+    const ecs::Entity grandchild = world.create();
+    // Linked out of order, then one link removed and added back, which
+    // reorders the Parent pool.
+    world.emplace<scene::Parent>(c, root);
+    world.emplace<scene::Parent>(grandchild, a);
+    world.emplace<scene::Parent>(a, root);
+    world.emplace<scene::Parent>(b, root);
+    world.remove<scene::Parent>(c);
+    world.emplace<scene::Parent>(c, root);
+    EXPECT_EQ(branch(world, root), (std::vector<ecs::Entity>{root, a, b, c, grandchild}));
+    EXPECT_EQ(children(world, root), (std::vector<ecs::Entity>{a, b, c}));
+}
+
 TEST(Hierarchy, CloningCopiesAWholeBranch) {
     Scene scene("test");
     ecs::World& world = scene.world();

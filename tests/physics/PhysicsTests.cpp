@@ -296,6 +296,23 @@ TEST(Physics, RaysHitTheNearestCollider) {
     EXPECT_FALSE(raycast(world, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)).has_value());
 }
 
+TEST(Physics, RaysSettleTiesByEntityIndex) {
+    // A ray starting inside two overlapping spheres hits both at distance
+    // 0: the lower entity index wins, whatever order their colliders were
+    // added in.
+    ecs::World world;
+    const ecs::Entity first = world.create();
+    const ecs::Entity second = world.create();
+    for (const ecs::Entity sphere : {second, first}) {  // stored backwards
+        world.emplace<Transform>(sphere);
+        world.emplace<SphereCollider>(sphere, 1.0f);
+    }
+    const auto hit = raycast(world, Vec3(0.0f), Vec3(1.0f, 0.0f, 0.0f));
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->entity, first);
+    EXPECT_EQ(hit->distance, 0.0f);
+}
+
 TEST(Physics, StepsReportHardContactsOnly) {
     ecs::World world;
     const ecs::Entity floor = addFloor(world);

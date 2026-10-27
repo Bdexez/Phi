@@ -164,7 +164,8 @@ struct RayHit {
 /// First collider (sphere or box, dynamic or static) the ray from `origin`
 /// along the unit `direction` touches within `maxDistance`: shooting, line
 /// of sight, ground checks. A ray starting inside a collider hits it at
-/// distance 0.
+/// distance 0. Of colliders hit at the same distance, the one with the
+/// lowest entity index is reported.
 [[nodiscard]] std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin,
                                             const Vec3& direction, f32 maxDistance = 1e30f);
 
