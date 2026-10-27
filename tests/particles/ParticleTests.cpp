@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace bdex;
@@ -126,4 +127,62 @@ TEST(Particles, ReplayIdenticallyAndChangeWithAge) {
     halfway.age = 1.0f;
     EXPECT_EQ(colorAt(look, halfway), Vec4(2.0f, 1.0f, 0.25f, 0.5f));
     EXPECT_FLOAT_EQ(sizeAt(look, halfway), 0.1f);
+}
+
+TEST(Particles, AMovingEmitterLeavesAnEvenTrail) {
+    ParticleEmitter trail;
+    trail.rate = 95.0f;  // not a whole number per frame
+    trail.speed = 0.0f;
+    trail.speedVariance = 0.0f;
+    trail.gravity = Vec3(0.0f);
+    trail.lifetime = 100.0f;
+    trail.lifetimeVariance = 0.0f;
+
+    for (const f32 inherit : {0.0f, 1.0f}) {
+        ecs::World world;
+        trail.inheritVelocity = inherit;
+        const ecs::Entity emitter = addEmitter(world, Vec3(0.0f), trail);
+        updateParticles(world, 0.1f);  // standing still: where it stands
+        const usize first = world.get<ParticleEmitter>(emitter).particles.size();
+        for (const Particle& particle : world.get<ParticleEmitter>(emitter).particles) {
+            EXPECT_EQ(particle.position, Vec3(0.0f));
+        }
+
+        // Moving at 10 m/s along X for a frame.
+        world.get<scene::Transform>(emitter).position.x = 1.0f;
+        updateParticles(world, 0.1f);
+        const auto& particles = world.get<ParticleEmitter>(emitter).particles;
+        ASSERT_GE(particles.size(), first + 9);
+        f32 oldest = 0.0f;
+        f32 youngest = 1.0f;
+        for (usize i = first; i < particles.size(); ++i) {
+            const Particle& particle = particles[i];
+            ASSERT_GE(particle.age, 0.0f);
+            ASSERT_LE(particle.age, 0.1f);
+            oldest = std::max(oldest, particle.age);
+            youngest = std::min(youngest, particle.age);
+            if (inherit == 0.0f) {
+                // Left where the emitter was when it was born.
+                EXPECT_NEAR(particle.position.x, 1.0f - 10.0f * particle.age, 1e-4f) << i;
+            } else {
+                // Carried along: still level with it.
+                EXPECT_NEAR(particle.position.x, 1.0f, 1e-4f) << i;
+                EXPECT_NEAR(particle.velocity.x, 10.0f, 1e-3f) << i;
+            }
+        }
+        EXPECT_GT(oldest - youngest, 0.08f);  // births spread over the frame
+    }
+
+    // Teleported, with the trail cleared: nothing streaks across the jump.
+    ecs::World world;
+    trail.inheritVelocity = 0.0f;
+    const ecs::Entity emitter = addEmitter(world, Vec3(0.0f), trail);
+    updateParticles(world, 0.1f);
+    world.get<scene::Transform>(emitter).position.x = 50.0f;
+    world.get<ParticleEmitter>(emitter).hasPreviousOrigin = false;
+    world.get<ParticleEmitter>(emitter).particles.clear();
+    updateParticles(world, 0.1f);
+    for (const Particle& particle : world.get<ParticleEmitter>(emitter).particles) {
+        EXPECT_EQ(particle.position.x, 50.0f);
+    }
 }
