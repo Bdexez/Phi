@@ -450,6 +450,29 @@ TEST(SceneFiles, RoundTripAHierarchy) {
     EXPECT_EQ(serializers.save(again.world()), text);
 }
 
+TEST(SceneFiles, FieldsHoldColorsAndWholeNumbers) {
+    Fields fields;
+    fields["color"] = formatField(Vec4(3.0f, 0.5f, 0.125f, 0.25f));
+    fields["count"] = formatField(4294967295u);
+    Vec4 color(0.0f);
+    u32 count = 0;
+    ASSERT_TRUE(parseField(fields, "color", color).has_value());
+    ASSERT_TRUE(parseField(fields, "count", count).has_value());
+    EXPECT_EQ(color, Vec4(3.0f, 0.5f, 0.125f, 0.25f));
+    EXPECT_EQ(count, 4294967295u);
+
+    // Whole numbers are whole, unsigned and in range; a bad one leaves the
+    // value as it was.
+    for (const char* bad : {"-1", "+1", "2.5", "4294967296", "", "12 apples"}) {
+        Fields broken{{"count", bad}};
+        u32 value = 9;
+        EXPECT_FALSE(parseField(broken, "count", value).has_value()) << bad;
+        EXPECT_EQ(value, 9u) << bad;
+    }
+    Fields shortColor{{"color", "1 2 3"}};
+    EXPECT_FALSE(parseField(shortColor, "color", color).has_value());
+}
+
 TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {
     const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
     ecs::World world;
