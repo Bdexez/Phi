@@ -3,11 +3,13 @@
 #include <bdex/core/Config.hpp>
 #include <bdex/core/Log.hpp>
 #include <bdex/scene/Components.hpp>
+#include <bdex/scene/Scene.hpp>
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <format>
+#include <unordered_set>
 
 namespace bdex::scene {
 namespace {
@@ -224,10 +226,17 @@ std::string ComponentSerializers::save(ecs::World& world) const {
     // order (stable across saves), so references can be written...
     EntityRefs refs;
     refs.world_ = &world;
+    // Transient entities stay out, with everything below them.
+    std::unordered_set<u32> transient;
+    world.view<const Transient>().each([&](ecs::Entity root, const Transient&) {
+        for (const ecs::Entity part : branch(world, root)) {
+            transient.insert(part.index);
+        }
+    });
     std::vector<ecs::Entity> saved;
     for (u32 slot = 0; slot < world.slotCount(); ++slot) {
         const ecs::Entity entity = world.entityAt(slot);
-        const bool known = world.alive(entity) &&
+        const bool known = world.alive(entity) && !transient.contains(slot) &&
                            std::any_of(entries_.begin(), entries_.end(),
                                        [&](const Entry& entry) { return entry.has(world, entity); });
         if (known) {

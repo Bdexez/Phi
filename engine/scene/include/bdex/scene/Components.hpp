@@ -30,6 +30,11 @@ struct Transform {
     [[nodiscard]] Vec3 up() const { return rotation * Vec3(0.0f, 1.0f, 0.0f); }
 };
 
+/// Keeps an entity, and everything attached below it through Parent, out of
+/// scene files: what the game makes as it runs (effects, the player's
+/// body) rather than what the level is made of.
+struct Transient {};
+
 /// Attaches the entity's Transform to another entity's.
 struct Parent {
     ecs::Entity entity;
