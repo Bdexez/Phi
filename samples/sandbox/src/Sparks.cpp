@@ -21,6 +21,7 @@ void Sparks::start(Engine& engine) {
         ecs::World& world = level.world();
         const ecs::Entity burst = world.create();
         world.emplace<scene::Transform>(burst).position = contact.point;
+        world.emplace<scene::Transient>(burst);  // an effect, not part of the level
         particles::ParticleEmitter sparks;
         sparks.rate = 0.0f;
         sparks.burst = static_cast<u32>(std::clamp(contact.impulse * 3.0f, 6.0f, 60.0f));

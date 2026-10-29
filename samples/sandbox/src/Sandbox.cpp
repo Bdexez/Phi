@@ -37,6 +37,7 @@
 #include <bdex/core/FileWatcher.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/core/Log.hpp>
+#include <bdex/particles/Particles.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Model.hpp>
@@ -219,6 +220,7 @@ private:
         render::addComponentSerializers(serializers_);
         physics::addComponentSerializers(serializers_);
         audio::addComponentSerializers(serializers_);
+        particles::addComponentSerializers(serializers_);
         serializers_.add<sandbox::Spin>(
             "Spin",
             [](const sandbox::Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
@@ -271,10 +273,6 @@ private:
         platform_ = scene().find("Platform");
         // Players are not saved; the lamps' nodes are, so they sway again.
         lamps_.restartSway(world);
-        // A body saved while walking would stand there, invisible.
-        if (const ecs::Entity player = scene().find("Player"); world.alive(player)) {
-            world.destroy(player);
-        }
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
     }
 

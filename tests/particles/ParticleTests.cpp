@@ -186,3 +186,61 @@ TEST(Particles, AMovingEmitterLeavesAnEvenTrail) {
         EXPECT_EQ(particle.position.x, 50.0f);
     }
 }
+
+TEST(Particles, EmittersRoundTripThroughSceneFilesWithoutTheirParticles) {
+    ecs::World world;
+    ParticleEmitter fire;  // every setting off its default
+    fire.rate = 33.5f;
+    fire.burst = 7;
+    fire.maxParticles = 250;
+    fire.lifetime = 0.75f;
+    fire.lifetimeVariance = 0.1f;
+    fire.direction = Vec3(0.0f, 0.0f, 1.0f);
+    fire.spread = 0.4f;
+    fire.speed = 6.0f;
+    fire.speedVariance = 0.05f;
+    fire.emitRadius = 0.3f;
+    fire.inheritVelocity = 0.5f;
+    fire.gravity = Vec3(0.0f, 1.5f, 0.0f);
+    fire.drag = 2.0f;
+    fire.startColor = Vec4(3.0f, 1.2f, 0.2f, 1.0f);
+    fire.endColor = Vec4(0.2f, 0.0f, 0.0f, 0.25f);
+    fire.startSize = 0.3f;
+    fire.endSize = 0.05f;
+    fire.additive = false;
+    fire.emitting = false;
+    fire.seed = 4000000000u;
+    const ecs::Entity entity = addEmitter(world, Vec3(0.0f), fire);
+    world.get<ParticleEmitter>(entity).particles.resize(12);  // live state: not saved
+
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    addComponentSerializers(serializers);
+    const std::string text = serializers.save(world);
+    ecs::World loaded;
+    ASSERT_TRUE(serializers.load(loaded, text).has_value());
+    const ParticleEmitter* copy = nullptr;
+    loaded.view<const ParticleEmitter>().each([&](const ParticleEmitter& emitter) { copy = &emitter; });
+    ASSERT_NE(copy, nullptr);
+    EXPECT_EQ(copy->rate, fire.rate);
+    EXPECT_EQ(copy->burst, fire.burst);
+    EXPECT_EQ(copy->maxParticles, fire.maxParticles);
+    EXPECT_EQ(copy->lifetime, fire.lifetime);
+    EXPECT_EQ(copy->lifetimeVariance, fire.lifetimeVariance);
+    EXPECT_EQ(copy->direction, fire.direction);
+    EXPECT_EQ(copy->spread, fire.spread);
+    EXPECT_EQ(copy->speed, fire.speed);
+    EXPECT_EQ(copy->speedVariance, fire.speedVariance);
+    EXPECT_EQ(copy->emitRadius, fire.emitRadius);
+    EXPECT_EQ(copy->inheritVelocity, fire.inheritVelocity);
+    EXPECT_EQ(copy->gravity, fire.gravity);
+    EXPECT_EQ(copy->drag, fire.drag);
+    EXPECT_EQ(copy->startColor, fire.startColor);
+    EXPECT_EQ(copy->endColor, fire.endColor);
+    EXPECT_EQ(copy->startSize, fire.startSize);
+    EXPECT_EQ(copy->endSize, fire.endSize);
+    EXPECT_EQ(copy->additive, fire.additive);
+    EXPECT_EQ(copy->emitting, fire.emitting);
+    EXPECT_EQ(copy->seed, fire.seed);
+    EXPECT_TRUE(copy->particles.empty());
+
+}

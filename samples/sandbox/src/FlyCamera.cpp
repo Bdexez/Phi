@@ -77,6 +77,7 @@ void FlyCamera::setWalking(ecs::World& world, bool walking) {
     if (walking) {
         body_ = world.create();
         world.emplace<scene::Name>(body_, "Player");
+        world.emplace<scene::Transient>(body_);  // not saved: walking is a mode, not part of the level
         world.emplace<scene::Transform>(body_).position =
             world.get<scene::Transform>(camera_).position - Vec3(0.0f, kEyeHeight, 0.0f);
         world.emplace<physics::SphereCollider>(body_, kBodyRadius);  // no RigidBody: kinematic
