@@ -62,7 +62,7 @@ public:
         Entry entry;
         entry.name = std::move(name);
         entry.has = [](const ecs::World& world, ecs::Entity entity) { return world.has<T>(entity); };
-        entry.save = [save = std::move(save)](ecs::World& world, ecs::Entity entity, Fields& fields,
+        entry.save = [save = std::move(save)](const ecs::World& world, ecs::Entity entity, Fields& fields,
                                               const EntityRefs& refs) {
             save(world.get<T>(entity), fields, refs);
         };
@@ -82,8 +82,9 @@ public:
     /// cameras and lights.)
     [[nodiscard]] static ComponentSerializers withSceneComponents();
 
-    /// Writes every entity owning at least one registered component.
-    [[nodiscard]] std::string save(ecs::World& world) const;
+    /// Writes every entity owning at least one registered component, apart
+    /// from Transient ones; the world is only read.
+    [[nodiscard]] std::string save(const ecs::World& world) const;
     /// Creates the file's entities in `world`, with their components; the
     /// world's existing entities are kept. Components no serializer knows
     /// are skipped. Returns the created entities, in file order.
@@ -93,7 +94,7 @@ private:
     struct Entry {
         std::string name;
         std::function<bool(const ecs::World&, ecs::Entity)> has;
-        std::function<void(ecs::World&, ecs::Entity, Fields&, const EntityRefs&)> save;
+        std::function<void(const ecs::World&, ecs::Entity, Fields&, const EntityRefs&)> save;
         std::function<Result<>(ecs::World&, ecs::Entity, const Fields&, const EntityRefs&)> load;
     };
     std::vector<Entry> entries_;

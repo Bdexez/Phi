@@ -221,7 +221,7 @@ ComponentSerializers ComponentSerializers::withSceneComponents() {
     return serializers;
 }
 
-std::string ComponentSerializers::save(ecs::World& world) const {
+std::string ComponentSerializers::save(const ecs::World& world) const {
     // First number the entities owning a registered component, in slot
     // order (stable across saves), so references can be written...
     EntityRefs refs;
