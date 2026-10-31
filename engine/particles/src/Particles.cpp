@@ -33,7 +33,7 @@ Vec3 inCone(const Vec3& axis, f32 spread, u32& seed) {
 
 /// Emits one particle at `origin` that has lived `age` seconds already
 /// (born during the frame), leaving with `carried` on top of its own speed.
-void emit(ParticleEmitter& emitter, const Vec3& origin, const Vec3& carried, f32 age) {
+void emit(ParticleEmitter& emitter, const Vec3& origin, const Vec3& axis, const Vec3& carried, f32 age) {
     if (emitter.particles.size() >= emitter.maxParticles) {
         return;
     }
@@ -48,7 +48,7 @@ void emit(ParticleEmitter& emitter, const Vec3& origin, const Vec3& carried, f32
                              (emitter.emitRadius * std::cbrt(random(seed)));
     }
     const f32 speed = emitter.speed * (1.0f + emitter.speedVariance * (2.0f * random(seed) - 1.0f));
-    particle.velocity = inCone(emitter.direction, emitter.spread, seed) * speed + carried;
+    particle.velocity = inCone(axis, emitter.spread, seed) * speed + carried;
     particle.lifetime =
         std::max(emitter.lifetime * (1.0f + emitter.lifetimeVariance * (2.0f * random(seed) - 1.0f)), 1e-3f);
     if (age > 0.0f) {
@@ -88,10 +88,19 @@ void updateParticles(ecs::World& world, f32 dt) {
         }
 
         Vec3 origin(0.0f);
+        Vec3 axis = emitter.direction;
         if (const auto* placed = world.tryGet<scene::WorldTransform>(entity)) {
             origin = Vec3(placed->matrix[3]);
+            if (emitter.localDirection) {
+                // Rotation only: scale (even uneven) must not bend the cone.
+                const Mat3 frame(placed->matrix);
+                axis = Mat3(glm::normalize(frame[0]), glm::normalize(frame[1]), glm::normalize(frame[2])) * axis;
+            }
         } else if (const auto* local = world.tryGet<scene::Transform>(entity)) {
             origin = local->position;
+            if (emitter.localDirection) {
+                axis = local->rotation * axis;
+            }
         }
         // The way the emitter came this frame, and how fast.
         const Vec3 from = emitter.hasPreviousOrigin ? emitter.previousOrigin : origin;
@@ -102,7 +111,7 @@ void updateParticles(ecs::World& world, f32 dt) {
         emitter.hasPreviousOrigin = true;
 
         for (; emitter.burst > 0; --emitter.burst) {
-            emit(emitter, origin, carried, 0.0f);
+            emit(emitter, origin, axis, carried, 0.0f);
         }
         if (emitter.emitting && emitter.rate > 0.0f && std::isfinite(emitter.rate)) {
             const f32 before = emitter.pending;
@@ -115,7 +124,7 @@ void updateParticles(ecs::World& world, f32 dt) {
                 const f32 born = std::clamp((static_cast<f32>(count) - before) / emitter.rate, 0.0f, dt);
                 const f32 along = dt > 0.0f ? born / dt : 1.0f;
                 // from + (origin - from) * along, unlike mix, is exact for a still emitter.
-                emit(emitter, from + (origin - from) * along, carried, dt - born);
+                emit(emitter, from + (origin - from) * along, axis, carried, dt - born);
             }
         }
     });
@@ -132,6 +141,7 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
             out["lifetime"] = formatField(emitter.lifetime);
             out["lifetime_variance"] = formatField(emitter.lifetimeVariance);
             out["direction"] = formatField(emitter.direction);
+            out["local_direction"] = formatField(emitter.localDirection);
             out["spread"] = formatField(emitter.spread);
             out["speed"] = formatField(emitter.speed);
             out["speed_variance"] = formatField(emitter.speedVariance);
@@ -153,7 +163,9 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
                                 parseField(in, "max_particles", emitter.maxParticles),
                                 parseField(in, "lifetime", emitter.lifetime),
                                 parseField(in, "lifetime_variance", emitter.lifetimeVariance),
-                                parseField(in, "direction", emitter.direction), parseField(in, "spread", emitter.spread),
+                                parseField(in, "direction", emitter.direction),
+                                parseField(in, "local_direction", emitter.localDirection),
+                                parseField(in, "spread", emitter.spread),
                                 parseField(in, "speed", emitter.speed),
                                 parseField(in, "speed_variance", emitter.speedVariance),
                                 parseField(in, "emit_radius", emitter.emitRadius),
