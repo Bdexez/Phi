@@ -33,8 +33,13 @@ Vec3 inCone(const Vec3& axis, f32 spread, u32& seed) {
 
 /// Emits one particle at `origin` that has lived `age` seconds already
 /// (born during the frame), leaving with `carried` on top of its own speed.
+/// How many particles the emitter may hold.
+usize capacityOf(const ParticleEmitter& emitter) {
+    return std::min(emitter.maxParticles, kParticleLimit);
+}
+
 void emit(ParticleEmitter& emitter, const Vec3& origin, const Vec3& axis, const Vec3& carried, f32 age) {
-    if (emitter.particles.size() >= emitter.maxParticles) {
+    if (emitter.particles.size() >= capacityOf(emitter)) {
         return;
     }
     u32& seed = emitter.seed;
@@ -110,14 +115,19 @@ void updateParticles(ecs::World& world, f32 dt) {
         emitter.previousOrigin = origin;
         emitter.hasPreviousOrigin = true;
 
-        for (; emitter.burst > 0; --emitter.burst) {
+        // A burst emits what fits, then is spent: asking for four billion
+        // must not loop four billion times.
+        const usize room = capacityOf(emitter) - std::min(emitter.particles.size(), capacityOf(emitter));
+        const usize burst = std::min<usize>(emitter.burst, room);
+        emitter.burst = 0;
+        for (usize i = 0; i < burst; ++i) {
             emit(emitter, origin, axis, carried, 0.0f);
         }
         if (emitter.emitting && emitter.rate > 0.0f && std::isfinite(emitter.rate)) {
             const f32 before = emitter.pending;
             emitter.pending += emitter.rate * dt;
             // Bounded: a long frame should not emit thousands in one go.
-            emitter.pending = std::min(emitter.pending, static_cast<f32>(emitter.maxParticles));
+            emitter.pending = std::min(emitter.pending, static_cast<f32>(capacityOf(emitter)));
             for (u32 count = 1; emitter.pending >= 1.0f; emitter.pending -= 1.0f, ++count) {
                 // The count reached `count` this many seconds into the frame:
                 // the particle is born there, on the emitter's way.

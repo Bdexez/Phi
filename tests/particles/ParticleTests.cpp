@@ -286,3 +286,34 @@ TEST(Particles, LocalDirectionsTurnWithTheEmitter) {
     EXPECT_NEAR(glm::length(world.get<ParticleEmitter>(entity).particles[0].velocity - Vec3(0.0f, -3.0f, 0.0f)), 0.0f,
                 1e-4f);
 }
+
+TEST(Particles, NoEmitterHoldsMoreThanTheLimitWhateverItAsks) {
+    // What a corrupted or hostile scene file could ask for: four billion at
+    // once, or an endless rate, with no maximum to speak of. It used to take
+    // seconds in one update, or all the memory there is.
+    ecs::World world;
+    ParticleEmitter flood;
+    flood.burst = 4000000000u;
+    flood.maxParticles = 4000000000u;
+    flood.rate = 1e30f;
+    flood.lifetime = 100.0f;
+    const ecs::Entity entity = addEmitter(world, Vec3(0.0f), flood);
+    updateParticles(world, 1.0f / 60.0f);
+    updateParticles(world, 1.0f / 60.0f);
+    const ParticleEmitter& emitter = world.get<ParticleEmitter>(entity);
+    EXPECT_EQ(emitter.particles.size(), kParticleLimit);
+    EXPECT_EQ(emitter.burst, 0u);  // spent, not left to loop
+
+    // A burst bigger than the room left emits what fits and is spent.
+    ParticleEmitter small;
+    small.rate = 0.0f;
+    small.maxParticles = 10;
+    small.burst = 7;
+    small.lifetime = 100.0f;
+    const ecs::Entity pop = addEmitter(world, Vec3(0.0f), small);
+    updateParticles(world, 0.0f);
+    world.get<ParticleEmitter>(pop).burst = 7;
+    updateParticles(world, 0.0f);
+    EXPECT_EQ(world.get<ParticleEmitter>(pop).particles.size(), 10u);
+    EXPECT_EQ(world.get<ParticleEmitter>(pop).burst, 0u);
+}
