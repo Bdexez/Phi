@@ -1,16 +1,19 @@
 // Feeds corrupted versions of valid inputs to every decoder of files that
 // come from outside: image, sound, mesh and glTF loaders, JSON and config files, scene files (then
-// steps physics over what was loaded). Decoders may reject or accept them,
+// steps physics, particles, animations and sound over what was loaded). Decoders may reject or accept them,
 // but must never crash, throw, or touch memory they do not own; the ASan
 // preset turns any slip into a failure. The mutations are deterministic, so
 // a failure reproduces.
+#include <bdex/animation/Animation.hpp>
 #include <bdex/assets/Audio.hpp>
 #include <bdex/assets/Gltf.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
+#include <bdex/audio/Components.hpp>
 #include <bdex/core/Config.hpp>
 #include <bdex/core/Json.hpp>
 #include <bdex/core/Log.hpp>
+#include <bdex/particles/Particles.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/Components.hpp>
 #include <bdex/render/Serialization.hpp>
@@ -209,4 +212,80 @@ TEST(Robustness, SceneFilesSurviveCorruptionAndSimulation) {
             (void)physics::raycast(loaded.world(), Vec3(0.0f, 10.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
         }
     }, kMutations / 4);  // loading and simulating costs more
+}
+
+TEST(Robustness, EffectsInSceneFilesSurviveCorruption) {
+    // Particles, animation and sound, loaded from corrupted files and then
+    // run: counts, rates, times and speeds come from the file.
+    auto swing = std::make_shared<assets::ModelAnimation>();
+    swing->duration = 2.0f;
+    assets::AnimationChannel turn;
+    turn.node = 1;
+    turn.property = assets::AnimatedProperty::Rotation;
+    turn.times = {0.0f, 2.0f};
+    turn.values = {Vec4(0, 0, 0, 1), Vec4(0, 1, 0, 0)};
+    swing->channels = {turn};
+    auto hum = std::make_shared<assets::AudioData>(assets::makeTone(220.0f, 0.1f, 48000));
+    animation::ClipNames clips;
+    clips.name(swing, "swing");
+    audio::SoundNames sounds;
+    sounds.name(hum, "hum");
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    particles::addComponentSerializers(serializers);
+    animation::addComponentSerializers(serializers, clips);
+    audio::addComponentSerializers(serializers);
+    audio::addAudioSourceSerializer(serializers, sounds);
+
+    scene::Scene source("source");
+    ecs::World& world = source.world();
+    particles::ParticleEmitter fire;
+    fire.burst = 10;
+    fire.localDirection = true;
+    fire.inheritVelocity = 0.5f;
+    world.emplace<particles::ParticleEmitter>(source.createEntity("Fire"), fire);
+    const ecs::Entity door = source.createEntity("Door");
+    world.emplace<animation::AnimationPlayer>(door, swing);
+    const ecs::Entity panel = source.createEntity("Panel");
+    world.emplace<scene::Parent>(panel, door);
+    world.emplace<scene::ModelNode>(panel, 1u);
+    world.emplace<audio::AudioSource>(source.createEntity("Hum"), hum,
+                                      audio::PlayParams{.loop = true, .spatial = true});
+    world.emplace<audio::AudioListener>(source.createEntity("Ears"));
+    const std::string text = serializers.save(world);
+
+    const auto mixer = std::make_shared<audio::Mixer>();
+    audio::AudioSystem sound(mixer);
+    std::vector<f32> buffer(256 * 2);
+    const auto run = [&](std::string_view file) {
+        scene::Scene loaded("loaded");
+        if (serializers.load(loaded.world(), file)) {
+            for (int frame = 0; frame < 3; ++frame) {
+                animation::updateAnimations(loaded.world(), 1.0f / 60.0f);
+                scene::updateWorldTransforms(loaded.world());
+                particles::updateParticles(loaded.world(), 1.0f / 60.0f);
+                sound.update(loaded.world());
+                mixer->mix(buffer);
+            }
+        }
+        mixer->stopAll(0.0f);
+        sound.update(loaded.world());
+    };
+
+    // Every value in the file, one at a time, replaced by each hostile
+    // number: random mutations rarely land exactly on these.
+    usize lineStart = 0;
+    while (lineStart < text.size()) {
+        const usize lineEnd = std::min(text.find('\n', lineStart), text.size());
+        const usize equals = text.find(" = ", lineStart);
+        if (equals != std::string::npos && equals < lineEnd) {
+            for (const char* hostile : {"nan", "inf", "-inf", "1e38", "-1e38", "0", "-1", "4000000000"}) {
+                std::string file = text;
+                file.replace(equals + 3, lineEnd - (equals + 3), hostile);
+                run(file);
+            }
+        }
+        lineStart = lineEnd + 1;
+    }
+
+    fuzz(bytesOf(text), true, 11, [&](const std::vector<u8>& input) { run(textOf(input)); }, kMutations / 4);
 }
