@@ -100,6 +100,26 @@ void fuzz(const std::vector<u8>& seed, bool text, u32 salt, Decode decode, int c
     log::setLevel(previous);
 }
 
+/// Calls `run` with `text` (a scene file) once for every value in it
+/// replaced by each hostile number, one value at a time: random mutations
+/// rarely land exactly on these, in exactly the field that minds.
+template <class Run>
+void everyValueMadeHostile(const std::string& text, Run&& run) {
+    usize lineStart = 0;
+    while (lineStart < text.size()) {
+        const usize lineEnd = std::min(text.find('\n', lineStart), text.size());
+        const usize equals = text.find(" = ", lineStart);
+        if (equals != std::string::npos && equals < lineEnd) {
+            for (const char* hostile : {"nan", "inf", "-inf", "1e38", "-1e38", "0", "-1", "4000000000"}) {
+                std::string file = text;
+                file.replace(equals + 3, lineEnd - (equals + 3), hostile);
+                run(std::string_view(file));
+            }
+        }
+        lineStart = lineEnd + 1;
+    }
+}
+
 }  // namespace
 
 TEST(Robustness, ImageDecodersSurviveCorruptFiles) {
@@ -200,18 +220,28 @@ TEST(Robustness, SceneFilesSurviveCorruptionAndSimulation) {
     world.emplace<physics::Trigger>(zone);
     world.emplace<scene::Parent>(zone, floor);
     world.emplace<render::Camera>(source.createEntity("Camera"));
+    const ecs::Entity lift = source.createEntity("Lift");
+    world.emplace<physics::BoxCollider>(lift, Vec3(1.0f, 0.2f, 1.0f));
+    world.emplace<physics::Kinematic>(lift);
+    const ecs::Entity walker = source.createEntity("Walker");
+    world.get<scene::Transform>(walker).position = Vec3(-2.0f, 1.0f, 0.0f);
+    world.emplace<physics::SphereCollider>(walker, 0.4f);  // no RigidBody: a character
     const std::string text = serializers.save(world);
 
-    fuzz(bytesOf(text), true, 5, [&](const std::vector<u8>& input) {
+    const auto run = [&](std::string_view file) {
         scene::Scene loaded("loaded");
-        if (serializers.load(loaded.world(), textOf(input))) {
+        if (serializers.load(loaded.world(), file)) {
             scene::updateWorldTransforms(loaded.world());
             for (int step = 0; step < 3; ++step) {
                 physics::step(loaded.world(), 1.0f / 60.0f);
             }
             (void)physics::raycast(loaded.world(), Vec3(0.0f, 10.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
+            (void)physics::moveAndSlide(loaded.world(), loaded.find("Walker"), Vec3(0.5f, -0.2f, 0.0f));
         }
-    }, kMutations / 4);  // loading and simulating costs more
+    };
+    everyValueMadeHostile(text, run);
+    fuzz(bytesOf(text), true, 5, [&](const std::vector<u8>& input) { run(textOf(input)); },
+         kMutations / 4);  // loading and simulating costs more
 }
 
 TEST(Robustness, EffectsInSceneFilesSurviveCorruption) {
@@ -271,21 +301,6 @@ TEST(Robustness, EffectsInSceneFilesSurviveCorruption) {
         sound.update(loaded.world());
     };
 
-    // Every value in the file, one at a time, replaced by each hostile
-    // number: random mutations rarely land exactly on these.
-    usize lineStart = 0;
-    while (lineStart < text.size()) {
-        const usize lineEnd = std::min(text.find('\n', lineStart), text.size());
-        const usize equals = text.find(" = ", lineStart);
-        if (equals != std::string::npos && equals < lineEnd) {
-            for (const char* hostile : {"nan", "inf", "-inf", "1e38", "-1e38", "0", "-1", "4000000000"}) {
-                std::string file = text;
-                file.replace(equals + 3, lineEnd - (equals + 3), hostile);
-                run(file);
-            }
-        }
-        lineStart = lineEnd + 1;
-    }
-
+    everyValueMadeHostile(text, run);
     fuzz(bytesOf(text), true, 11, [&](const std::vector<u8>& input) { run(textOf(input)); }, kMutations / 4);
 }
