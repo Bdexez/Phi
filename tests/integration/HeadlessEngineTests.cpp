@@ -17,10 +17,14 @@
 #include <bdex/render/Model.hpp>
 #include <bdex/particles/Particles.hpp>
 #include <bdex/render/Renderer.hpp>
+#include <bdex/render/ResourceNames.hpp>
+#include <bdex/render/Serialization.hpp>
 #include <bdex/rhi/Device.hpp>
 #include <bdex/scene/Scene.hpp>
 
 #include <gtest/gtest.h>
+
+#include "../robustness/HostileValues.hpp"
 
 #include <array>
 #include <cmath>
@@ -185,6 +189,53 @@ TEST(HeadlessEngine, DrawsEveryVisibleMeshEntity) {
     test.world().destroy(cubes[1]);
     test.engine->tick();
     EXPECT_EQ(test.device().lastFrameStats().instances, 1u);
+}
+
+TEST(HeadlessEngine, ScenesWithHostileValuesStillRender) {
+    // Cameras, lights and placements from a scene file with each value in
+    // turn made nan, infinite, huge, zero or negative: the renderer's own
+    // work (culling, sorting, shadow cascades and the spot atlas) runs on
+    // all of them, through the null device.
+    Config config;
+    config.set("renderer.shadows", "true");
+    config.set("renderer.hdr", "true");
+    TestEngine test(kNullStack, config);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    render::ResourceNames names;
+    names.name(test.renderer().createMesh(assets::makeCube()), "cube");
+    names.name(test.renderer().createMaterial({}), "plain");
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    render::addComponentSerializers(serializers);
+    render::addMeshRendererSerializer(serializers, names);
+
+    ecs::World& world = test.world();
+    const ecs::Entity camera = test.scene().createEntity("Camera");
+    world.emplace<render::Camera>(camera);
+    world.get<scene::Transform>(camera).position = Vec3(0.0f, 2.0f, 6.0f);
+    world.emplace<render::DirectionalLight>(test.scene().createEntity("Sun"));
+    const ecs::Entity spot = test.scene().createEntity("Spot");
+    world.get<scene::Transform>(spot).position = Vec3(0.0f, 4.0f, 0.0f);
+    world.emplace<render::SpotLight>(spot, render::SpotLight{.castShadows = true});
+    world.emplace<render::PointLight>(test.scene().createEntity("Lamp"));
+    const ecs::Entity cube = test.scene().createEntity("Cube");
+    world.emplace<render::MeshRenderer>(cube, names.mesh("cube"), names.material("plain"));
+    const std::string text = serializers.save(world);
+    test.engine->tick();
+    ASSERT_GT(test.device().lastFrameStats().drawCalls, 0u);
+
+    int files = 0;
+    int rendered = 0;
+    test_support::everyValueMadeHostile(text, [&](std::string_view file) {
+        ++files;
+        world.clear();
+        if (serializers.load(world, file)) {
+            test.engine->tick();
+            ++rendered;
+        }
+    });
+    // About a third load (120 of 328 when written): names, flags and
+    // entity references rightly refuse numbers; the rest is rendered.
+    EXPECT_GT(rendered, files / 4);
 }
 
 TEST(HeadlessEngine, DestroyedRenderResourcesAreSkippedNotDereferenced) {
