@@ -294,6 +294,7 @@ private:
             ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
                                      .restitution = 0.7f,
                                      .angularDamping = 1.5f});  // rolls to a stop in a few seconds
+        sandbox::Sparks::addTrail(world, ball);
         sounds_.playThrow(engine());
         balls_.push_back(ball);
         if (balls_.size() > kMaxBalls) {
@@ -302,8 +303,7 @@ private:
         }
     }
 
-    /// Throws a tumbling crate from the camera; the oldest goes once there
-    /// are too many.
+    /// Removes every thrown ball and crate.
     void clearThrows() {
         for (const ecs::Entity thrown : balls_) {
             scene().world().destroy(thrown);
@@ -315,6 +315,8 @@ private:
         crates_.clear();
     }
 
+    /// Throws a tumbling crate from the camera; the oldest goes once there
+    /// are too many.
     void throwCrate() {
         if (!palette_.cube.valid()) {
             return;

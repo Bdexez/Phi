@@ -5,6 +5,7 @@
 #include <bdex/scene/Scene.hpp>
 
 #include <algorithm>
+#include <numbers>
 
 namespace sandbox {
 
@@ -43,7 +44,33 @@ void Sparks::start(Engine& engine) {
     });
 }
 
+void Sparks::addTrail(ecs::World& world, ecs::Entity body) {
+    particles::ParticleEmitter trail;
+    trail.rate = 240.0f;  // spread along the way within each frame: no clumps
+    trail.emitting = false;
+    trail.spread = std::numbers::pi_v<f32>;  // every way, slowly
+    trail.speed = 0.2f;
+    trail.inheritVelocity = 0.15f;  // a little of the ball's run
+    trail.gravity = Vec3(0.0f);
+    trail.drag = 2.0f;
+    trail.lifetime = 0.35f;
+    trail.lifetimeVariance = 0.3f;
+    trail.emitRadius = 0.1f;
+    // Blended rather than added: light would vanish against the bright sky.
+    trail.additive = false;
+    trail.startColor = Vec4(1.0f, 0.55f, 0.25f, 0.55f);
+    trail.endColor = Vec4(0.9f, 0.85f, 0.8f, 0.0f);
+    trail.startSize = 0.2f;
+    trail.endSize = 0.05f;
+    trail.seed = body.index * 2654435761u + 1u;
+    world.emplace<particles::ParticleEmitter>(body, std::move(trail));
+}
+
 void Sparks::update(ecs::World& world) {
+    world.view<const physics::RigidBody, particles::ParticleEmitter>().each(
+        [&](const physics::RigidBody& body, particles::ParticleEmitter& trail) {
+            trail.emitting = enabled && glm::length(body.velocity) > kTrailSpeed;
+        });
     std::erase_if(bursts_, [&](ecs::Entity burst) {
         const auto* emitter = world.tryGet<particles::ParticleEmitter>(burst);
         if (emitter != nullptr && (emitter->burst > 0 || !emitter->particles.empty())) {
