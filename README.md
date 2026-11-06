@@ -139,6 +139,14 @@ Capture an image using the offscreen Vulkan backend:
 
 `--headless` replaces the window module with `window_null` (and any audio module with `audio_null`) and keeps the configured graphics backend. With the default configuration, this mode still requires Vulkan.
 
+With `--set sandbox.demo=true` the sandbox throws balls and crates on its own, every 0.4 s, so a headless run exercises impacts, sparks, trails and sounds with no one at the controls:
+
+```bash
+./build/bin/sandbox --headless --frames 300 --set sandbox.demo=true --screenshot /tmp/bdex-demo.png
+```
+
+`ctest` runs it as the `sandbox.demo` smoke test, with the null device.
+
 Run the same application with the `null` backend, without a GPU:
 
 ```sh
