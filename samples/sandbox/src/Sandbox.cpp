@@ -247,7 +247,7 @@ private:
     }
 
     void saveScene() {
-        const std::string text = serializers_.save(scene().world());
+        const std::string text = sceneText();
         if (const auto written = fs::writeBinaryFile(std::filesystem::path(kSceneFile), text.data(), text.size());
             !written) {
             log::error("sandbox", "{}", written.error().message);
@@ -262,25 +262,36 @@ private:
             log::warn("sandbox", "{}", text.error().message);
             return;
         }
-        // Validate on a scratch world first: a broken file must not leave
-        // the sandbox empty.
+        restoreScene(*text, kSceneFile);
+    }
+
+    /// The scene as a scene file's text.
+    [[nodiscard]] std::string sceneText() { return serializers_.save(scene().world()); }
+
+    /// Replaces the scene with the one in `text` (read from `origin`), if it
+    /// loads: a broken file must not leave the sandbox empty.
+    bool restoreScene(std::string_view text, std::string_view origin) {
         ecs::World scratch;
-        if (const auto checked = serializers_.load(scratch, *text); !checked) {
-            log::error("sandbox", "cannot load {}: {}", kSceneFile, checked.error().message);
-            return;
+        if (const auto checked = serializers_.load(scratch, text); !checked) {
+            log::error("sandbox", "cannot load {}: {}", origin, checked.error().message);
+            return false;
         }
         ecs::World& world = scene().world();
         world.clear();
-        if (const auto loaded = serializers_.load(world, *text); !loaded) {
+        if (const auto loaded = serializers_.load(world, text); !loaded) {
             // Validated above: only a bug could get here.
-            log::error("sandbox", "reloading {} failed: {}", kSceneFile, loaded.error().message);
+            log::error("sandbox", "reloading {} failed: {}", origin, loaded.error().message);
         }
         camera_ = scene().find("Camera");
         selected_ = {};
         flyCamera_.adoptFacing(world, camera_);
         platform_ = scene().find("Platform");
-        // Players are not saved; the lamps' nodes are, so they sway again.
-        log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
+        // The throws came back with the scene: track them again, so the
+        // oldest still go first and "clear throws" reaches them.
+        balls_ = scene().findAll("Ball");
+        crates_ = scene().findAll("Crate");
+        log::info("sandbox", "scene loaded from {} ({} entities)", origin, world.entityCount());
+        return true;
     }
 
     /// Throws a bouncing ball from the camera; the oldest goes once there
