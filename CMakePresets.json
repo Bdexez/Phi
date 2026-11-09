@@ -66,7 +66,8 @@
             "name": "asan",
             "configurePreset": "asan",
             "output": { "outputOnFailure": true },
-            "filter": { "exclude": { "name": "VulkanHeadless" } }
+            "filter": { "exclude": { "name": "VulkanHeadless" } },
+            "environment": { "LSAN_OPTIONS": "suppressions=${sourceDir}/tests/sanitizers/lsan.supp" }
         }
     ]
 }

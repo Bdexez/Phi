@@ -1,0 +1,9 @@
+# LeakSanitizer suppressions for the asan test preset.
+#
+# Only leaks inside system libraries belong here, never bdex code: each
+# entry names a library the engine does not control and says why.
+
+# PipeWire, which OpenAL opens to reach the audio device on most Linux
+# desktops, keeps module allocations alive past exit. CI machines have no
+# audio device, so only local runs of the OpenAL test meet it.
+leak:libpipewire
