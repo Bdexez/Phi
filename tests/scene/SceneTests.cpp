@@ -501,6 +501,7 @@ TEST(SceneFiles, LeaveTransientEntitiesAndTheirChildrenOut) {
     const Scene& lookup = loaded;  // finding only reads
     EXPECT_EQ(lookup.find("Lamp"), loadedLamp);
     EXPECT_EQ(lookup.findAll("Player").size(), 0u);
+    EXPECT_EQ(lookup.world().entityCount(), 2u);
 }
 
 TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {
