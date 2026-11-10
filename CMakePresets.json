@@ -38,13 +38,24 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined,float-cast-overflow -fno-sanitize-recover=all -fno-omit-frame-pointer"
             }
+        },
+        {
+            "name": "tsan",
+            "displayName": "Debug + TSan",
+            "description": "Data races between the job system's threads, the audio thread and the game",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer"
+            }
         }
     ],
     "buildPresets": [
         { "name": "debug", "configurePreset": "debug" },
         { "name": "release", "configurePreset": "release" },
         { "name": "static", "configurePreset": "static" },
-        { "name": "asan", "configurePreset": "asan" }
+        { "name": "asan", "configurePreset": "asan" },
+        { "name": "tsan", "configurePreset": "tsan" }
     ],
     "testPresets": [
         {
@@ -68,6 +79,13 @@
             "output": { "outputOnFailure": true },
             "filter": { "exclude": { "name": "VulkanHeadless" } },
             "environment": { "LSAN_OPTIONS": "suppressions=${sourceDir}/tests/sanitizers/lsan.supp" }
+        },
+        {
+            "name": "tsan",
+            "configurePreset": "tsan",
+            "output": { "outputOnFailure": true },
+            "filter": { "exclude": { "name": "VulkanHeadless" } },
+            "environment": { "TSAN_OPTIONS": "suppressions=${sourceDir}/tests/sanitizers/tsan.supp" }
         }
     ]
 }
