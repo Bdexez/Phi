@@ -258,7 +258,7 @@ If GoogleTest is missing, CMake prints a warning and continues configuration wit
 
 [`.clang-tidy`](.clang-tidy) selects clang-tidy's bug-finding checks (bugprone, performance, concurrency, and the Clang static analyzer). Run them over the engine and modules with the compile commands of a build: `run-clang-tidy -p build -quiet '/(engine|modules)/.*\.cpp$'`.
 
-[Continuous integration](.github/workflows/ci.yml) builds the `release`, `static`, `asan` and `tsan` presets on Ubuntu 24.04 with GCC 14, and `release` with Clang 19, warnings treated as errors, then runs the tests. Vulkan tests run there too, on lavapipe, Mesa's CPU implementation of Vulkan (the `asan` preset leaves them out).
+[Continuous integration](.github/workflows/ci.yml) builds the `release`, `static`, `asan` and `tsan` presets on Ubuntu 24.04 with GCC 14, and `release` with Clang 19, warnings treated as errors, then runs the tests. Vulkan tests run there too, on lavapipe, Mesa's CPU implementation of Vulkan (the sanitizer presets leave them out).
 
 ## Extending the engine
 

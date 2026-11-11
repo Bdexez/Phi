@@ -13,11 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # release: plugins; static: modules linked in; asan: ASan + UBSan.
+        # release: plugins; static: modules linked in; asan: ASan + UBSan;
+        # tsan: data races between the job system, audio and game threads.
         include:
           - { preset: release, compiler: g++-14 }
           - { preset: static, compiler: g++-14 }
           - { preset: asan, compiler: g++-14 }
+          - { preset: tsan, compiler: g++-14 }
           # Clang 18 lacks the concepts level libstdc++ 14 requires for
           # std::expected; 19 is the first that builds the engine.
           - { preset: release, compiler: clang++-19 }
@@ -33,6 +35,12 @@ jobs:
             cmake ninja-build g++-14 clang-19 \
             libglm-dev libglfw3-dev libgtest-dev libopenal-dev \
             libvulkan-dev glslc mesa-vulkan-drivers vulkan-validationlayers
+
+      - name: Let ThreadSanitizer map its shadow memory
+        # The runner's address-space randomization is wider than TSan's
+        # memory layout expects; it aborts at startup unless narrowed.
+        if: matrix.preset == 'tsan'
+        run: sudo sysctl vm.mmap_rnd_bits=28
 
       - name: Configure
         run: >
