@@ -2,6 +2,7 @@
 
 #include <bdex/core/Types.hpp>
 
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -26,6 +27,8 @@ public:
     [[nodiscard]] u32 threadCount() const { return static_cast<u32>(workers_.size()); }
 
     /// Runs `fn` on a worker thread and returns a future for its result.
+    /// From inside a job, wait for it with wait(), not the future's get():
+    /// a worker blocked on a job queued behind it would never see it run.
     template <class Fn>
     auto submit(Fn&& fn) -> std::future<std::invoke_result_t<std::decay_t<Fn>>> {
         using ResultType = std::invoke_result_t<std::decay_t<Fn>>;
@@ -40,6 +43,23 @@ public:
     /// The calling thread takes part in the work, so nesting parallelFor
     /// inside a job cannot deadlock. `fn` must not throw.
     void parallelFor(usize count, usize grain, const std::function<void(usize, usize)>& fn);
+
+    /// Waits until `future` (a std::future or std::shared_future) is ready,
+    /// running queued jobs on this thread meanwhile, as parallelFor does. A
+    /// job can therefore wait for jobs it submitted, even with every worker
+    /// busy, without deadlocking the pool.
+    template <class Future>
+    void wait(const Future& future) {
+        while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            if (!runPendingJob()) {
+                // Nothing queued: what we wait for is running elsewhere.
+                future.wait_for(std::chrono::microseconds(100));
+            }
+        }
+    }
+
+    /// Runs one queued job on this thread; false if none was waiting.
+    bool runPendingJob();
 
 private:
     void enqueue(std::function<void()> job);

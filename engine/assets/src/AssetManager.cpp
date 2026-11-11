@@ -125,6 +125,14 @@ std::shared_future<detail::ErasedAsset> AssetManager::request(TypeId type,
     return shared;
 }
 
+void AssetManager::await(const std::shared_future<detail::ErasedAsset>& pending) const {
+    if (jobs_ != nullptr) {
+        jobs_->wait(pending);
+    } else {
+        pending.wait();
+    }
+}
+
 detail::ErasedAsset AssetManager::loadNow(const Key& key, std::string_view typeName,
                                           const ErasedLoader* loader) {
     const std::string& virtualPath = key.second;

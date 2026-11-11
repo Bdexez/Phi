@@ -35,6 +35,20 @@ void JobSystem::enqueue(std::function<void()> job) {
     wake_.notify_one();
 }
 
+bool JobSystem::runPendingJob() {
+    std::function<void()> job;
+    {
+        std::lock_guard lock(mutex_);
+        if (queue_.empty()) {
+            return false;
+        }
+        job = std::move(queue_.front());
+        queue_.pop_front();
+    }
+    job();
+    return true;
+}
+
 void JobSystem::workerLoop() {
     for (;;) {
         std::function<void()> job;
