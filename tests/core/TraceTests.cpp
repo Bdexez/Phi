@@ -83,3 +83,33 @@ TEST(Trace, NestsTasksInPhasesInFrames) {
     EXPECT_EQ(think.category, "Update");
     engine.shutdown();
 }
+
+TEST(Trace, ThreadsRecordConcurrentlyOnNamedRows) {
+    TraceRecorder trace;
+    trace.nameThread(0, "main");
+    trace.nameThread(2, "worker 2");
+    std::vector<std::thread> threads;
+    for (u32 row = 0; row < 4; ++row) {
+        threads.emplace_back([&trace, row] {
+            for (int i = 0; i < 500; ++i) {
+                const auto now = TraceRecorder::Clock::now();
+                trace.record("work", "jobs", now, now, row);
+            }
+        });
+    }
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    EXPECT_EQ(trace.events().size(), 2000u);
+
+    const auto parsed = json::parse(trace.toChromeJson());
+    ASSERT_TRUE(parsed.has_value());
+    const json::Value& events = (*parsed)["traceEvents"];
+    // The row labels come first, as metadata events.
+    EXPECT_EQ(events[0]["ph"].asString(), "M");
+    EXPECT_EQ(events[0]["name"].asString(), "thread_name");
+    EXPECT_EQ(events[0]["args"]["name"].asString(), "main");
+    EXPECT_EQ(events[1]["args"]["name"].asString(), "worker 2");
+    EXPECT_DOUBLE_EQ(events[1]["tid"].asNumber(), 2.0);
+    EXPECT_EQ(events.size(), 2002u);
+}
