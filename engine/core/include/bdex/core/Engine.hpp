@@ -50,11 +50,10 @@ public:
     [[nodiscard]] Scheduler& scheduler() { return scheduler_; }
 
     /// Records each frame, phase and task into `trace` from now on (null
-    /// stops); see TraceRecorder. The recorder must outlive the recording.
-    void setTrace(TraceRecorder* trace) {
-        trace_ = trace;
-        scheduler_.setTrace(trace);
-    }
+    /// stops), and the JobSystem service's jobs on their own threads' rows;
+    /// see TraceRecorder. The recorder must outlive the recording.
+    void setTrace(TraceRecorder* trace);
+
     [[nodiscard]] ModuleManager& modules() { return modules_; }
     [[nodiscard]] const FrameTime& time() const { return time_; }
 

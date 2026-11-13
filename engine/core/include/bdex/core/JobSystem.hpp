@@ -1,7 +1,9 @@
 #pragma once
 
+#include <bdex/core/Trace.hpp>
 #include <bdex/core/Types.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -61,15 +63,25 @@ public:
     /// Runs one queued job on this thread; false if none was waiting.
     bool runPendingJob();
 
+    /// Records every job, and every chunk of a parallelFor, into `trace`
+    /// from now on, on the row of the thread that ran it ("main" for the
+    /// caller, "worker N"); null stops. Returns once no job is still
+    /// recording into the previous one, so it can then be destroyed.
+    void setTrace(TraceRecorder* trace);
+
 private:
     void enqueue(std::function<void()> job);
-    void workerLoop();
+    void workerLoop(u32 index);
+    /// Runs `work`, recording it as `name` when tracing.
+    void traced(std::string_view name, std::string_view category, const std::function<void()>& work);
 
     std::vector<std::thread> workers_;
     std::deque<std::function<void()>> queue_;
     std::mutex mutex_;
     std::condition_variable wake_;
     bool stopping_ = false;
+    std::atomic<TraceRecorder*> trace_{nullptr};
+    std::atomic<u32> recording_{0};  ///< Jobs recording into trace_ right now.
 };
 
 }  // namespace bdex

@@ -1,6 +1,10 @@
 #include <bdex/core/JobSystem.hpp>
 
 #include <gtest/gtest.h>
+#include <memory>
+#include <thread>
+#include <chrono>
+#include <set>
 
 #include <atomic>
 #include <numeric>
@@ -84,4 +88,59 @@ TEST(JobSystem, AJobCanWaitForJobsItSubmitted) {
         return middle.get() + 1;
     });
     EXPECT_EQ(outer.get(), 11);
+}
+
+TEST(JobSystem, TracesItsWorkOnEachThreadsRow) {
+    JobSystem jobs(3);
+    {
+        TraceRecorder trace;
+        jobs.setTrace(&trace);
+        std::atomic<int> sum = 0;
+        jobs.parallelFor(64, 1, [&](usize begin, usize end) {
+            std::this_thread::sleep_for(std::chrono::microseconds(200));  // long enough to spread
+            sum += static_cast<int>(end - begin);
+        });
+        jobs.setTrace(nullptr);
+        EXPECT_EQ(sum, 64);
+
+        usize chunks = 0;
+        std::set<u32> rows;
+        for (const TraceEvent& event : trace.events()) {
+            if (event.name == "parallelFor") {
+                ++chunks;
+                rows.insert(event.thread);
+            }
+        }
+        EXPECT_EQ(chunks, 64u);  // one span per chunk
+        EXPECT_GT(rows.size(), 1u);  // on more than one row
+        const std::string text = trace.toChromeJson();
+        EXPECT_NE(text.find("worker 3"), std::string::npos);
+    }
+
+    // A job still running when tracing stops: setTrace(nullptr) returns once
+    // it no longer records, so the recorder can go at once.
+    auto release = std::make_shared<std::atomic<bool>>(false);
+    auto started = std::make_shared<std::atomic<bool>>(false);
+    std::future<void> slow;
+    {
+        TraceRecorder trace;
+        jobs.setTrace(&trace);
+        slow = jobs.submit([release, started] {
+            *started = true;
+            while (!*release) {
+                std::this_thread::yield();
+            }
+        });
+        while (!*started) {  // running, and so recording, before tracing stops
+            std::this_thread::yield();
+        }
+        std::thread stopper([release] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            *release = true;
+        });
+        jobs.setTrace(nullptr);  // waits for the job, which records its span
+        stopper.join();
+        EXPECT_EQ(trace.events().size(), 1u);
+    }  // destroyed: nothing may write to it any more
+    slow.get();
 }
