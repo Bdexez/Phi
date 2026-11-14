@@ -1,4 +1,4 @@
-# bdex Game Engine
+# Phi Game Engine
 
 A modular 3D game engine written in **C++23**, featuring a **Vulkan 1.3** backend, an entity component system, and a sandbox for exploring rendering and simulation.
 
@@ -54,7 +54,7 @@ cmake/          Helpers for building libraries, modules, and shaders
 | `audio_openal` | Sound output through OpenAL, streamed from the engine's mixer; silent if no device can be opened. Built when OpenAL is found. |
 | `audio_null` | Audio mixer without a device: sounds play and finish in real time, silently. |
 
-By default, modules are shared libraries loaded at runtime. Set the CMake option `BDEX_SHARED_MODULES=OFF` to link them statically and register their factories in the executable.
+By default, modules are shared libraries loaded at runtime. Set the CMake option `PHI_SHARED_MODULES=OFF` to link them statically and register their factories in the executable.
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the kernel, the frame phases, the RHI frame protocol, and how to write a new module.
 
@@ -134,7 +134,7 @@ Screenshots are saved in the current working directory.
 Capture an image using the offscreen Vulkan backend:
 
 ```sh
-./build/bin/sandbox --headless --frames 3 --screenshot /tmp/bdex-sandbox.png
+./build/bin/sandbox --headless --frames 3 --screenshot /tmp/phi-sandbox.png
 ```
 
 `--headless` replaces the window module with `window_null` (and any audio module with `audio_null`) and keeps the configured graphics backend. With the default configuration, this mode still requires Vulkan.
@@ -142,7 +142,7 @@ Capture an image using the offscreen Vulkan backend:
 With `--set sandbox.demo=true` the sandbox throws balls and crates on its own, every 0.4 s, so a headless run exercises impacts, sparks, trails and sounds with no one at the controls:
 
 ```bash
-./build/bin/sandbox --headless --frames 300 --set sandbox.demo=true --screenshot /tmp/bdex-demo.png
+./build/bin/sandbox --headless --frames 300 --set sandbox.demo=true --screenshot /tmp/phi-demo.png
 ```
 
 `ctest` runs it as the `sandbox.demo` smoke test, with the null device.
@@ -182,7 +182,7 @@ The sandbox uses [sandbox.ini](samples/sandbox/sandbox.ini), which CMake copies 
 modules = window_glfw, rhi_vulkan, renderer_forward, audio_openal
 
 [window]
-title = bdex sandbox
+title = Phi sandbox
 width = 1280
 height = 720
 
@@ -237,16 +237,16 @@ Pass options to CMake as `-DOPTION=ON` or `-DOPTION=OFF`.
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `BDEX_SHARED_MODULES` | `ON` | Build shared libraries and modules; use `OFF` for static linking. |
-| `BDEX_BUILD_SAMPLES` | `ON` | Build the sandbox. |
-| `BDEX_BUILD_TESTS` | `ON` | Build tests if GoogleTest is available. |
-| `BDEX_WARNINGS_AS_ERRORS` | `OFF` | Treat compiler warnings as errors. |
+| `PHI_SHARED_MODULES` | `ON` | Build shared libraries and modules; use `OFF` for static linking. |
+| `PHI_BUILD_SAMPLES` | `ON` | Build the sandbox. |
+| `PHI_BUILD_TESTS` | `ON` | Build tests if GoogleTest is available. |
+| `PHI_WARNINGS_AS_ERRORS` | `OFF` | Treat compiler warnings as errors. |
 
-Each module can also be disabled independently: `BDEX_MODULE_WINDOW_GLFW`, `BDEX_MODULE_WINDOW_NULL`, `BDEX_MODULE_RHI_VULKAN`, `BDEX_MODULE_RHI_NULL`, `BDEX_MODULE_RENDERER_FORWARD`, `BDEX_MODULE_AUDIO_NULL`, and `BDEX_MODULE_AUDIO_OPENAL`. All are enabled by default (`audio_openal` only if OpenAL is found; applications then load it by default, `audio_null` otherwise). The modules selected at runtime must be available in the build.
+Each module can also be disabled independently: `PHI_MODULE_WINDOW_GLFW`, `PHI_MODULE_WINDOW_NULL`, `PHI_MODULE_RHI_VULKAN`, `PHI_MODULE_RHI_NULL`, `PHI_MODULE_RENDERER_FORWARD`, `PHI_MODULE_AUDIO_NULL`, and `PHI_MODULE_AUDIO_OPENAL`. All are enabled by default (`audio_openal` only if OpenAL is found; applications then load it by default, `audio_null` otherwise). The modules selected at runtime must be available in the build.
 
 ## Tests
 
-With GoogleTest installed and `BDEX_BUILD_TESTS=ON`:
+With GoogleTest installed and `PHI_BUILD_TESTS=ON`:
 
 ```sh
 ctest --test-dir build --output-on-failure
@@ -262,10 +262,10 @@ If GoogleTest is missing, CMake prints a warning and continues configuration wit
 
 ## Extending the engine
 
-- **Create an application:** derive from [`bdex::app::Application`](engine/app/include/bdex/app/Application.hpp), implement the callbacks you need (`onStart`, `onUpdate`, `onFixedUpdate`, `onStop`), and define the entry point with `BDEX_MAIN`.
-- **Add gameplay:** define components and iterate over [`ecs::World`](engine/ecs/include/bdex/ecs/World.hpp) views, then register your systems with the scheduler.
+- **Create an application:** derive from [`phi::app::Application`](engine/app/include/phi/app/Application.hpp), implement the callbacks you need (`onStart`, `onUpdate`, `onFixedUpdate`, `onStop`), and define the entry point with `PHI_MAIN`.
+- **Add gameplay:** define components and iterate over [`ecs::World`](engine/ecs/include/phi/ecs/World.hpp) views, then register your systems with the scheduler.
 - **Add a render feature:** implement `IRenderFeature` and register it with the renderer. The [sandbox sky](samples/sandbox/src/SkyFeature.cpp) provides a complete example.
-- **Add an asset format:** register a loader with [`AssetManager`](engine/assets/include/bdex/assets/AssetManager.hpp).
-- **Add a module:** implement `IModule`, declare it with `bdex_add_module()`, and list it in `engine.modules`. See [Writing a module](docs/ARCHITECTURE.md#writing-a-module).
+- **Add an asset format:** register a loader with [`AssetManager`](engine/assets/include/phi/assets/AssetManager.hpp).
+- **Add a module:** implement `IModule`, declare it with `phi_add_module()`, and list it in `engine.modules`. See [Writing a module](docs/ARCHITECTURE.md#writing-a-module).
 
 The [sandbox application](samples/sandbox/src/Sandbox.cpp) brings these mechanisms together in a working example.

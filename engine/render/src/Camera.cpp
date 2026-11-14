@@ -1,8 +1,8 @@
-#include <bdex/render/Renderer.hpp>
+#include <phi/render/Renderer.hpp>
 
 #include <algorithm>
 
-namespace bdex::render {
+namespace phi::render {
 
 CameraData makeCameraData(const Mat4& cameraWorld, const Camera& camera, f32 aspectRatio) {
     CameraData data;
@@ -18,4 +18,4 @@ CameraData makeCameraData(const Mat4& cameraWorld, const Camera& camera, f32 asp
     return data;
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

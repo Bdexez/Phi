@@ -1,11 +1,11 @@
-#include <bdex/platform/KeyCodes.hpp>
+#include <phi/platform/KeyCodes.hpp>
 
 #include <algorithm>
 #include <array>
 #include <span>
 #include <utility>
 
-namespace bdex::platform {
+namespace phi::platform {
 namespace {
 
 using Entry = std::pair<Key, std::string_view>;
@@ -160,4 +160,4 @@ std::optional<GamepadButton> parseGamepadButton(std::string_view name) {
     return std::nullopt;
 }
 
-}  // namespace bdex::platform
+}  // namespace phi::platform

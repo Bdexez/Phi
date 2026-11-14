@@ -1,12 +1,12 @@
 #pragma once
 
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/render/Renderer.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/render/Renderer.hpp>
 
 #include <memory>
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 /// Draws the lines collected in a render::DebugDraw, over the scene but
 /// hidden by geometry in front of them.
@@ -33,4 +33,4 @@ private:
     std::vector<VertexBuffer> buffers_;  ///< One per frame in flight.
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

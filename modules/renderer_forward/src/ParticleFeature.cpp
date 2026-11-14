@@ -1,13 +1,13 @@
 #include "ParticleFeature.hpp"
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/particles/Particles.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/particles/Particles.hpp>
 
 #include <algorithm>
 #include <bit>
 #include <cstddef>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 Result<> ParticleFeature::onAttach(const render::RenderSetupContext& context) {
     auto& assets = context.services.get<assets::AssetManager>();
@@ -145,4 +145,4 @@ void ParticleFeature::render(const render::RenderFrameContext& context) {
     commands.endDebugGroup();
 }
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

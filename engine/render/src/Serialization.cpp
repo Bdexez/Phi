@@ -1,8 +1,8 @@
-#include <bdex/render/Serialization.hpp>
+#include <phi/render/Serialization.hpp>
 
-#include <bdex/render/Components.hpp>
+#include <phi/render/Components.hpp>
 
-namespace bdex::render {
+namespace phi::render {
 
 using scene::EntityRefs;
 using scene::Fields;
@@ -84,4 +84,4 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         });
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

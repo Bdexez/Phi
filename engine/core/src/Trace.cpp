@@ -1,9 +1,9 @@
-#include <bdex/core/Trace.hpp>
+#include <phi/core/Trace.hpp>
 
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/Json.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/Json.hpp>
 
-namespace bdex {
+namespace phi {
 
 void TraceRecorder::record(std::string_view name, std::string_view category, Clock::time_point start,
                            Clock::time_point end, u32 thread) {
@@ -60,4 +60,4 @@ Result<> TraceRecorder::writeFile(const std::filesystem::path& path) const {
     return fs::writeBinaryFile(path, text.data(), text.size());
 }
 
-}  // namespace bdex
+}  // namespace phi

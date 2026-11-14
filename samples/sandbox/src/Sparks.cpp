@@ -1,15 +1,15 @@
 #include "Sparks.hpp"
 
-#include <bdex/particles/Particles.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <algorithm>
 #include <numbers>
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 void Sparks::start(Engine& engine) {
     collisions_ = engine.events().subscribe<physics::Collision>([this, &engine](const physics::Collision& event) {

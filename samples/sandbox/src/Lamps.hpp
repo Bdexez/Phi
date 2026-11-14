@@ -1,11 +1,11 @@
 #pragma once
 
-#include <bdex/animation/Animation.hpp>
-#include <bdex/assets/Gltf.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/render/Model.hpp>
-#include <bdex/render/ResourceNames.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/assets/Gltf.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/render/Model.hpp>
+#include <phi/render/ResourceNames.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <memory>
 #include <vector>
@@ -21,25 +21,25 @@ public:
     static constexpr const char* kModel = "app:/models/lamp.gltf";
 
     /// The two lamps at the back of the scene, their arms reaching inward.
-    void placeDefault(const bdex::VirtualFileSystem& vfs, bdex::render::IRenderer& renderer, bdex::scene::Scene& scene,
-                      bdex::render::ResourceNames& names, bdex::animation::ClipNames& clips);
+    void placeDefault(const phi::VirtualFileSystem& vfs, phi::render::IRenderer& renderer, phi::scene::Scene& scene,
+                      phi::render::ResourceNames& names, phi::animation::ClipNames& clips);
     /// Loads the model (again) and replaces every lamp with ones standing
     /// where they stood: for when its file changes. A model that does not
     /// load leaves the current ones in place.
-    void reload(const bdex::VirtualFileSystem& vfs, bdex::render::IRenderer& renderer, bdex::scene::Scene& scene,
-                bdex::render::ResourceNames& names, bdex::animation::ClipNames& clips);
-    void release(bdex::render::IRenderer& renderer);
+    void reload(const phi::VirtualFileSystem& vfs, phi::render::IRenderer& renderer, phi::scene::Scene& scene,
+                phi::render::ResourceNames& names, phi::animation::ClipNames& clips);
+    void release(phi::render::IRenderer& renderer);
 
     /// The lamp instances: entities named "Lamp" (duplicates included).
-    [[nodiscard]] static std::vector<bdex::ecs::Entity> roots(const bdex::ecs::World& world);
+    [[nodiscard]] static std::vector<phi::ecs::Entity> roots(const phi::ecs::World& world);
 
 private:
-    void place(const bdex::VirtualFileSystem& vfs, bdex::render::IRenderer& renderer, bdex::scene::Scene& scene,
-               bdex::render::ResourceNames& names, bdex::animation::ClipNames& clips,
-               const std::vector<bdex::scene::Transform>& poses);
+    void place(const phi::VirtualFileSystem& vfs, phi::render::IRenderer& renderer, phi::scene::Scene& scene,
+               phi::render::ResourceNames& names, phi::animation::ClipNames& clips,
+               const std::vector<phi::scene::Transform>& poses);
 
-    bdex::render::ModelResources resources_;
-    std::shared_ptr<const bdex::assets::ModelAnimation> sway_;
+    phi::render::ModelResources resources_;
+    std::shared_ptr<const phi::assets::ModelAnimation> sway_;
 };
 
 }  // namespace sandbox

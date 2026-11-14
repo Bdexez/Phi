@@ -1,7 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "bdex/frame_uniforms.glsl"
-#include "bdex/shadows.glsl"
+#include "phi/frame_uniforms.glsl"
+#include "phi/shadows.glsl"
 
 layout(set = 1, binding = 0) uniform sampler2D albedoTexture;
 layout(set = 1, binding = 1) uniform sampler2D normalTexture;  // tangent space, Y up
@@ -53,7 +53,7 @@ void main() {
     // The render target is sRGB-encoded: lighting is computed linearly.
     vec3 color = albedo.rgb * frame.ambientColor.rgb;
     color += shade(albedo.rgb, normal, toCamera, normalize(-frame.lightDirection.xyz),
-                   frame.lightColor.rgb * bdexSunShadow(inWorldPosition, geometric));
+                   frame.lightColor.rgb * phiSunShadow(inWorldPosition, geometric));
 
     int pointLights = int(frame.pointLightCount.x);
     for (int i = 0; i < pointLights; ++i) {
@@ -74,7 +74,7 @@ void main() {
                                 dot(-direction, frame.spotLightDirections[i].xyz));
         float attenuation = cone * distanceFalloff(toLight, frame.spotLightPositions[i].w);
         if (attenuation > 0.0) {
-            attenuation *= bdexSpotShadow(i, inWorldPosition, geometric);
+            attenuation *= phiSpotShadow(i, inWorldPosition, geometric);
         }
         if (attenuation > 0.0) {
             color += shade(albedo.rgb, normal, toCamera, direction,

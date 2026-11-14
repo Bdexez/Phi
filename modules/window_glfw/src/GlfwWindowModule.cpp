@@ -1,7 +1,7 @@
 // window_glfw: desktop windows and input through GLFW.
 //
 // Configuration:
-//   window.title                   (default "bdex")
+//   window.title                   (default "phi")
 //   window.width, window.height    (default 1280x720)
 //   window.resizable               (default true)
 //   window.fullscreen              cover the primary monitor (default false)
@@ -12,18 +12,18 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/core/Module.hpp>
-#include <bdex/platform/Events.hpp>
-#include <bdex/platform/Input.hpp>
-#include <bdex/platform/Window.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/core/Module.hpp>
+#include <phi/platform/Events.hpp>
+#include <phi/platform/Input.hpp>
+#include <phi/platform/Window.hpp>
 
 #include <algorithm>
 #include <array>
 #include <memory>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 using namespace platform;
@@ -283,7 +283,7 @@ class GlfwWindowModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "GLFW windows and input",
             .provides = {"window"},
             .dependencies = {},
@@ -307,7 +307,7 @@ public:
         const int width = static_cast<int>(std::clamp<i64>(config.getInt("window.width", 1280), 1, 16384));
         const int height = static_cast<int>(std::clamp<i64>(config.getInt("window.height", 720), 1, 16384));
         GLFWwindow* handle = glfwCreateWindow(
-            width, height, config.getString("window.title", "bdex").c_str(), nullptr, nullptr);
+            width, height, config.getString("window.title", "phi").c_str(), nullptr, nullptr);
         if (handle == nullptr) {
             glfwTerminate();
             glfwInitialized_ = false;
@@ -356,6 +356,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::GlfwWindowModule)
+PHI_DEFINE_MODULE(phi::GlfwWindowModule)

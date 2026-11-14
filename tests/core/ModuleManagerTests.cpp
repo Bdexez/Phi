@@ -1,8 +1,8 @@
 #include "plugins/TestService.hpp"
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/ModuleManager.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/ModuleManager.hpp>
 
 #include <gtest/gtest.h>
 
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

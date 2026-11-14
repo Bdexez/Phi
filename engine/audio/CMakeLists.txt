@@ -1,9 +1,9 @@
-bdex_add_library(audio
+phi_add_library(audio
     SOURCES
         src/Components.cpp
         src/Mixer.cpp
     PUBLIC_DEPS
-        bdex::core
-        bdex::ecs
-        bdex::assets
-        bdex::scene)
+        phi::core
+        phi::ecs
+        phi::assets
+        phi::scene)

@@ -1,11 +1,11 @@
-#include <bdex/assets/Zlib.hpp>
+#include <phi/assets/Zlib.hpp>
 
-#include <bdex/core/Assert.hpp>
+#include <phi/core/Assert.hpp>
 
 #include <algorithm>
 #include <array>
 
-namespace bdex::assets {
+namespace phi::assets {
 namespace {
 
 constexpr int kMaxCodeBits = 15;
@@ -311,7 +311,7 @@ const Huffman& fixedLiterals() {
         }
         Huffman huffman;
         const bool built = huffman.build(lengths).has_value();
-        BDEX_ASSERT(built, "the fixed Huffman tables are complete");
+        PHI_ASSERT(built, "the fixed Huffman tables are complete");
         return huffman;
     }();
     return table;
@@ -323,7 +323,7 @@ const Huffman& fixedDistances() {
         lengths.fill(5);
         Huffman huffman;
         const bool built = huffman.build(lengths).has_value();
-        BDEX_ASSERT(built, "the fixed Huffman tables are complete");
+        PHI_ASSERT(built, "the fixed Huffman tables are complete");
         return huffman;
     }();
     return table;
@@ -921,4 +921,4 @@ std::vector<u8> zlibCompress(std::span<const u8> data) {
     return std::move(writer.bytes());
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

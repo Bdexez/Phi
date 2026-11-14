@@ -1,4 +1,4 @@
-#include <bdex/core/FileSystem.hpp>
+#include <phi/core/FileSystem.hpp>
 
 #include <fstream>
 #include <system_error>
@@ -10,7 +10,7 @@
 #include <mach-o/dyld.h>
 #endif
 
-namespace bdex::fs {
+namespace phi::fs {
 
 Result<std::vector<u8>> readBinaryFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -83,9 +83,9 @@ std::filesystem::path executableDirectory() {
     return executablePath().parent_path();
 }
 
-}  // namespace bdex::fs
+}  // namespace phi::fs
 
-namespace bdex {
+namespace phi {
 
 void VirtualFileSystem::mount(std::string_view root, std::filesystem::path directory) {
     mounts_.insert_or_assign(std::string(root), std::move(directory));
@@ -132,4 +132,4 @@ Result<std::string> VirtualFileSystem::readText(std::string_view virtualPath) co
     return fs::readTextFile(*path);
 }
 
-}  // namespace bdex
+}  // namespace phi

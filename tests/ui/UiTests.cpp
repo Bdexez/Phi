@@ -1,8 +1,8 @@
-#include <bdex/ui/Ui.hpp>
+#include <phi/ui/Ui.hpp>
 
 #include <gtest/gtest.h>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

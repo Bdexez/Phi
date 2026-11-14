@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "bdex/frame_uniforms.glsl"
+#include "phi/frame_uniforms.glsl"
 
 // Particles as camera-facing quads, expanded on the CPU.
 layout(location = 0) in vec3 inPosition;

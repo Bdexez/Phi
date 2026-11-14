@@ -1,13 +1,13 @@
 #pragma once
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <span>
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 /// Draws render::DebugDraw's overlay (filled rectangles, then lines and
 /// text over them) on the final image, after
@@ -37,4 +37,4 @@ private:
     std::vector<render::DebugDraw::Vertex> staging_;
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

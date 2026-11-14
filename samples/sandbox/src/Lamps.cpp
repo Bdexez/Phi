@@ -1,13 +1,13 @@
 #include "Lamps.hpp"
 
-#include <bdex/animation/Animation.hpp>
-#include <bdex/core/Log.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/core/Log.hpp>
 
 #include <numbers>
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 void Lamps::placeDefault(const VirtualFileSystem& vfs, render::IRenderer& renderer, scene::Scene& scene,
                          render::ResourceNames& names, animation::ClipNames& clips) {

@@ -1,12 +1,12 @@
-#include <bdex/particles/Particles.hpp>
+#include <phi/particles/Particles.hpp>
 
-#include <bdex/scene/Components.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
-namespace bdex::particles {
+namespace phi::particles {
 
 namespace {
 
@@ -195,4 +195,4 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         });
 }
 
-}  // namespace bdex::particles
+}  // namespace phi::particles

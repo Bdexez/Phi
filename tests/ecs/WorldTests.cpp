@@ -1,4 +1,4 @@
-#include <bdex/ecs/World.hpp>
+#include <phi/ecs/World.hpp>
 
 #include <gtest/gtest.h>
 
@@ -9,8 +9,8 @@
 #include <type_traits>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::ecs;
+using namespace phi;
+using namespace phi::ecs;
 
 namespace {
 struct Position {
@@ -32,7 +32,7 @@ struct Inventory {  // claims to be copyable, cannot be
 }  // namespace
 
 template <>
-struct bdex::ecs::Cloneable<Inventory> : std::false_type {};
+struct phi::ecs::Cloneable<Inventory> : std::false_type {};
 
 TEST(World, CreateDestroyAndGenerations) {
     World world;

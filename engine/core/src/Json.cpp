@@ -1,10 +1,10 @@
-#include <bdex/core/Json.hpp>
+#include <phi/core/Json.hpp>
 
 #include <charconv>
 #include <cmath>
 #include <format>
 
-namespace bdex::json {
+namespace phi::json {
 
 namespace {
 
@@ -388,4 +388,4 @@ std::string write(const Value& value) {
     return out;
 }
 
-}  // namespace bdex::json
+}  // namespace phi::json

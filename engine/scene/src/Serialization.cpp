@@ -1,9 +1,9 @@
-#include <bdex/scene/Serialization.hpp>
+#include <phi/scene/Serialization.hpp>
 
-#include <bdex/core/Config.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/scene/Components.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/core/Config.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/scene/Components.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -11,7 +11,7 @@
 #include <format>
 #include <unordered_set>
 
-namespace bdex::scene {
+namespace phi::scene {
 namespace {
 
 Result<> parseFloats(std::string_view key, std::string_view text, f32* out, int count) {
@@ -246,7 +246,7 @@ std::string ComponentSerializers::save(const ecs::World& world) const {
     }
 
     // ...then write them.
-    std::string text = "# bdex scene\n";
+    std::string text = "# phi scene\n";
     for (usize id = 0; id < saved.size(); ++id) {
         text += std::format("\n[entity.{}]\n", id);
         for (const Entry& entry : entries_) {
@@ -323,4 +323,4 @@ Result<std::vector<ecs::Entity>> ComponentSerializers::load(ecs::World& world, s
     return created;
 }
 
-}  // namespace bdex::scene
+}  // namespace phi::scene

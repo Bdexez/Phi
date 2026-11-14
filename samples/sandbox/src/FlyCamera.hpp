@@ -1,9 +1,9 @@
 #pragma once
 
-#include <bdex/ecs/World.hpp>
-#include <bdex/platform/Actions.hpp>
-#include <bdex/platform/Input.hpp>
-#include <bdex/platform/Window.hpp>
+#include <phi/ecs/World.hpp>
+#include <phi/platform/Actions.hpp>
+#include <phi/platform/Input.hpp>
+#include <phi/platform/Window.hpp>
 
 namespace sandbox {
 
@@ -15,36 +15,36 @@ namespace sandbox {
 class FlyCamera {
 public:
     /// Takes over `camera`'s Transform rotation from yaw and pitch.
-    void attach(bdex::ecs::World& world, bdex::ecs::Entity camera, bdex::f32 yaw, bdex::f32 pitch);
+    void attach(phi::ecs::World& world, phi::ecs::Entity camera, phi::f32 yaw, phi::f32 pitch);
     /// Reads yaw and pitch back from the camera's current facing (after the
     /// scene was loaded, say).
-    void adoptFacing(bdex::ecs::World& world, bdex::ecs::Entity camera);
-    void update(bdex::ecs::World& world, const bdex::platform::InputActions& actions,
-                const bdex::platform::InputState& input, bdex::platform::IWindow* window, bdex::f32 deltaSeconds);
+    void adoptFacing(phi::ecs::World& world, phi::ecs::Entity camera);
+    void update(phi::ecs::World& world, const phi::platform::InputActions& actions,
+                const phi::platform::InputState& input, phi::platform::IWindow* window, phi::f32 deltaSeconds);
 
-    [[nodiscard]] bdex::ecs::Entity entity() const { return camera_; }
+    [[nodiscard]] phi::ecs::Entity entity() const { return camera_; }
 
     /// Switches between flying and walking; walking puts a body, named
     /// "Player", under the camera.
-    void setWalking(bdex::ecs::World& world, bool walking);
+    void setWalking(phi::ecs::World& world, bool walking);
     [[nodiscard]] bool walking() const { return body_.valid(); }
 
 private:
-    void applyRotation(bdex::ecs::World& world) const;
-    void walk(bdex::ecs::World& world, const bdex::platform::InputActions& actions, bdex::f32 deltaSeconds);
-    void fly(bdex::ecs::World& world, const bdex::platform::InputActions& actions, bdex::f32 deltaSeconds);
+    void applyRotation(phi::ecs::World& world) const;
+    void walk(phi::ecs::World& world, const phi::platform::InputActions& actions, phi::f32 deltaSeconds);
+    void fly(phi::ecs::World& world, const phi::platform::InputActions& actions, phi::f32 deltaSeconds);
 
-    static constexpr bdex::f32 kBodyRadius = 0.4f;
-    static constexpr bdex::f32 kEyeHeight = 1.3f;  ///< Above the body's center.
+    static constexpr phi::f32 kBodyRadius = 0.4f;
+    static constexpr phi::f32 kEyeHeight = 1.3f;  ///< Above the body's center.
 
-    bdex::ecs::Entity camera_;
-    bdex::f32 yaw_ = 0.0f;
-    bdex::f32 pitch_ = 0.0f;
+    phi::ecs::Entity camera_;
+    phi::f32 yaw_ = 0.0f;
+    phi::f32 pitch_ = 0.0f;
     bool looking_ = false;
-    bdex::ecs::Entity body_;
-    bdex::f32 verticalSpeed_ = 0.0f;
+    phi::ecs::Entity body_;
+    phi::f32 verticalSpeed_ = 0.0f;
     bool grounded_ = false;
-    bdex::Vec3 groundVelocity_{0.0f};
+    phi::Vec3 groundVelocity_{0.0f};
 };
 
 }  // namespace sandbox

@@ -3,11 +3,11 @@ find_package(glfw3 3.3 REQUIRED)
 # does not link against the Vulkan loader.
 find_package(Vulkan REQUIRED)
 
-bdex_add_module(window_glfw
+phi_add_module(window_glfw
     SOURCES
         src/GlfwWindowModule.cpp
     DEPS
-        bdex::core
-        bdex::platform
+        phi::core
+        phi::platform
         glfw
         Vulkan::Headers)

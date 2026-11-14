@@ -4,7 +4,7 @@
 #include <bit>
 #include <cstddef>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 Result<> Overlay::create(rhi::IDevice& device, assets::AssetManager& assets, rhi::Format format) {
     const auto vertexBinary = assets.load<assets::ShaderBinary>("engine:/shaders/overlay.vert.spv");
@@ -116,4 +116,4 @@ void Overlay::draw(rhi::ICommandList& commands, rhi::TextureHandle target, Exten
     commands.endDebugGroup();
 }
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/platform/Actions.hpp>
-#include <bdex/platform/Window.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/platform/Actions.hpp>
+#include <phi/platform/Window.hpp>
 
 #include <string>
 
@@ -14,8 +14,8 @@ class Hud {
 public:
     /// Once per frame: counts the frame, refreshes the title and the stats
     /// twice a second (often enough, and readable), and draws the panels.
-    void update(bdex::Engine& engine, const bdex::FrameTime& time, bdex::usize entityCount,
-                const bdex::platform::InputActions* actions, bdex::platform::IWindow* window);
+    void update(phi::Engine& engine, const phi::FrameTime& time, phi::usize entityCount,
+                const phi::platform::InputActions* actions, phi::platform::IWindow* window);
 
     void toggleStats() { showStats_ = !showStats_; }
     void toggleHelp() { showHelp_ = !showHelp_; }
@@ -23,10 +23,10 @@ public:
 private:
     /// Every action and what drives it now, from the [input] bindings: a
     /// rebound key shows as rebound.
-    [[nodiscard]] static std::string helpText(const bdex::platform::InputActions* actions);
+    [[nodiscard]] static std::string helpText(const phi::platform::InputActions* actions);
 
-    bdex::u32 frames_ = 0;
-    bdex::f64 seconds_ = 0.0;
+    phi::u32 frames_ = 0;
+    phi::f64 seconds_ = 0.0;
     std::string stats_;
     bool showStats_ = true;
     bool showHelp_ = false;

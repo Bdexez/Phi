@@ -1,7 +1,7 @@
 #include "FlyCamera.hpp"
 
-#include <bdex/physics/Physics.hpp>
-#include <bdex/scene/Components.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +9,7 @@
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 void FlyCamera::attach(ecs::World& world, ecs::Entity camera, f32 yaw, f32 pitch) {
     camera_ = camera;

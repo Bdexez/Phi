@@ -1,8 +1,8 @@
-#include <bdex/core/EventBus.hpp>
+#include <phi/core/EventBus.hpp>
 
 #include <algorithm>
 
-namespace bdex {
+namespace phi {
 namespace detail {
 
 struct EventBusState {
@@ -138,4 +138,4 @@ void EventBus::clear() {
     state_ = std::make_shared<detail::EventBusState>();
 }
 
-}  // namespace bdex
+}  // namespace phi

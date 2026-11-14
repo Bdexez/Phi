@@ -1,4 +1,4 @@
-#include <bdex/core/ServiceRegistry.hpp>
+#include <phi/core/ServiceRegistry.hpp>
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

@@ -45,7 +45,7 @@ jobs:
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }} -G Ninja
-          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DBDEX_WARNINGS_AS_ERRORS=ON
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DPHI_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}

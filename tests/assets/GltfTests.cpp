@@ -1,5 +1,5 @@
-#include <bdex/assets/Gltf.hpp>
-#include <bdex/core/Json.hpp>
+#include <phi/assets/Gltf.hpp>
+#include <phi/core/Json.hpp>
 
 #include <gtest/gtest.h>
 
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::assets;
+using namespace phi;
+using namespace phi::assets;
 
 namespace {
 
@@ -302,7 +302,7 @@ TEST(Gltf, RefusesMalformedFiles) {
 }
 
 TEST(Gltf, LoadsFilesNextToTheModelThroughTheFileSystem) {
-    const std::filesystem::path directory = std::filesystem::temp_directory_path() / "bdex_tests_gltf";
+    const std::filesystem::path directory = std::filesystem::temp_directory_path() / "phi_tests_gltf";
     std::filesystem::remove_all(directory);
     std::filesystem::create_directories(directory / "models");
     QuadFile file;

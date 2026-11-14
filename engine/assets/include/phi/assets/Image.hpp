@@ -1,0 +1,54 @@
+#pragma once
+
+#include <phi/core/Result.hpp>
+#include <phi/core/Types.hpp>
+
+#include <array>
+#include <filesystem>
+#include <span>
+#include <vector>
+
+namespace phi::assets {
+
+using Color8 = std::array<u8, 4>;  ///< R, G, B, A
+
+/// CPU-side image: tightly packed RGBA8, rows from top to bottom.
+struct ImageData {
+    u32 width = 0;
+    u32 height = 0;
+    std::vector<u8> pixels;
+
+    [[nodiscard]] bool valid() const {
+        return width != 0 && height != 0 &&
+               pixels.size() == static_cast<usize>(width) * height * 4;
+    }
+};
+
+// --- Procedural images ---------------------------------------------------------
+
+[[nodiscard]] ImageData makeSolidImage(u32 width, u32 height, Color8 color);
+/// `cells` x `cells` checkerboard alternating between two colors.
+[[nodiscard]] ImageData makeCheckerboard(u32 size, u32 cells, Color8 first, Color8 second);
+
+/// Tangent-space normal map (Y up) of a height field: `heights` is
+/// row-major, `width` x `height` values, top row first; `strength` scales
+/// the slopes. Edges wrap, so tiling heights give a tiling map. Upload the
+/// result as linear data, not sRGB.
+[[nodiscard]] ImageData makeNormalMap(std::span<const f32> heights, u32 width, u32 height,
+                                      f32 strength = 1.0f);
+
+// --- Decoding / encoding ---------------------------------------------------------
+
+/// Decodes a TGA file (true-color 24/32-bit, raw or RLE).
+[[nodiscard]] Result<ImageData> decodeTga(std::span<const u8> bytes);
+
+/// Decodes a PNG file: every standard color type and bit depth, palettes
+/// and tRNS transparency, interlaced or not. 16-bit channels are reduced to
+/// 8 bits; color-space chunks (gAMA, sRGB, iCCP) are ignored.
+[[nodiscard]] Result<ImageData> decodePng(std::span<const u8> bytes);
+
+/// Encodes to an RGBA8 PNG, with per-row filtering and deflate compression.
+[[nodiscard]] std::vector<u8> encodePng(const ImageData& image);
+[[nodiscard]] Result<> writePng(const std::filesystem::path& path, const ImageData& image);
+
+}  // namespace phi::assets

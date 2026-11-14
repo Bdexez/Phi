@@ -1,13 +1,13 @@
-#include <bdex/animation/Animation.hpp>
-#include <bdex/render/Model.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/render/Model.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <gtest/gtest.h>
 
 #include <numbers>
 
-using namespace bdex;
-using namespace bdex::animation;
+using namespace phi;
+using namespace phi::animation;
 
 namespace {
 

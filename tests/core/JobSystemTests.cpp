@@ -1,4 +1,4 @@
-#include <bdex/core/JobSystem.hpp>
+#include <phi/core/JobSystem.hpp>
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -10,7 +10,7 @@
 #include <numeric>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(JobSystem, SubmitReturnsResults) {
     JobSystem jobs(4);

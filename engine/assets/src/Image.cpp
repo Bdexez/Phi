@@ -1,12 +1,12 @@
-#include <bdex/assets/Image.hpp>
+#include <phi/assets/Image.hpp>
 
-#include <bdex/core/Math.hpp>
+#include <phi/core/Math.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-namespace bdex::assets {
+namespace phi::assets {
 
 ImageData makeSolidImage(u32 width, u32 height, Color8 color) {
     ImageData image;
@@ -153,4 +153,4 @@ Result<ImageData> decodeTga(std::span<const u8> bytes) {
     return image;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

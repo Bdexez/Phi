@@ -1,8 +1,8 @@
-#include <bdex/core/FileSystem.hpp>
+#include <phi/core/FileSystem.hpp>
 
 #include <gtest/gtest.h>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(VirtualFileSystem, ResolvesMountedPaths) {
     VirtualFileSystem vfs;

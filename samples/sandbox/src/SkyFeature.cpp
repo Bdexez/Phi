@@ -1,10 +1,10 @@
 #include "SkyFeature.hpp"
 
-#include <bdex/assets/AssetManager.hpp>
+#include <phi/assets/AssetManager.hpp>
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

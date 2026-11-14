@@ -1,12 +1,12 @@
-#include <bdex/rhi/Device.hpp>
-#include <bdex/rhi/Types.hpp>
+#include <phi/rhi/Device.hpp>
+#include <phi/rhi/Types.hpp>
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::rhi;
+using namespace phi;
+using namespace phi::rhi;
 
 TEST(RhiTypes, UsageFlagsCombine) {
     const TextureUsage usage = TextureUsage::Sampled | TextureUsage::TransferSrc;

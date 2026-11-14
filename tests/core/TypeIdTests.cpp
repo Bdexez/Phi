@@ -1,4 +1,4 @@
-#include <bdex/core/TypeId.hpp>
+#include <phi/core/TypeId.hpp>
 
 #include <gtest/gtest.h>
 
@@ -9,7 +9,7 @@ template <class T>
 struct Wrapper {};
 }  // namespace sample
 
-using namespace bdex;
+using namespace phi;
 
 TEST(TypeId, NamesAreFullyQualified) {
     EXPECT_EQ(typeName<int>(), "int");

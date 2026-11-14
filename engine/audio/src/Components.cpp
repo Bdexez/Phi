@@ -1,8 +1,8 @@
-#include <bdex/audio/Components.hpp>
+#include <phi/audio/Components.hpp>
 
-#include <bdex/scene/Components.hpp>
+#include <phi/scene/Components.hpp>
 
-namespace bdex::audio {
+namespace phi::audio {
 
 namespace {
 
@@ -136,4 +136,4 @@ void AudioSystem::update(ecs::World& world) {
     });
 }
 
-}  // namespace bdex::audio
+}  // namespace phi::audio

@@ -14,8 +14,8 @@
 // Rendering features are those of the renderer configuration, so e.g.
 // --set renderer.shadows=false measures without shadows.
 
-#include <bdex/app/Application.hpp>
-#include <bdex/core/Log.hpp>
+#include <phi/app/Application.hpp>
+#include <phi/core/Log.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -24,7 +24,7 @@
 
 namespace {
 
-using namespace bdex;
+using namespace phi;
 
 class Benchmark final : public app::Application {
 protected:
@@ -102,4 +102,4 @@ private:
 
 }  // namespace
 
-BDEX_MAIN(Benchmark)
+PHI_MAIN(Benchmark)

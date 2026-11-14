@@ -1,4 +1,4 @@
-#include <bdex/core/FileWatcher.hpp>
+#include <phi/core/FileWatcher.hpp>
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <fstream>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 
@@ -23,7 +23,7 @@ void touch(const std::filesystem::path& path, int seconds) {
 }  // namespace
 
 TEST(FileWatcher, ReportsFilesModifiedCreatedAndRemoved) {
-    const std::filesystem::path root = std::filesystem::temp_directory_path() / "bdex_tests_watcher";
+    const std::filesystem::path root = std::filesystem::temp_directory_path() / "phi_tests_watcher";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "shaders");
     write(root / "model.gltf", "{}");

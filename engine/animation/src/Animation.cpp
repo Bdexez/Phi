@@ -1,12 +1,12 @@
-#include <bdex/animation/Animation.hpp>
+#include <phi/animation/Animation.hpp>
 
-#include <bdex/scene/Components.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/scene/Components.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace bdex::animation {
+namespace phi::animation {
 
 namespace {
 
@@ -126,4 +126,4 @@ void addComponentSerializers(scene::ComponentSerializers& serializers, const Cli
         });
 }
 
-}  // namespace bdex::animation
+}  // namespace phi::animation

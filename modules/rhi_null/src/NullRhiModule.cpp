@@ -6,17 +6,17 @@
 // machines without a graphics driver, and it doubles as the smallest possible
 // example of a backend.
 
-#include <bdex/core/Assert.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/core/Module.hpp>
-#include <bdex/platform/Window.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/core/Assert.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/core/Module.hpp>
+#include <phi/platform/Window.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <algorithm>
 #include <memory>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 using namespace rhi;
@@ -24,11 +24,11 @@ using namespace rhi;
 class NullCommandList final : public ICommandList {
 public:
     void beginRendering(const RenderingDesc&) override {
-        BDEX_ASSERT(!rendering_, "beginRendering called twice");
+        PHI_ASSERT(!rendering_, "beginRendering called twice");
         rendering_ = true;
     }
     void endRendering() override {
-        BDEX_ASSERT(rendering_, "endRendering without beginRendering");
+        PHI_ASSERT(rendering_, "endRendering without beginRendering");
         rendering_ = false;
     }
 
@@ -41,13 +41,13 @@ public:
     void pushConstants(u32, std::span<const std::byte>) override {}
 
     void draw(u32 vertexCount, u32 instanceCount, u32, u32) override {
-        BDEX_ASSERT(rendering_, "draw outside of a rendering scope");
+        PHI_ASSERT(rendering_, "draw outside of a rendering scope");
         ++stats.drawCalls;
         stats.instances += instanceCount;
         stats.triangles += static_cast<u64>(vertexCount / 3) * instanceCount;
     }
     void drawIndexed(u32 indexCount, u32 instanceCount, u32, i32, u32) override {
-        BDEX_ASSERT(rendering_, "draw outside of a rendering scope");
+        PHI_ASSERT(rendering_, "draw outside of a rendering scope");
         ++stats.drawCalls;
         stats.instances += instanceCount;
         stats.triangles += static_cast<u64>(indexCount / 3) * instanceCount;
@@ -77,8 +77,8 @@ public:
     void destroyBuffer(BufferHandle buffer) override { buffers_.remove(buffer); }
     void writeBuffer(BufferHandle buffer, std::span<const std::byte> data, u64 offset) override {
         const BufferDesc* desc = buffers_.get(buffer);
-        BDEX_ASSERT(desc != nullptr, "writeBuffer on an invalid buffer");
-        BDEX_ASSERT(offset + data.size() <= desc->size, "writeBuffer out of bounds");
+        PHI_ASSERT(desc != nullptr, "writeBuffer on an invalid buffer");
+        PHI_ASSERT(offset + data.size() <= desc->size, "writeBuffer out of bounds");
     }
 
     [[nodiscard]] TextureHandle createTexture(const TextureDesc& desc) override {
@@ -92,14 +92,14 @@ public:
     void destroyTexture(TextureHandle texture) override { textures_.remove(texture); }
     void writeTexture(TextureHandle texture, std::span<const std::byte> pixels) override {
         const TextureDesc* desc = textures_.get(texture);
-        BDEX_ASSERT(desc != nullptr, "writeTexture on an invalid texture");
-        BDEX_ASSERT(pixels.size() == static_cast<usize>(desc->width) * desc->height *
+        PHI_ASSERT(desc != nullptr, "writeTexture on an invalid texture");
+        PHI_ASSERT(pixels.size() == static_cast<usize>(desc->width) * desc->height *
                                          bytesPerPixel(desc->format),
                     "writeTexture size mismatch");
     }
     [[nodiscard]] std::vector<u8> readTexture(TextureHandle texture) override {
         const TextureDesc* desc = textures_.get(texture);
-        BDEX_ASSERT(desc != nullptr, "readTexture on an invalid texture");
+        PHI_ASSERT(desc != nullptr, "readTexture on an invalid texture");
         // Opaque black: there is no image to read back.
         std::vector<u8> pixels(static_cast<usize>(desc->width) * desc->height * 4, 0);
         for (usize i = 3; i < pixels.size(); i += 4) {
@@ -135,13 +135,13 @@ public:
     void destroyBindGroupLayout(BindGroupLayoutHandle layout) override { layouts_.remove(layout); }
 
     [[nodiscard]] BindGroupHandle createBindGroup(const BindGroupDesc& desc) override {
-        BDEX_ASSERT(layouts_.contains(desc.layout), "bind group created with an invalid layout");
+        PHI_ASSERT(layouts_.contains(desc.layout), "bind group created with an invalid layout");
         return groups_.insert(desc);
     }
     void destroyBindGroup(BindGroupHandle group) override { groups_.remove(group); }
 
     [[nodiscard]] PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override {
-        BDEX_ASSERT(shaders_.contains(desc.vertexShader) && shaders_.contains(desc.fragmentShader),
+        PHI_ASSERT(shaders_.contains(desc.vertexShader) && shaders_.contains(desc.fragmentShader),
                     "pipeline created with invalid shaders");
         return pipelines_.insert(desc);
     }
@@ -170,14 +170,14 @@ public:
     [[nodiscard]] u32 frameSlot() const override { return static_cast<u32>(frameNumber_ % 2); }
 
     ICommandList& beginFrame() override {
-        BDEX_ASSERT(!inFrame_, "beginFrame called twice");
+        PHI_ASSERT(!inFrame_, "beginFrame called twice");
         inFrame_ = true;
         commands_.stats = {};
         return commands_;
     }
 
     [[nodiscard]] TextureHandle acquireSwapchainTexture(SwapchainHandle handle) override {
-        BDEX_ASSERT(inFrame_, "acquireSwapchainTexture outside of a frame");
+        PHI_ASSERT(inFrame_, "acquireSwapchainTexture outside of a frame");
         Swapchain* swapchain = swapchains_.get(handle);
         if (swapchain == nullptr) {
             return {};
@@ -202,8 +202,8 @@ public:
     }
 
     void endFrame() override {
-        BDEX_ASSERT(inFrame_, "endFrame without beginFrame");
-        BDEX_ASSERT(!commands_.rendering(), "endFrame inside a rendering scope");
+        PHI_ASSERT(inFrame_, "endFrame without beginFrame");
+        PHI_ASSERT(!commands_.rendering(), "endFrame inside a rendering scope");
         inFrame_ = false;
         lastStats_ = commands_.stats;
         ++frameNumber_;
@@ -246,7 +246,7 @@ class NullRhiModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "No-op render hardware interface",
             .provides = {"rhi"},
             .dependencies = {},
@@ -274,6 +274,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::NullRhiModule)
+PHI_DEFINE_MODULE(phi::NullRhiModule)

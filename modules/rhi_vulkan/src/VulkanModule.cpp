@@ -7,18 +7,18 @@
 
 #include "VulkanDevice.hpp"
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Module.hpp>
-#include <bdex/platform/Window.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Module.hpp>
+#include <phi/platform/Window.hpp>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class VulkanRhiModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Vulkan 1.3 render hardware interface",
             .provides = {"rhi"},
             .dependencies = {},
@@ -37,7 +37,7 @@ public:
         const Config& config = engine.config();
 
         vulkan::DeviceConfig deviceConfig;
-        deviceConfig.applicationName = config.getString("app.name", "bdex");
+        deviceConfig.applicationName = config.getString("app.name", "phi");
         deviceConfig.validation = config.getBool("rhi.validation", kValidationDefault);
         deviceConfig.preferredAdapter = config.getString("rhi.adapter");
 
@@ -69,6 +69,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::VulkanRhiModule)
+PHI_DEFINE_MODULE(phi::VulkanRhiModule)

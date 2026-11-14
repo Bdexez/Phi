@@ -1,15 +1,15 @@
-#include <bdex/assets/AssetManager.hpp>
+#include <phi/assets/AssetManager.hpp>
 
-#include <bdex/assets/Audio.hpp>
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Mesh.hpp>
-#include <bdex/core/JobSystem.hpp>
-#include <bdex/core/Log.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Mesh.hpp>
+#include <phi/core/JobSystem.hpp>
+#include <phi/core/Log.hpp>
 
 #include <cstring>
 #include <filesystem>
 
-namespace bdex::assets {
+namespace phi::assets {
 
 AssetManager::AssetManager(const VirtualFileSystem& vfs, JobSystem* jobs)
     : vfs_(&vfs), jobs_(jobs) {
@@ -157,4 +157,4 @@ detail::ErasedAsset AssetManager::loadNow(const Key& key, std::string_view typeN
     return asset;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

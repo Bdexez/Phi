@@ -1,9 +1,9 @@
-#include <bdex/render/Frustum.hpp>
+#include <phi/render/Frustum.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace bdex::render {
+namespace phi::render {
 
 BoundingSphere computeBoundingSphere(const assets::MeshData& mesh) {
     if (mesh.vertices.empty()) {
@@ -92,4 +92,4 @@ std::optional<f32> intersect(const Ray& ray, const BoundingSphere& sphere) {
     return along - std::sqrt(radiusSquared - missSquared);
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

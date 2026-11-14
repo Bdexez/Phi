@@ -1,8 +1,8 @@
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Mesh.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/JobSystem.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Mesh.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/JobSystem.hpp>
 
 #include <gtest/gtest.h>
 
@@ -14,8 +14,8 @@
 #include <thread>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::assets;
+using namespace phi;
+using namespace phi::assets;
 
 namespace {
 
@@ -45,7 +45,7 @@ struct TempDir {
 
     TempDir() {
         path = std::filesystem::temp_directory_path() /
-               ("bdex_tests_" + std::to_string(std::hash<std::string>{}(
+               ("phi_tests_" + std::to_string(std::hash<std::string>{}(
                                     ::testing::UnitTest::GetInstance()->current_test_info()->name())));
         std::filesystem::create_directories(path);
     }
@@ -470,7 +470,7 @@ TEST(AssetManager, ASyncLoadFromAJobJoinsAnAsyncOneQueuedBehindIt) {
     // One worker, busy with a job that starts loading an asset in the
     // background (queued behind itself) and then asks for it at once: it
     // used to wait forever for a load that could never run.
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "bdex_asset_join";
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "phi_asset_join";
     std::filesystem::create_directories(dir);
     { std::ofstream(dir / "value.num") << "x"; }
     VirtualFileSystem vfs;

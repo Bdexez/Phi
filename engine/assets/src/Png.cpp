@@ -1,14 +1,14 @@
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Zlib.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Zlib.hpp>
 
-#include <bdex/core/FileSystem.hpp>
+#include <phi/core/FileSystem.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <string_view>
 
-namespace bdex::assets {
+namespace phi::assets {
 namespace {
 
 u32 crc32(const u8* data, usize size, u32 crc = 0) {
@@ -427,4 +427,4 @@ Result<ImageData> decodePng(std::span<const u8> bytes) {
     return image;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

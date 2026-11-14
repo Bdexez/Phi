@@ -2,9 +2,9 @@
 
 #include "Spin.hpp"
 
-#include <bdex/audio/Components.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/render/Renderer.hpp>
+#include <phi/audio/Components.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/render/Renderer.hpp>
 
 #include <cmath>
 #include <format>
@@ -12,7 +12,7 @@
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 LevelEntities buildLevel(scene::Scene& level, const Palette& palette) {
     ecs::World& world = level.world();

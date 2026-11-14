@@ -1,6 +1,6 @@
-#include <bdex/rhi/Types.hpp>
+#include <phi/rhi/Types.hpp>
 
-namespace bdex::rhi {
+namespace phi::rhi {
 
 bool isDepthFormat(Format format) {
     return format == Format::D32Float || format == Format::D24UnormS8Uint;
@@ -46,4 +46,4 @@ std::string_view formatName(Format format) {
     return "?";
 }
 
-}  // namespace bdex::rhi
+}  // namespace phi::rhi

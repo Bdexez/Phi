@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace bdex::physics::detail {
+namespace phi::physics::detail {
 
 /// Advances the dynamic boxes (BoxCollider with a RigidBody) by `dt`: they
 /// meet the step's static boxes, its spheres (static, or dynamic ones
@@ -13,4 +13,4 @@ namespace bdex::physics::detail {
 void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::vector<Box>& staticBoxes,
                const std::vector<SphereShape>& spheres, std::vector<Contact>* contacts);
 
-}  // namespace bdex::physics::detail
+}  // namespace phi::physics::detail

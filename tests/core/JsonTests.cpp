@@ -1,11 +1,11 @@
-#include <bdex/core/Json.hpp>
+#include <phi/core/Json.hpp>
 
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <string>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(Json, ParsesEveryKindOfValue) {
     const auto parsed = json::parse(R"({

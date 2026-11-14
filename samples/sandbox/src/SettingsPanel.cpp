@@ -1,15 +1,15 @@
 #include "SettingsPanel.hpp"
 
-#include <bdex/animation/Animation.hpp>
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/render/Renderer.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/render/Renderer.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <cmath>
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

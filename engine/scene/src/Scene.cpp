@@ -1,4 +1,4 @@
-#include <bdex/scene/Scene.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <glm/gtx/matrix_decompose.hpp>
 
@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace bdex::scene {
+namespace phi::scene {
 
 ecs::Entity Scene::createEntity(std::string_view name) {
     const ecs::Entity entity = world_.create();
@@ -275,4 +275,4 @@ void updateWorldTransforms(ecs::World& world, JobSystem& jobs) {
     updateWorldTransformsImpl(world, &jobs);
 }
 
-}  // namespace bdex::scene
+}  // namespace phi::scene

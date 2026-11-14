@@ -1,7 +1,7 @@
 #include "Sounds.hpp"
 
-#include <bdex/audio/Mixer.hpp>
-#include <bdex/physics/Physics.hpp>
+#include <phi/audio/Mixer.hpp>
+#include <phi/physics/Physics.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +9,7 @@
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 void Sounds::start(Engine& engine) {
     if (!engine.services().has<audio::Mixer>()) {

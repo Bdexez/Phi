@@ -1,4 +1,4 @@
-#include <bdex/core/DynamicLibrary.hpp>
+#include <phi/core/DynamicLibrary.hpp>
 
 #include <utility>
 
@@ -9,7 +9,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace bdex {
+namespace phi {
 
 DynamicLibrary::DynamicLibrary(DynamicLibrary&& other) noexcept
     : handle_(std::exchange(other.handle_, nullptr)), path_(std::move(other.path_)) {}
@@ -80,4 +80,4 @@ void DynamicLibrary::close() {
     handle_ = nullptr;
 }
 
-}  // namespace bdex
+}  // namespace phi

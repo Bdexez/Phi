@@ -1,6 +1,6 @@
 # ThreadSanitizer suppressions for the tsan test preset.
 #
-# Only races inside system libraries belong here, never bdex code: each
+# Only races inside system libraries belong here, never phi code: each
 # entry names a library the engine does not control and says why.
 
 # OpenAL Soft and the PipeWire backend it uses on Linux desktops sync their

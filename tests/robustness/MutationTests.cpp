@@ -4,21 +4,21 @@
 // but must never crash, throw, or touch memory they do not own; the ASan
 // preset turns any slip into a failure. The mutations are deterministic, so
 // a failure reproduces.
-#include <bdex/animation/Animation.hpp>
-#include <bdex/assets/Audio.hpp>
-#include <bdex/assets/Gltf.hpp>
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Mesh.hpp>
-#include <bdex/audio/Components.hpp>
-#include <bdex/core/Config.hpp>
-#include <bdex/core/Json.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/particles/Particles.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/render/Components.hpp>
-#include <bdex/render/Serialization.hpp>
-#include <bdex/scene/Scene.hpp>
-#include <bdex/scene/Serialization.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/assets/Gltf.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Mesh.hpp>
+#include <phi/audio/Components.hpp>
+#include <phi/core/Config.hpp>
+#include <phi/core/Json.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/render/Components.hpp>
+#include <phi/render/Serialization.hpp>
+#include <phi/scene/Scene.hpp>
+#include <phi/scene/Serialization.hpp>
 
 #include "HostileValues.hpp"
 
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 
@@ -158,7 +158,7 @@ TEST(Robustness, ObjAndConfigParsersSurviveCorruptText) {
     fuzz(bytesOf(obj), true, 3, [](const std::vector<u8>& input) { (void)assets::parseObj(textOf(input)); });
 
     const std::string config =
-        "# settings\n[window]\nwidth = 1280\ntitle = \"bdex\"  # comment\n[physics]\ngravity = 0, -9.81, 0\n";
+        "# settings\n[window]\nwidth = 1280\ntitle = \"phi\"  # comment\n[physics]\ngravity = 0, -9.81, 0\n";
     ASSERT_TRUE(Config::parse(config).has_value());
 
     const std::string gltfLike = R"({"asset":{"version":"2.0"},"nodes":[{"name":"n\u00e9","mesh":0,)"

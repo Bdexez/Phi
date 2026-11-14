@@ -1,6 +1,6 @@
 #pragma once
 
-#include <bdex/render/Renderer.hpp>
+#include <phi/render/Renderer.hpp>
 
 namespace sandbox {
 
@@ -10,18 +10,18 @@ namespace sandbox {
 /// but the public RHI and render interfaces, has its own shaders and pipeline,
 /// and is attached with IRenderer::addFeature(). The renderer module is not
 /// modified - and does not even know this feature exists.
-class SkyFeature final : public bdex::render::IRenderFeature {
+class SkyFeature final : public phi::render::IRenderFeature {
 public:
     [[nodiscard]] std::string_view name() const override { return "sandbox.sky"; }
     /// Before scene geometry (order 0).
-    [[nodiscard]] bdex::i32 order() const override { return -100; }
+    [[nodiscard]] phi::i32 order() const override { return -100; }
 
-    bdex::Result<> onAttach(const bdex::render::RenderSetupContext& context) override;
-    void onDetach(bdex::rhi::IDevice& device) override;
-    void render(const bdex::render::RenderFrameContext& context) override;
+    phi::Result<> onAttach(const phi::render::RenderSetupContext& context) override;
+    void onDetach(phi::rhi::IDevice& device) override;
+    void render(const phi::render::RenderFrameContext& context) override;
 
 private:
-    bdex::rhi::PipelineHandle pipeline_;
+    phi::rhi::PipelineHandle pipeline_;
 };
 
 }  // namespace sandbox

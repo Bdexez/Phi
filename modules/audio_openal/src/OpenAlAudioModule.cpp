@@ -3,10 +3,10 @@
 // device, from its own thread, through a small queue of buffers on one
 // OpenAL source. Without a usable device it falls back to silent playback,
 // so a machine without sound still runs the game.
-#include <bdex/audio/Mixer.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/core/Module.hpp>
+#include <phi/audio/Mixer.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/core/Module.hpp>
 
 #include <AL/al.h>
 #include <AL/alc.h>
@@ -20,14 +20,14 @@
 #include <thread>
 #include <vector>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class OpenAlAudioModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Audio output through OpenAL",
             .provides = {"audio"},
             .dependencies = {},
@@ -172,6 +172,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::OpenAlAudioModule)
+PHI_DEFINE_MODULE(phi::OpenAlAudioModule)

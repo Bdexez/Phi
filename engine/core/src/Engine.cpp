@@ -1,14 +1,14 @@
-#include <bdex/core/Engine.hpp>
+#include <phi/core/Engine.hpp>
 
-#include <bdex/core/JobSystem.hpp>
+#include <phi/core/JobSystem.hpp>
 
-#include <bdex/core/Log.hpp>
+#include <phi/core/Log.hpp>
 
 #include <algorithm>
 #include <format>
 #include <thread>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 // A long stall (debugger, window drag) must not explode the simulation.
@@ -127,4 +127,4 @@ void Engine::shutdown() {
     modules_.unloadLibraries();
 }
 
-}  // namespace bdex
+}  // namespace phi

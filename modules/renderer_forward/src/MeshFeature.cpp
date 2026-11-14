@@ -2,15 +2,15 @@
 
 #include "ForwardRenderer.hpp"
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/scene/Components.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     auto& assets = context.services.get<assets::AssetManager>();
@@ -324,4 +324,4 @@ void MeshFeature::drawBatch(rhi::ICommandList& commands, const render::RenderFra
     }
 }
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

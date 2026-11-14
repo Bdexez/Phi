@@ -1,13 +1,13 @@
-#include <bdex/audio/Components.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/audio/Components.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <gtest/gtest.h>
 
 #include <numbers>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::audio;
+using namespace phi;
+using namespace phi::audio;
 
 namespace {
 

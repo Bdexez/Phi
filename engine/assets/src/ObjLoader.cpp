@@ -1,9 +1,9 @@
-#include <bdex/assets/Mesh.hpp>
+#include <phi/assets/Mesh.hpp>
 
 #include <charconv>
 #include <unordered_map>
 
-namespace bdex::assets {
+namespace phi::assets {
 namespace {
 
 std::string_view nextToken(std::string_view& line) {
@@ -192,4 +192,4 @@ Result<MeshData> parseObj(std::string_view text) {
     return mesh;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

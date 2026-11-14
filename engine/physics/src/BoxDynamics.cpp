@@ -3,7 +3,7 @@
 #include <array>
 #include <unordered_map>
 
-namespace bdex::physics::detail {
+namespace phi::physics::detail {
 
 namespace {
 
@@ -612,4 +612,4 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
     }
 }
 
-}  // namespace bdex::physics::detail
+}  // namespace phi::physics::detail

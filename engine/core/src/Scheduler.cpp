@@ -1,9 +1,9 @@
-#include <bdex/core/Scheduler.hpp>
+#include <phi/core/Scheduler.hpp>
 
 #include <algorithm>
 #include <chrono>
 
-namespace bdex {
+namespace phi {
 
 std::string_view phaseName(Phase phase) {
     switch (phase) {
@@ -174,4 +174,4 @@ std::vector<std::string> Scheduler::taskNames(Phase phase) const {
     return names;
 }
 
-}  // namespace bdex
+}  // namespace phi

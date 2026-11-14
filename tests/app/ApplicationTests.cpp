@@ -1,13 +1,13 @@
 // The application layer end to end: command line, configuration layering,
 // exit codes and lifecycle callbacks, on the headless window module.
 
-#include <bdex/app/Application.hpp>
-#include <bdex/assets/Audio.hpp>
-#include <bdex/audio/Components.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/Json.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/physics/Physics.hpp>
+#include <phi/app/Application.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/audio/Components.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/Json.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/physics/Physics.hpp>
 
 #include <gtest/gtest.h>
 
@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 
@@ -77,7 +77,7 @@ TEST(Application, RunsTheLifecycleForTheRequestedFrames) {
 }
 
 TEST(Application, CommandLineOverridesFileOverridesDefaults) {
-    const std::filesystem::path file = std::filesystem::temp_directory_path() / "bdex_tests_app.ini";
+    const std::filesystem::path file = std::filesystem::temp_directory_path() / "phi_tests_app.ini";
     std::ofstream(file) << "[probe]\nlayer = file\nonly_in_file = yes\n";
 
     ProbeApp app;
@@ -300,7 +300,7 @@ TEST(Application, WritesATraceOfTheRun) {
         }
         void onConfigure(Config& config) override { config.set("engine.modules", "window_null"); }
     };
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_trace.json";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_trace.json";
     std::filesystem::remove(path);
     Traced traced;
     ASSERT_EQ(traced.run({"--frames", "5", "--trace", path.string()}), 0);

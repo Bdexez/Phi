@@ -1,12 +1,12 @@
-#include <bdex/core/Config.hpp>
+#include <phi/core/Config.hpp>
 
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/Log.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/Log.hpp>
 
 #include <algorithm>
 #include <charconv>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 std::string_view trim(std::string_view text) {
@@ -205,4 +205,4 @@ std::vector<std::string> Config::getList(std::string_view key) const {
     return result;
 }
 
-}  // namespace bdex
+}  // namespace phi

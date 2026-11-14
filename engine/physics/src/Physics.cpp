@@ -1,9 +1,9 @@
-#include <bdex/physics/Physics.hpp>
+#include <phi/physics/Physics.hpp>
 
 #include "BoxDynamics.hpp"
 #include "Geometry.hpp"
 
-#include <bdex/scene/Components.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace bdex::physics {
+namespace phi::physics {
 namespace {
 
 using scene::Transform;
@@ -723,4 +723,4 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         [](BoxCollider& box, const Fields& in, const EntityRefs&) { return parseField(in, "half_extents", box.halfExtents); });
 }
 
-}  // namespace bdex::physics
+}  // namespace phi::physics

@@ -3,24 +3,24 @@
 // "null" ones, so these run anywhere; the last test repeats the exercise on a
 // real GPU when one is available.
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/assets/Audio.hpp>
-#include <bdex/audio/Mixer.hpp>
-#include <bdex/assets/Image.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/platform/Events.hpp>
-#include <bdex/platform/Input.hpp>
-#include <bdex/platform/Window.hpp>
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/render/Model.hpp>
-#include <bdex/particles/Particles.hpp>
-#include <bdex/render/Renderer.hpp>
-#include <bdex/render/ResourceNames.hpp>
-#include <bdex/render/Serialization.hpp>
-#include <bdex/rhi/Device.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/audio/Mixer.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/platform/Events.hpp>
+#include <phi/platform/Input.hpp>
+#include <phi/platform/Window.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/render/Model.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/render/Renderer.hpp>
+#include <phi/render/ResourceNames.hpp>
+#include <phi/render/Serialization.hpp>
+#include <phi/rhi/Device.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <gtest/gtest.h>
 
@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 
@@ -358,7 +358,7 @@ TEST(HeadlessEngine, ScreenshotIsWrittenAndAnnounced) {
     test.populate(1);
 
     const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "bdex_tests_null_capture.png";
+        std::filesystem::temp_directory_path() / "phi_tests_null_capture.png";
     std::filesystem::remove(path);
 
     bool announced = false;
@@ -692,7 +692,7 @@ TEST(VulkanHeadless, RendersTheSceneOffscreenWithoutValidationErrors) {
     test.populate(3);
 
     const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "bdex_tests_vulkan_capture.png";
+        std::filesystem::temp_directory_path() / "phi_tests_vulkan_capture.png";
     std::filesystem::remove(path);
 
     // A few frames so both frame slots and deferred releases are exercised.
@@ -861,7 +861,7 @@ TEST(VulkanHeadless, PointLightsLightTheScene) {
 
     const auto centerPixel = [&]() -> std::array<u8, 4> {
         const std::filesystem::path path =
-            std::filesystem::temp_directory_path() / "bdex_tests_point_lights.png";
+            std::filesystem::temp_directory_path() / "phi_tests_point_lights.png";
         test.renderer().requestScreenshot(path);
         test.engine->tick();
         const auto png = fs::readBinaryFile(path);
@@ -931,7 +931,7 @@ TEST(VulkanHeadless, TransparentSurfacesBlendBackToFront) {
     addPane(Vec4(1.0f, 0.0f, 0.0f, 0.5f), 1.5f);   // near, red
 
     const std::filesystem::path path =
-        std::filesystem::temp_directory_path() / "bdex_tests_transparency.png";
+        std::filesystem::temp_directory_path() / "phi_tests_transparency.png";
     test.renderer().requestScreenshot(path);
     test.engine->tick();
     const auto png = fs::readBinaryFile(path);
@@ -988,7 +988,7 @@ TEST(VulkanHeadless, TheSunCastsShadows) {
             cube, test.renderer().createMesh(assets::makeCube()), test.renderer().createMaterial({}));
 
         const std::filesystem::path path =
-            std::filesystem::temp_directory_path() / "bdex_tests_shadows.png";
+            std::filesystem::temp_directory_path() / "phi_tests_shadows.png";
         test.engine->tick();  // world transforms
         test.renderer().requestScreenshot(path);
         test.engine->tick();
@@ -1060,7 +1060,7 @@ TEST(VulkanHeadless, HdrKeepsLightAboveWhiteForToneMapping) {
         test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
                                                    test.renderer().createMaterial(white));
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_hdr.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_hdr.png";
         test.renderer().requestScreenshot(path);
         test.engine->tick();
         const auto png = fs::readBinaryFile(path);
@@ -1108,7 +1108,7 @@ TEST(VulkanHeadless, EmissiveSurfacesShineInTheDark) {
     test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
                                                test.renderer().createMaterial(glowing));
 
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_emissive.png";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_emissive.png";
     test.renderer().requestScreenshot(path);
     test.engine->tick();
     const auto png = fs::readBinaryFile(path);
@@ -1152,7 +1152,7 @@ TEST(VulkanHeadless, NormalMapsBendTheLighting) {
         test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
                                                    test.renderer().createMaterial(bumpy));
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_normal_map.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_normal_map.png";
         test.renderer().requestScreenshot(path);
         test.engine->tick();
         const auto png = fs::readBinaryFile(path);
@@ -1194,7 +1194,7 @@ TEST(VulkanHeadless, DebugLinesShowUnlessHidden) {
     auto& debug = test.engine->services().get<render::DebugDraw>();
 
     const auto capture = [&]() -> assets::ImageData {
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_debug.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_debug.png";
         // A horizontal red line through the middle of the view, behind z = 0.
         debug.line(Vec3(-3.0f, 0.0f, -1.0f), Vec3(3.0f, 0.0f, -1.0f), Vec4(1.0f, 0.0f, 0.0f, 1.0f));
         test.renderer().requestScreenshot(path);
@@ -1259,7 +1259,7 @@ TEST(VulkanHeadless, BloomSpreadsBrightLight) {
         test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
                                                    test.renderer().createMaterial(blazing));
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_bloom.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_bloom.png";
         test.engine->tick();  // world transforms
         test.renderer().requestScreenshot(path);
         test.engine->tick();
@@ -1311,7 +1311,7 @@ TEST(VulkanHeadless, FxaaSmoothsEdges) {
         test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube(2.0f)),
                                                    test.renderer().createMaterial(red));
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_fxaa.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_fxaa.png";
         test.engine->tick();
         test.renderer().requestScreenshot(path);
         test.engine->tick();
@@ -1368,7 +1368,7 @@ TEST(VulkanHeadless, SpotLightsLightOnlyTheirCone) {
         light.outerAngle = outerAngle;
         test.world().emplace<render::SpotLight>(spot, light);
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_spot.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_spot.png";
         test.engine->tick();
         test.renderer().requestScreenshot(path);
         test.engine->tick();
@@ -1452,7 +1452,7 @@ TEST(VulkanHeadless, OverlayLinesLandUntouchedOnTheFinalImage) {
     // A filled panel the line crosses: drawn first, under it.
     debug.screenRect(Vec2(140.0f, 90.0f), Vec2(180.0f, 120.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f));
 
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_overlay.png";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_overlay.png";
     test.renderer().requestScreenshot(path);
     test.engine->tick();
     const auto png = fs::readBinaryFile(path);
@@ -1530,7 +1530,7 @@ TEST(VulkanHeadless, SpotLightsCastShadows) {
         test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
                                                    test.renderer().createMaterial({}));
 
-        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_spot_shadows.png";
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_spot_shadows.png";
         test.engine->tick();
         test.renderer().requestScreenshot(path);
         test.engine->tick();
@@ -1590,7 +1590,7 @@ TEST(VulkanHeadless, ParticlesGlowWhereTheyAre) {
     test.world().emplace<particles::ParticleEmitter>(test.scene().createEntity("sparks"), sparks);
     particles::updateParticles(test.world(), 0.0f);  // the burst (Application does this each frame)
 
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_particles.png";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_particles.png";
     test.engine->tick();
     test.renderer().requestScreenshot(path);
     test.engine->tick();

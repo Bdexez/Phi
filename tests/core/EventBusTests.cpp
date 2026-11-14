@@ -1,11 +1,11 @@
-#include <bdex/core/EventBus.hpp>
+#include <phi/core/EventBus.hpp>
 
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 struct Damage {

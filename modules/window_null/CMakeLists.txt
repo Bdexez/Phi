@@ -1,6 +1,6 @@
-bdex_add_module(window_null
+phi_add_module(window_null
     SOURCES
         src/NullWindowModule.cpp
     DEPS
-        bdex::core
-        bdex::platform)
+        phi::core
+        phi::platform)
