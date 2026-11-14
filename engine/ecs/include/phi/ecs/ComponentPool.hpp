@@ -95,6 +95,10 @@ public:
 
     [[nodiscard]] usize size() const override { return dense_.size(); }
     [[nodiscard]] std::span<const u32> entities() const override { return denseEntities_; }
+    [[nodiscard]] std::span<T> values() { return dense_; }
+    [[nodiscard]] std::span<const T> values() const { return dense_; }
+    [[nodiscard]] T& valueAt(usize denseSlot) { return dense_[denseSlot]; }
+    [[nodiscard]] const T& valueAt(usize denseSlot) const { return dense_[denseSlot]; }
 
     void clear() override {
         sparse_.clear();

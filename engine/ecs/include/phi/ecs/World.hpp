@@ -216,7 +216,7 @@ private:
     }
 
     std::vector<u32> generations_;  // per slot; odd/even is irrelevant, only equality matters
-    std::vector<bool> aliveFlags_;
+    std::vector<u8> aliveFlags_;
     std::vector<u32> freeSlots_;
     usize aliveCount_ = 0;
     std::unordered_map<TypeId, std::unique_ptr<IComponentPool>> pools_;
@@ -255,6 +255,31 @@ public:
     /// in the same pass is unspecified.
     template <class Fn>
     void each(Fn&& fn) {
+        if constexpr (sizeof...(Components) == 1) {
+            auto* driver = std::get<0>(pools_);
+            if (driver == nullptr) {
+                return;
+            }
+            const bool hasExcluded = !excluded_.empty();
+            for (usize i = driver->size(); i-- > 0;) {
+                // Re-read the span every iteration: the callback may have grown
+                // or shrunk the pool.
+                const std::span<const u32> entities = driver->entities();
+                if (i >= entities.size()) {
+                    continue;
+                }
+                const u32 index = entities[i];
+                if (hasExcluded && isExcluded(index)) {
+                    continue;
+                }
+                if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
+                    fn(world_->entityAt(index), driver->valueAt(i));
+                } else {
+                    fn(driver->valueAt(i));
+                }
+            }
+            return;
+        }
         IComponentPool* driver = smallestPool();
         if (driver == nullptr) {
             return;
@@ -267,14 +292,14 @@ public:
                 continue;
             }
             const u32 index = entities[i];
-            if (!matches(index)) {
+            if (!matchesOther(driver, index)) {
                 continue;
             }
             if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
                 fn(world_->entityAt(index),
-                   std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                   fetchComponent(driver, index, i, std::get<PoolOf<Components>*>(pools_))...);
             } else {
-                fn(std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                fn(fetchComponent(driver, index, i, std::get<PoolOf<Components>*>(pools_))...);
             }
         }
     }
@@ -286,6 +311,28 @@ public:
     /// entities' components. Visiting order is unspecified.
     template <class Fn>
     void parallelEach(JobSystem& jobs, Fn&& fn, usize grain = 256) {
+        if constexpr (sizeof...(Components) == 1) {
+            auto* driver = std::get<0>(pools_);
+            if (driver == nullptr) {
+                return;
+            }
+            const std::span<const u32> entities = driver->entities();
+            const bool hasExcluded = !excluded_.empty();
+            jobs.parallelFor(entities.size(), grain, [&](usize begin, usize end) {
+                for (usize i = begin; i < end; ++i) {
+                    const u32 index = entities[i];
+                    if (hasExcluded && isExcluded(index)) {
+                        continue;
+                    }
+                    if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
+                        fn(world_->entityAt(index), driver->valueAt(i));
+                    } else {
+                        fn(driver->valueAt(i));
+                    }
+                }
+            });
+            return;
+        }
         IComponentPool* driver = smallestPool();
         if (driver == nullptr) {
             return;
@@ -294,13 +341,14 @@ public:
         jobs.parallelFor(entities.size(), grain, [&](usize begin, usize end) {
             for (usize i = begin; i < end; ++i) {
                 const u32 index = entities[i];
-                if (!matches(index)) {
+                if (!matchesOther(driver, index)) {
                     continue;
                 }
                 if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
-                    fn(world_->entityAt(index), std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                    fn(world_->entityAt(index),
+                       fetchComponent(driver, index, i, std::get<PoolOf<Components>*>(pools_))...);
                 } else {
-                    fn(std::get<PoolOf<Components>*>(pools_)->get(index)...);
+                    fn(fetchComponent(driver, index, i, std::get<PoolOf<Components>*>(pools_))...);
                 }
             }
         });
@@ -308,13 +356,29 @@ public:
 
     /// Number of matching entities (walks the smallest pool).
     [[nodiscard]] usize count() const {
+        if constexpr (sizeof...(Components) == 1) {
+            const auto* driver = std::get<0>(pools_);
+            if (driver == nullptr) {
+                return 0;
+            }
+            if (excluded_.empty()) {
+                return driver->size();
+            }
+            usize result = 0;
+            for (const u32 index : driver->entities()) {
+                if (!isExcluded(index)) {
+                    ++result;
+                }
+            }
+            return result;
+        }
         usize result = 0;
         IComponentPool* driver = smallestPool();
         if (driver == nullptr) {
             return 0;
         }
         for (const u32 index : driver->entities()) {
-            if (matches(index)) {
+            if (matchesOther(driver, index)) {
                 ++result;
             }
         }
@@ -328,16 +392,28 @@ private:
         }
     }
 
-    [[nodiscard]] bool matches(u32 index) const {
-        if (!(std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
-            return false;
-        }
+    [[nodiscard]] bool isExcluded(u32 index) const {
         for (const IComponentPool* pool : excluded_) {
             if (pool->contains(index)) {
-                return false;
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    [[nodiscard]] bool matchesOther(const IComponentPool* driver, u32 index) const {
+        const auto check = [driver, index](const auto* pool) {
+            return static_cast<const IComponentPool*>(pool) == driver || pool->contains(index);
+        };
+        if (!(check(std::get<PoolOf<Components>*>(pools_)) && ...)) {
+            return false;
+        }
+        return !isExcluded(index);
+    }
+
+    template <class T>
+    static T& fetchComponent(const IComponentPool* driver, u32 index, usize denseSlot, ComponentPool<T>* pool) {
+        return static_cast<const IComponentPool*>(pool) == driver ? pool->valueAt(denseSlot) : pool->get(index);
     }
 
     /// Null when a pool is missing: then nothing matches.
