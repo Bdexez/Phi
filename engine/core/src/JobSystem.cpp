@@ -72,7 +72,8 @@ void JobSystem::setTrace(TraceRecorder* trace) {
     }
 }
 
-void JobSystem::traced(std::string_view name, std::string_view category, const std::function<void()>& work) {
+template <class Fn>
+void JobSystem::traced(std::string_view name, std::string_view category, Fn&& work) {
     if (trace_.load(std::memory_order_relaxed) == nullptr) {
         work();
         return;
@@ -125,6 +126,7 @@ void JobSystem::parallelFor(usize count, usize grain,
     // caller does not return before every claimed chunk has completed, so the
     // reference stays valid for as long as it can be used.
     struct Shared {
+        JobSystem* self = nullptr;
         std::atomic<usize> next{0};
         std::atomic<usize> completed{0};
         usize chunks = 0;
@@ -133,39 +135,53 @@ void JobSystem::parallelFor(usize count, usize grain,
         const std::function<void(usize, usize)>* fn = nullptr;
         std::mutex mutex;
         std::condition_variable done;
+
+        static void run(Shared& state) {
+            for (;;) {
+                const usize chunk = state.next.fetch_add(1, std::memory_order_relaxed);
+                if (chunk >= state.chunks) {
+                    return;
+                }
+                const usize begin = chunk * state.grain;
+                const usize end = std::min(state.count, begin + state.grain);
+                state.self->traced("parallelFor", "jobs", [&] { (*state.fn)(begin, end); });
+                if (state.completed.fetch_add(1, std::memory_order_acq_rel) + 1 == state.chunks) {
+                    std::lock_guard lock(state.mutex);
+                    state.done.notify_all();
+                }
+            }
+        }
     };
     const auto shared = std::make_shared<Shared>();
+    shared->self = this;
     shared->chunks = chunks;
     shared->count = count;
     shared->grain = grain;
     shared->fn = &fn;
 
-    const auto work = [this, shared] {
-        for (;;) {
-            const usize chunk = shared->next.fetch_add(1, std::memory_order_relaxed);
-            if (chunk >= shared->chunks) {
-                return;
-            }
-            const usize begin = chunk * shared->grain;
-            const usize end = std::min(shared->count, begin + shared->grain);
-            traced("parallelFor", "jobs", [&] { (*shared->fn)(begin, end); });
-            if (shared->completed.fetch_add(1, std::memory_order_acq_rel) + 1 == shared->chunks) {
-                std::lock_guard lock(shared->mutex);
-                shared->done.notify_all();
-            }
-        }
-    };
-
     const usize helpers = std::min<usize>(workers_.size(), chunks - 1);
-    for (usize i = 0; i < helpers; ++i) {
-        enqueue(work);
+    {
+        // Enqueue all helpers under one lock; capturing only `shared` (16 bytes)
+        // keeps the job inside std::function's small-buffer optimization.
+        std::lock_guard lock(mutex_);
+        for (usize i = 0; i < helpers; ++i) {
+            queue_.emplace_back([shared] { Shared::run(*shared); });
+        }
     }
-    work();
+    if (helpers == 1) {
+        wake_.notify_one();
+    } else if (helpers > 1) {
+        wake_.notify_all();
+    }
 
-    std::unique_lock lock(shared->mutex);
-    shared->done.wait(lock, [&] {
-        return shared->completed.load(std::memory_order_acquire) == shared->chunks;
-    });
+    Shared::run(*shared);
+
+    if (shared->completed.load(std::memory_order_acquire) < chunks) {
+        std::unique_lock lock(shared->mutex);
+        shared->done.wait(lock, [&] {
+            return shared->completed.load(std::memory_order_acquire) == shared->chunks;
+        });
+    }
 }
 
 }  // namespace phi
