@@ -4,7 +4,9 @@
 #include <phi/core/Math.hpp>
 #include <phi/core/Types.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <optional>
 
 namespace phi::render {
@@ -19,7 +21,23 @@ struct BoundingSphere {
 
 /// The sphere after `transform`. Non-uniform scale grows the radius by the
 /// largest axis scale, so the result always encloses the transformed mesh.
-[[nodiscard]] BoundingSphere transformSphere(const BoundingSphere& sphere, const Mat4& transform);
+[[nodiscard]] inline BoundingSphere transformSphere(const BoundingSphere& sphere, const Mat4& transform) {
+    const f32 sx = transform[0][0] * transform[0][0] + transform[0][1] * transform[0][1] +
+                   transform[0][2] * transform[0][2];
+    const f32 sy = transform[1][0] * transform[1][0] + transform[1][1] * transform[1][1] +
+                   transform[1][2] * transform[1][2];
+    const f32 sz = transform[2][0] * transform[2][0] + transform[2][1] * transform[2][1] +
+                   transform[2][2] * transform[2][2];
+    const f32 scaleSquared = std::max({sx, sy, sz});
+    const Vec3 center(
+        transform[0][0] * sphere.center.x + transform[1][0] * sphere.center.y +
+            transform[2][0] * sphere.center.z + transform[3][0],
+        transform[0][1] * sphere.center.x + transform[1][1] * sphere.center.y +
+            transform[2][1] * sphere.center.z + transform[3][1],
+        transform[0][2] * sphere.center.x + transform[1][2] * sphere.center.y +
+            transform[2][2] * sphere.center.z + transform[3][2]);
+    return {center, sphere.radius * std::sqrt(scaleSquared)};
+}
 
 struct Ray {
     Vec3 origin{0.0f};
@@ -43,7 +61,16 @@ public:
 
     /// False only when the sphere is entirely outside one of the planes
     /// (conservative: a sphere near a corner may be kept).
-    [[nodiscard]] bool intersects(const BoundingSphere& sphere) const;
+    [[nodiscard]] bool intersects(const BoundingSphere& sphere) const {
+        const Vec3 c = sphere.center;
+        const f32 negR = -sphere.radius;
+        for (const Vec4& plane : planes_) {
+            if (plane.x * c.x + plane.y * c.y + plane.z * c.z + plane.w < negR) {
+                return false;
+            }
+        }
+        return true;
+    }
 
 private:
     // Normalized, pointing inward: inside when dot(xyz, p) + w >= 0.

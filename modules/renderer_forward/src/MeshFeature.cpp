@@ -148,82 +148,171 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     if (context.world == nullptr) {
         return;
     }
-
-    // Gather what is visible...
-    opaque_.clear();
-    transparent_.clear();
-    opaqueOrder_.clear();
-    transparentOrder_.clear();
-    const render::Frustum frustum(context.camera.viewProjection);
-    context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
-        [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
-            if (!renderable.visible) {
-                return;
-            }
-            const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
-            if (mesh == nullptr) {
-                return;  // destroyed or never assigned
-            }
-            const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform.matrix);
-            if (!frustum.intersects(bounds)) {
-                return;  // outside the view
-            }
-            const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
-            const DrawItem item{
-                material.bindGroup,
-                mesh,
-                {transform.matrix, material.desc.baseColor,
-                 // Without a normal map the strength is 0, which keeps the
-                 // surface normal exact (the flat texel is only ~(0, 0, 1)).
-                 Vec4(material.desc.specular, material.desc.shininess,
-                      material.desc.normalMap.valid() ? material.desc.normalStrength : 0.0f, 0.0f),
-                 Vec4(material.desc.emissive, 0.0f)},
-            };
-            if (material.desc.transparent) {
-                // Back to front: larger distances first. A non-negative float
-                // orders like its bit pattern, so the complement sorts it
-                // descending.
-                const Vec3 offset = bounds.center - context.camera.position;
-                const f32 distanceSquared = glm::dot(offset, offset);
-                transparentOrder_.push_back(
-                    {~u64{std::bit_cast<u32>(distanceSquared)}, static_cast<u32>(transparent_.size())});
-                transparent_.push_back(item);
-            } else {
-                // Grouped by material, then mesh.
-                opaqueOrder_.push_back({(u64{material.bindGroup.index} << 32) | renderable.mesh.index,
-                                        static_cast<u32>(opaque_.size())});
-                opaque_.push_back(item);
-            }
-        });
-    if (opaque_.empty() && transparent_.empty()) {
+    const auto* renderers = context.world->storage<render::MeshRenderer>();
+    const auto* transforms = context.world->storage<scene::WorldTransform>();
+    if (renderers == nullptr || transforms == nullptr || renderers->size() == 0) {
         return;
     }
 
-    // ...order them: opaque surfaces grouped by material and mesh, so each
-    // is bound once, transparent ones from back to front so they blend
-    // correctly...
-    const auto byKey = [](const SortKey& a, const SortKey& b) { return a.key < b.key; };
-    std::sort(opaqueOrder_.begin(), opaqueOrder_.end(), byKey);
-    std::sort(transparentOrder_.begin(), transparentOrder_.end(), byKey);
+    // Gather visible meshes: opaque ones bucketed directly by (material, mesh)
+    // in O(N) without sorting every instance; transparent ones kept for back-to-front sort.
+    opaqueBucketLookup_.clear();
+    opaqueBucketOrder_.clear();
+    transparent_.clear();
+    u32 activeBuckets = 0;
+    usize opaqueCount = 0;
 
-    // ...lay their data out in drawing order...
+    u64 lastKey = ~u64{0};
+    u32 lastBucket = 0;
+    const render::Frustum frustum(context.camera.viewProjection);
+    const std::span<const u32> entities = renderers->entities();
+    const std::span<const render::MeshRenderer> items = renderers->values();
+
+    for (usize i = 0; i < entities.size(); ++i) {
+        const render::MeshRenderer& renderable = items[i];
+        if (!renderable.visible) {
+            continue;
+        }
+        const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+        if (transform == nullptr) {
+            continue;
+        }
+        const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
+        if (mesh == nullptr) {
+            continue;  // destroyed or never assigned
+        }
+        const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform->matrix);
+        if (!frustum.intersects(bounds)) {
+            continue;  // outside the view
+        }
+        const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
+        if (material.desc.transparent) {
+            // Back to front: larger distances first. A non-negative float
+            // orders like its bit pattern, so the complement sorts it
+            // descending.
+            const Vec3 offset = bounds.center - context.camera.position;
+            const f32 distanceSquared = glm::dot(offset, offset);
+            transparent_.push_back({~u64{std::bit_cast<u32>(distanceSquared)}, material.bindGroup, mesh,
+                                    &material, &transform->matrix});
+        } else {
+            const u64 key = (u64{material.bindGroup.index} << 32) | renderable.mesh.index;
+            u32 bucketIndex = lastBucket;
+            if (key != lastKey) {
+                const auto [it, inserted] = opaqueBucketLookup_.emplace(key, activeBuckets);
+                if (inserted) {
+                    if (activeBuckets == opaqueBuckets_.size()) {
+                        opaqueBuckets_.emplace_back();
+                    }
+                    OpaqueBucket& bucket = opaqueBuckets_[activeBuckets];
+                    bucket.key = key;
+                    bucket.material = material.bindGroup;
+                    bucket.mesh = mesh;
+                    bucket.baseColor = material.desc.baseColor;
+                    // Without a normal map the strength is 0, which keeps the
+                    // surface normal exact (the flat texel is only ~(0, 0, 1)).
+                    bucket.params = Vec4(material.desc.specular, material.desc.shininess,
+                                         material.desc.normalMap.valid() ? material.desc.normalStrength : 0.0f, 0.0f);
+                    bucket.emissive = Vec4(material.desc.emissive, 0.0f);
+                    bucket.models.clear();
+                    opaqueBucketOrder_.push_back(activeBuckets);
+                    ++activeBuckets;
+                }
+                bucketIndex = it->second;
+                lastKey = key;
+                lastBucket = bucketIndex;
+            }
+            opaqueBuckets_[bucketIndex].models.push_back(&transform->matrix);
+            ++opaqueCount;
+        }
+    }
+
+    if (opaqueCount == 0 && transparent_.empty()) {
+        return;
+    }
+
+    // Sort only the distinct opaque (material, mesh) buckets and the transparent instances.
+    std::sort(opaqueBucketOrder_.begin(), opaqueBucketOrder_.end(),
+              [this](u32 a, u32 b) { return opaqueBuckets_[a].key < opaqueBuckets_[b].key; });
+    std::sort(transparent_.begin(), transparent_.end(),
+              [](const TransparentItem& a, const TransparentItem& b) { return a.key < b.key; });
+
+    // Lay out per-instance data once in final drawing order.
     objects_.clear();
-    for (const SortKey& entry : opaqueOrder_) {
-        objects_.push_back(opaque_[entry.draw].object);
+    objects_.reserve(opaqueCount + transparent_.size());
+    for (const u32 bucketIndex : opaqueBucketOrder_) {
+        const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
+        for (const Mat4* model : bucket.models) {
+            objects_.push_back({*model, bucket.baseColor, bucket.params, bucket.emissive});
+        }
     }
-    for (const SortKey& entry : transparentOrder_) {
-        objects_.push_back(transparent_[entry.draw].object);
+    for (const TransparentItem& item : transparent_) {
+        const render::MaterialDesc& desc = item.gpuMaterial->desc;
+        objects_.push_back({*item.model, desc.baseColor,
+                            Vec4(desc.specular, desc.shininess,
+                                 desc.normalMap.valid() ? desc.normalStrength : 0.0f, 0.0f),
+                            Vec4(desc.emissive, 0.0f)});
     }
+
     ObjectBuffer& slot = objectBuffers_[context.device.frameSlot()];
     ensureObjectCapacity(context.device, slot, objects_.size());
     context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)));
 
-    // ...and draw them.
+    // Draw opaque buckets (each bucket is one instanced draw)...
     rhi::ICommandList& commands = context.commands;
     commands.beginDebugGroup("forward.meshes");
-    drawBatch(commands, context, opaquePipeline_, opaque_, opaqueOrder_, 0, slot.bindGroup);
-    drawBatch(commands, context, transparentPipeline_, transparent_, transparentOrder_,
-              static_cast<u32>(opaqueOrder_.size()), slot.bindGroup);
+    if (!opaqueBucketOrder_.empty()) {
+        commands.bindPipeline(opaquePipeline_);
+        commands.bindBindGroup(0, context.frameBindGroup);
+        commands.bindBindGroup(2, slot.bindGroup);
+        rhi::BindGroupHandle boundMaterial;
+        const GpuMesh* boundMesh = nullptr;
+        u32 instanceOffset = 0;
+        for (const u32 bucketIndex : opaqueBucketOrder_) {
+            const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
+            const u32 count = static_cast<u32>(bucket.models.size());
+            if (bucket.material != boundMaterial) {
+                commands.bindBindGroup(1, bucket.material);
+                boundMaterial = bucket.material;
+            }
+            if (bucket.mesh != boundMesh) {
+                commands.bindVertexBuffer(bucket.mesh->vertexBuffer);
+                commands.bindIndexBuffer(bucket.mesh->indexBuffer, rhi::IndexType::UInt32);
+                boundMesh = bucket.mesh;
+            }
+            commands.drawIndexed(bucket.mesh->indexCount, count, 0, 0, instanceOffset);
+            instanceOffset += count;
+        }
+    }
+
+    // ...and transparent instances (merging consecutive runs sharing material and mesh).
+    if (!transparent_.empty()) {
+        commands.bindPipeline(transparentPipeline_);
+        commands.bindBindGroup(0, context.frameBindGroup);
+        commands.bindBindGroup(2, slot.bindGroup);
+        rhi::BindGroupHandle boundMaterial;
+        const GpuMesh* boundMesh = nullptr;
+        const u32 baseOffset = static_cast<u32>(opaqueCount);
+        for (usize begin = 0; begin < transparent_.size();) {
+            const TransparentItem& first = transparent_[begin];
+            usize end = begin + 1;
+            while (end < transparent_.size() && transparent_[end].material == first.material &&
+                   transparent_[end].mesh == first.mesh) {
+                ++end;
+            }
+            if (first.material != boundMaterial) {
+                commands.bindBindGroup(1, first.material);
+                boundMaterial = first.material;
+            }
+            if (first.mesh != boundMesh) {
+                commands.bindVertexBuffer(first.mesh->vertexBuffer);
+                commands.bindIndexBuffer(first.mesh->indexBuffer, rhi::IndexType::UInt32);
+                boundMesh = first.mesh;
+            }
+            commands.drawIndexed(first.mesh->indexCount, static_cast<u32>(end - begin), 0, 0,
+                                 baseOffset + static_cast<u32>(begin));
+            begin = end;
+        }
+    }
     commands.endDebugGroup();
 }
 
@@ -232,95 +321,110 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
         return;
     }
     // Opaque meshes, gathered once per frame (at the first shadow view) and
-    // sorted by mesh (materials do not matter for depth)...
+    // bucketed by mesh (materials do not matter for depth)...
     if (context.firstShadowView) {
-        shadowCandidates_.clear();
-        context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
-            [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
-                const GpuMesh* mesh = renderable.visible ? renderer_->mesh(renderable.mesh) : nullptr;
-                if (mesh == nullptr || renderer_->materialOrDefault(renderable.material).desc.transparent) {
-                    return;
-                }
-                shadowCandidates_.push_back({renderable.mesh.index, mesh, transform.matrix,
-                                             render::transformSphere(mesh->bounds, transform.matrix)});
-            });
-        std::sort(shadowCandidates_.begin(), shadowCandidates_.end(),
-                  [](const ShadowCandidate& a, const ShadowCandidate& b) { return a.meshKey < b.meshKey; });
-    }
+        shadowObjectsUsed_ = 0;
+        shadowBucketLookup_.clear();
+        shadowBucketOrder_.clear();
+        u32 activeBuckets = 0;
 
-    // ...then each cascade keeps those within its volume, still sorted.
-    casters_.clear();
-    casterOrder_.clear();
-    const render::Frustum lightVolume(context.camera.viewProjection);
-    for (const ShadowCandidate& candidate : shadowCandidates_) {
-        if (lightVolume.intersects(candidate.bounds)) {
-            casterOrder_.push_back({candidate.meshKey, static_cast<u32>(casters_.size())});
-            casters_.push_back({{}, candidate.mesh, {candidate.model, Vec4(0.0f), Vec4(0.0f), Vec4(0.0f)}});
+        const auto* renderers = context.world->storage<render::MeshRenderer>();
+        const auto* transforms = context.world->storage<scene::WorldTransform>();
+        if (renderers != nullptr && transforms != nullptr) {
+            u32 lastMeshKey = ~u32{0};
+            u32 lastBucket = 0;
+            const std::span<const u32> entities = renderers->entities();
+            const std::span<const render::MeshRenderer> items = renderers->values();
+            for (usize i = 0; i < entities.size(); ++i) {
+                const render::MeshRenderer& renderable = items[i];
+                if (!renderable.visible) {
+                    continue;
+                }
+                const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+                if (transform == nullptr) {
+                    continue;
+                }
+                const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
+                if (mesh == nullptr || renderer_->materialOrDefault(renderable.material).desc.transparent) {
+                    continue;
+                }
+                const u32 meshKey = renderable.mesh.index;
+                u32 bucketIndex = lastBucket;
+                if (meshKey != lastMeshKey) {
+                    const auto [it, inserted] = shadowBucketLookup_.emplace(meshKey, activeBuckets);
+                    if (inserted) {
+                        if (activeBuckets == shadowBuckets_.size()) {
+                            shadowBuckets_.emplace_back();
+                        }
+                        ShadowMeshBucket& bucket = shadowBuckets_[activeBuckets];
+                        bucket.meshKey = meshKey;
+                        bucket.mesh = mesh;
+                        bucket.bounds.clear();
+                        bucket.models.clear();
+                        shadowBucketOrder_.push_back(activeBuckets);
+                        ++activeBuckets;
+                    }
+                    bucketIndex = it->second;
+                    lastMeshKey = meshKey;
+                    lastBucket = bucketIndex;
+                }
+                ShadowMeshBucket& bucket = shadowBuckets_[bucketIndex];
+                bucket.bounds.push_back(render::transformSphere(mesh->bounds, transform->matrix));
+                bucket.models.push_back(&transform->matrix);
+            }
+            std::sort(shadowBucketOrder_.begin(), shadowBucketOrder_.end(),
+                      [this](u32 a, u32 b) { return shadowBuckets_[a].meshKey < shadowBuckets_[b].meshKey; });
         }
     }
-    if (casters_.empty()) {
+
+    if (shadowBucketOrder_.empty()) {
         return;
     }
 
+    // ...then each cascade culls the compact bounding-sphere arrays directly
+    // into the upload buffer, already grouped by mesh.
     objects_.clear();
-    for (const SortKey& entry : casterOrder_) {
-        objects_.push_back(casters_[entry.draw].object);
+    shadowBatches_.clear();
+    const render::Frustum lightVolume(context.camera.viewProjection);
+    for (const u32 bucketIndex : shadowBucketOrder_) {
+        const ShadowMeshBucket& bucket = shadowBuckets_[bucketIndex];
+        const usize batchStart = objects_.size();
+        const std::span<const render::BoundingSphere> bounds = bucket.bounds;
+        const std::span<const Mat4* const> models = bucket.models;
+        for (usize i = 0; i < bounds.size(); ++i) {
+            if (lightVolume.intersects(bounds[i])) {
+                objects_.push_back({*models[i], Vec4(0.0f), Vec4(0.0f), Vec4(0.0f)});
+            }
+        }
+        if (objects_.size() > batchStart) {
+            shadowBatches_.push_back(
+                {bucket.mesh, static_cast<u32>(batchStart), static_cast<u32>(objects_.size() - batchStart)});
+        }
     }
+    if (shadowBatches_.empty()) {
+        return;
+    }
+
     // The shadow views of a frame share the buffer: each writes after the
     // previous one, so none overwrites what an earlier draw still reads.
-    if (context.firstShadowView) {
-        shadowObjectsUsed_ = 0;
-    }
     const usize first = shadowObjectsUsed_;
     shadowObjectsUsed_ += objects_.size();
     ObjectBuffer& slot = shadowObjectBuffers_[context.device.frameSlot()];
     ensureObjectCapacity(context.device, slot, shadowObjectsUsed_);
     context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)),
                                first * sizeof(ObjectData));
+
+    rhi::ICommandList& commands = context.commands;
     const std::array<u32, 4> cascade = {context.shadowCascade, 0, 0, 0};
-    context.commands.bindPipeline(shadowPipeline_);
-    context.commands.pushConstants(0, rhi::asBytes(cascade));
-    drawBatch(context.commands, context, shadowPipeline_, casters_, casterOrder_, static_cast<u32>(first),
-              slot.bindGroup);
-}
-
-void MeshFeature::drawBatch(rhi::ICommandList& commands, const render::RenderFrameContext& context,
-                            rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws,
-                            const std::vector<SortKey>& order, u32 firstInstance,
-                            rhi::BindGroupHandle objects) {
-    if (order.empty()) {
-        return;
-    }
-    commands.bindPipeline(pipeline);
+    commands.bindPipeline(shadowPipeline_);
     commands.bindBindGroup(0, context.frameBindGroup);
-    commands.bindBindGroup(2, objects);
-    rhi::BindGroupHandle boundMaterial;
-    const GpuMesh* boundMesh = nullptr;
-    for (usize begin = 0; begin < order.size();) {
-        // A run of draws sharing the material and the mesh (transparent keys
-        // are distances: equal ones are merged only if they share both too).
-        const DrawItem& first = draws[order[begin].draw];
-        usize end = begin + 1;
-        while (end < order.size()) {
-            const DrawItem& next = draws[order[end].draw];
-            if (next.material != first.material || next.mesh != first.mesh) {
-                break;
-            }
-            ++end;
-        }
-
-        if (first.material != boundMaterial) {
-            commands.bindBindGroup(1, first.material);
-            boundMaterial = first.material;
-        }
-        if (first.mesh != boundMesh) {
-            commands.bindVertexBuffer(first.mesh->vertexBuffer);
-            commands.bindIndexBuffer(first.mesh->indexBuffer, rhi::IndexType::UInt32);
-            boundMesh = first.mesh;
-        }
-        commands.drawIndexed(first.mesh->indexCount, static_cast<u32>(end - begin), 0, 0,
-                             firstInstance + static_cast<u32>(begin));
-        begin = end;
+    commands.bindBindGroup(2, slot.bindGroup);
+    commands.pushConstants(0, rhi::asBytes(cascade));
+    for (const ShadowBatch& batch : shadowBatches_) {
+        commands.bindVertexBuffer(batch.mesh->vertexBuffer);
+        commands.bindIndexBuffer(batch.mesh->indexBuffer, rhi::IndexType::UInt32);
+        commands.drawIndexed(batch.mesh->indexCount, batch.instanceCount, 0, 0,
+                             static_cast<u32>(first) + batch.firstInstance);
     }
 }
 
