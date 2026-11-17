@@ -96,7 +96,14 @@ struct FaceContact {
     bool found = false;
     bool incidentIsB = true;
     Vec3 normal{0.0f};
-    std::vector<FacePoint> points;
+    std::array<FacePoint, 8> points{};
+    usize count = 0;
+
+    void push(const FacePoint& point) {
+        if (count < points.size()) {
+            points[count++] = point;
+        }
+    }
 };
 
 FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
@@ -175,7 +182,7 @@ FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
         result.found = true;
         result.incidentIsB = true;  // pushes B away from A along the normal
         result.normal = normal;
-        result.points.push_back({point, -bestEdge});
+        result.push({point, -bestEdge});
         return result;
     }
 
@@ -206,7 +213,11 @@ FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
     const int v = (incidentAxis + 2) % 3;
     const Vec3 du = incidentAxes[u] * incident.half[u];
     const Vec3 dv = incidentAxes[v] * incident.half[v];
-    std::vector<Vec3> polygon = {faceCenter + du + dv, faceCenter - du + dv, faceCenter - du - dv, faceCenter + du - dv};
+    // Clipping a quad against four half-planes produces at most 8 vertices.
+    std::array<Vec3, 8> polygon = {faceCenter + du + dv, faceCenter - du + dv,
+                                   faceCenter - du - dv, faceCenter + du - dv};
+    usize polyCount = 4;
+    std::array<Vec3, 8> clipped{};
 
     // Clip it to the reference face's rectangle (Sutherland-Hodgman).
     for (int k = 1; k <= 2; ++k) {
@@ -214,34 +225,37 @@ FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
         for (const f32 sign : {1.0f, -1.0f}) {
             const Vec3 plane = referenceAxes[side2] * sign;
             const f32 limit = glm::dot(plane, reference.center) + reference.half[side2];
-            std::vector<Vec3> clipped;
-            for (usize i = 0; i < polygon.size(); ++i) {
+            usize clippedCount = 0;
+            for (usize i = 0; i < polyCount; ++i) {
                 const Vec3& from = polygon[i];
-                const Vec3& to = polygon[(i + 1) % polygon.size()];
+                const Vec3& to = polygon[(i + 1) % polyCount];
                 const f32 df = glm::dot(plane, from) - limit;
                 const f32 dt = glm::dot(plane, to) - limit;
-                if (df <= 0.0f) {
-                    clipped.push_back(from);
+                if (df <= 0.0f && clippedCount < clipped.size()) {
+                    clipped[clippedCount++] = from;
                 }
-                if ((df < 0.0f) != (dt < 0.0f)) {
-                    clipped.push_back(from + (to - from) * (df / (df - dt)));
+                if ((df < 0.0f) != (dt < 0.0f) && clippedCount < clipped.size()) {
+                    clipped[clippedCount++] = from + (to - from) * (df / (df - dt));
                 }
             }
-            polygon = std::move(clipped);
-            if (polygon.empty()) {
+            if (clippedCount == 0) {
                 return result;
             }
+            for (usize i = 0; i < clippedCount; ++i) {
+                polygon[i] = clipped[i];
+            }
+            polyCount = clippedCount;
         }
     }
     // Points within reach of the reference face become contacts.
     const f32 facePlane = glm::dot(normal, reference.center) + reference.half[axis];
-    for (const Vec3& point : polygon) {
-        const f32 gap = glm::dot(normal, point) - facePlane;
+    for (usize i = 0; i < polyCount; ++i) {
+        const f32 gap = glm::dot(normal, polygon[i]) - facePlane;
         if (gap < margin) {
-            result.points.push_back({point, -gap});
+            result.push({polygon[i], -gap});
         }
     }
-    result.found = !result.points.empty();
+    result.found = result.count > 0;
     result.incidentIsB = referenceIsA;
     result.normal = normal;
     return result;
@@ -368,8 +382,8 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
         if (face.found) {
             // Contacts push `box` (the A side) away from `other`.
             const Vec3 normal = face.incidentIsB ? -face.normal : face.normal;
-            for (const FacePoint& point : face.points) {
-                found.push_back({box.body, otherBody, other.entity, point.point, normal, point.depth});
+            for (usize i = 0; i < face.count; ++i) {
+                found.push_back({box.body, otherBody, other.entity, face.points[i].point, normal, face.points[i].depth});
             }
         } else if (otherBody) {
             cornersInto(box.shape, box.body, otherBody, other, margin, false);
