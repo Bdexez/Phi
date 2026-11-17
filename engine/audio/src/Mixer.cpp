@@ -50,35 +50,119 @@ usize fadeLength(f32 seconds, u32 rate) {
                : 0;
 }
 
+/// Mixes one voice into interleaved stereo `out`, with channel layout and
+/// stopping/looping behavior hoisted out of the per-sample loop.
+template <bool Stereo, bool Stopping, bool Loop>
+void mixVoiceSamples(const f32* samples, usize length, f64& cursor, f64 step,
+                     usize& fadeLeft, f32 invFadeFrames, f32 gainLeft, f32 gainRight,
+                     f32 stepLeft, f32 stepRight, f32* out, usize frames) {
+    const f64 lengthF = static_cast<f64>(length);
+    for (usize frame = 0; frame < frames; ++frame) {
+        f32 fade = 1.0f;
+        if constexpr (Stopping) {
+            if (fadeLeft == 0) {
+                break;
+            }
+            fade = static_cast<f32>(fadeLeft) * invFadeFrames;
+            --fadeLeft;
+        }
+        if (cursor >= lengthF) {
+            if constexpr (!Loop) {
+                break;
+            } else {
+                cursor = std::fmod(cursor, lengthF);
+            }
+        }
+        // Linear interpolation between the two clip frames around the cursor;
+        // past the end it blends toward the start when looping.
+        const usize index = static_cast<usize>(cursor);
+        const usize next = index + 1 < length ? index + 1 : (Loop ? 0 : index);
+        const f32 t = static_cast<f32>(cursor - static_cast<f64>(index));
+        gainLeft += stepLeft;
+        gainRight += stepRight;
+        if constexpr (Stereo) {
+            const usize i0 = index * 2;
+            const usize i1 = next * 2;
+            const f32 left = samples[i0] + (samples[i1] - samples[i0]) * t;
+            const f32 right = samples[i0 + 1] + (samples[i1 + 1] - samples[i0 + 1]) * t;
+            out[frame * 2] += left * gainLeft * fade;
+            out[frame * 2 + 1] += right * gainRight * fade;
+        } else {
+            const f32 value = (samples[index] + (samples[next] - samples[index]) * t) * fade;
+            out[frame * 2] += value * gainLeft;
+            out[frame * 2 + 1] += value * gainRight;
+        }
+        cursor += step;
+    }
+}
+
+void dispatchMixVoice(const assets::AudioData& clip, f64& cursor, f64 step,
+                      bool stopping, usize& fadeLeft, usize fadeFrames, bool loop,
+                      f32 gainLeft, f32 gainRight, f32 stepLeft, f32 stepRight,
+                      f32* out, usize frames) {
+    const f32* samples = clip.samples.data();
+    const usize length = clip.frameCount();
+    const f32 invFade = stopping ? 1.0f / static_cast<f32>(fadeFrames) : 0.0f;
+    const auto dispatchLoop = [&]<bool Stereo, bool Stopping>() {
+        if (loop) {
+            mixVoiceSamples<Stereo, Stopping, true>(samples, length, cursor, step, fadeLeft, invFade,
+                                                    gainLeft, gainRight, stepLeft, stepRight, out, frames);
+        } else {
+            mixVoiceSamples<Stereo, Stopping, false>(samples, length, cursor, step, fadeLeft, invFade,
+                                                     gainLeft, gainRight, stepLeft, stepRight, out, frames);
+        }
+    };
+    const auto dispatchStopping = [&]<bool Stereo>() {
+        if (stopping) {
+            dispatchLoop.template operator()<Stereo, true>();
+        } else {
+            dispatchLoop.template operator()<Stereo, false>();
+        }
+    };
+    if (clip.channels == 2) {
+        dispatchStopping.template operator()<true>();
+    } else {
+        dispatchStopping.template operator()<false>();
+    }
+}
+
 }  // namespace
 
 void Mixer::stop(VoiceId voice, f32 fade) {
-    const std::lock_guard lock(mutex_);
-    const usize frames = fadeLength(fade, sampleRate_);
-    std::erase_if(voices_, [&](Voice& v) {
-        if (v.id != voice || v.stopping()) {
+    std::shared_ptr<const assets::AudioData> dropped;
+    {
+        const std::lock_guard lock(mutex_);
+        const usize frames = fadeLength(fade, sampleRate_);
+        std::erase_if(voices_, [&](Voice& v) {
+            if (v.id != voice || v.stopping()) {
+                return false;
+            }
+            if (frames == 0 || !v.mixed) {
+                dropped = std::move(v.clip);
+                return true;  // cut at once, or never heard yet
+            }
+            v.fadeFrames = v.fadeLeft = frames;
             return false;
-        }
-        if (frames == 0 || !v.mixed) {
-            return true;  // cut at once, or never heard yet
-        }
-        v.fadeFrames = v.fadeLeft = frames;
-        return false;
-    });
+        });
+    }
 }
 
 void Mixer::stopAll(f32 fade) {
-    const std::lock_guard lock(mutex_);
-    const usize frames = fadeLength(fade, sampleRate_);
-    std::erase_if(voices_, [&](Voice& v) {
-        if (frames == 0 || !v.mixed) {
-            return true;
-        }
-        if (!v.stopping()) {
-            v.fadeFrames = v.fadeLeft = frames;
-        }
-        return false;
-    });
+    std::vector<std::shared_ptr<const assets::AudioData>> dropped;
+    {
+        const std::lock_guard lock(mutex_);
+        const usize frames = fadeLength(fade, sampleRate_);
+        std::erase_if(voices_, [&](Voice& v) {
+            if (frames == 0 || !v.mixed) {
+                dropped.push_back(std::move(v.clip));
+                return true;
+            }
+            if (!v.stopping()) {
+                v.fadeFrames = v.fadeLeft = frames;
+            }
+            return false;
+        });
+    }
 }
 
 bool Mixer::playing(VoiceId voice) const {
@@ -181,69 +265,51 @@ std::pair<f32, f32> Mixer::gains(const Voice& voice) const {
 void Mixer::mix(std::span<f32> out) {
     std::fill(out.begin(), out.end(), 0.0f);
     const usize frames = out.size() / 2;
-    const std::lock_guard lock(mutex_);
-    for (Voice& voice : voices_) {
-        const assets::AudioData& clip = *voice.clip;
-        const f32 busSpeed = busSpeeds_[static_cast<usize>(voice.params.bus) % kBusCount];
-        const bool paused = busSpeed <= 0.0f;
-        // A paused voice glides to silence over this buffer, holding its place.
-        const auto [left, right] = paused ? std::pair(0.0f, 0.0f) : gains(voice);
-        // Glide from the last buffer's gains to these over this buffer.
-        const f32 startLeft = voice.mixed ? voice.gainLeft : left;
-        const f32 startRight = voice.mixed ? voice.gainRight : right;
-        voice.gainLeft = left;
-        voice.gainRight = right;
-        voice.mixed = true;
-        const f32 stepLeft = (left - startLeft) / static_cast<f32>(std::max<usize>(frames, 1));
-        const f32 stepRight = (right - startRight) / static_cast<f32>(std::max<usize>(frames, 1));
-        f32 gainLeft = startLeft;
-        f32 gainRight = startRight;
-        const f32 pitch = std::isfinite(voice.params.pitch) ? std::clamp(voice.params.pitch * busSpeed, 0.01f, 16.0f) : 1.0f;
-        const f64 step = paused ? 0.0 : static_cast<f64>(clip.sampleRate) / sampleRate_ * pitch;
-        if (paused && startLeft == 0.0f && startRight == 0.0f) {
-            if (voice.stopping()) {
-                voice.fadeLeft = 0;  // stopped while silent: gone at once
-            }
-            continue;  // silent already: nothing to fade
+    std::vector<std::shared_ptr<const assets::AudioData>> finishedClips;
+    f32 master = 0.0f;
+    {
+        const std::lock_guard lock(mutex_);
+        if (voices_.empty()) {
+            return;
         }
-        const usize length = clip.frameCount();
-        const auto sample = [&](usize frame, u32 channel) {
-            return clip.samples[frame * clip.channels + std::min(channel, clip.channels - 1)];
-        };
-        for (usize frame = 0; frame < frames; ++frame) {
-            f32 fade = 1.0f;
-            if (voice.stopping()) {
-                if (voice.fadeLeft == 0) {
-                    break;
+        for (Voice& voice : voices_) {
+            const assets::AudioData& clip = *voice.clip;
+            const f32 busSpeed = busSpeeds_[static_cast<usize>(voice.params.bus) % kBusCount];
+            const bool paused = busSpeed <= 0.0f;
+            // A paused voice glides to silence over this buffer, holding its place.
+            const auto [left, right] = paused ? std::pair(0.0f, 0.0f) : gains(voice);
+            // Glide from the last buffer's gains to these over this buffer.
+            const f32 startLeft = voice.mixed ? voice.gainLeft : left;
+            const f32 startRight = voice.mixed ? voice.gainRight : right;
+            voice.gainLeft = left;
+            voice.gainRight = right;
+            voice.mixed = true;
+            const f32 stepLeft = (left - startLeft) / static_cast<f32>(std::max<usize>(frames, 1));
+            const f32 stepRight = (right - startRight) / static_cast<f32>(std::max<usize>(frames, 1));
+            const f32 pitch =
+                std::isfinite(voice.params.pitch) ? std::clamp(voice.params.pitch * busSpeed, 0.01f, 16.0f) : 1.0f;
+            const f64 step = paused ? 0.0 : static_cast<f64>(clip.sampleRate) / sampleRate_ * pitch;
+            if (paused && startLeft == 0.0f && startRight == 0.0f) {
+                if (voice.stopping()) {
+                    voice.fadeLeft = 0;  // stopped while silent: gone at once
                 }
-                fade = static_cast<f32>(voice.fadeLeft) / static_cast<f32>(voice.fadeFrames);
-                --voice.fadeLeft;
+                continue;  // silent already: nothing to fade
             }
-            if (voice.cursor >= static_cast<f64>(length)) {
-                if (!voice.params.loop) {
-                    break;
-                }
-                voice.cursor = std::fmod(voice.cursor, static_cast<f64>(length));
-            }
-            // Linear interpolation between the two clip frames around the
-            // cursor; past the end it blends toward the start when looping.
-            const usize index = static_cast<usize>(voice.cursor);
-            const usize next = index + 1 < length ? index + 1 : (voice.params.loop ? 0 : index);
-            const f32 t = static_cast<f32>(voice.cursor - static_cast<f64>(index));
-            gainLeft += stepLeft;
-            gainRight += stepRight;
-            for (u32 channel = 0; channel < 2; ++channel) {
-                const f32 value = sample(index, channel) + (sample(next, channel) - sample(index, channel)) * t;
-                out[frame * 2 + channel] += value * (channel == 0 ? gainLeft : gainRight) * fade;
-            }
-            voice.cursor += step;
+            dispatchMixVoice(clip, voice.cursor, step, voice.stopping(), voice.fadeLeft, voice.fadeFrames,
+                             voice.params.loop, startLeft, startRight, stepLeft, stepRight, out.data(), frames);
         }
+        // Release finished clips after unlocking mutex_ so deallocation never
+        // blocks the game thread or stalls the audio lock.
+        std::erase_if(voices_, [&](Voice& voice) {
+            const bool done = (voice.stopping() && voice.fadeLeft == 0) ||
+                              (!voice.params.loop && voice.cursor >= static_cast<f64>(voice.clip->frameCount()));
+            if (done) {
+                finishedClips.push_back(std::move(voice.clip));
+            }
+            return done;
+        });
+        master = std::isfinite(masterVolume_) ? std::max(masterVolume_, 0.0f) : 0.0f;
     }
-    std::erase_if(voices_, [](const Voice& voice) {
-        return (voice.stopping() && voice.fadeLeft == 0) ||
-               (!voice.params.loop && voice.cursor >= static_cast<f64>(voice.clip->frameCount()));
-    });
-    const f32 master = std::isfinite(masterVolume_) ? std::max(masterVolume_, 0.0f) : 0.0f;
     for (f32& value : out) {
         value = std::clamp(value * master, -1.0f, 1.0f);
     }
