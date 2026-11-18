@@ -331,6 +331,7 @@ Result<ModelData> decodeGltf(std::span<const u8> bytes, const UriReader& readUri
             data = std::move(*loaded);
         } else if (i == 0 && hasBinaryChunk) {
             data = std::move(binaryChunk);
+            hasBinaryChunk = false;
         } else {
             return fail("gltf: buffer {} has no data", i);
         }

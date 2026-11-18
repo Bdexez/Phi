@@ -27,11 +27,16 @@ std::vector<ecs::Entity> findTargets(const ecs::World& world, ecs::Entity root) 
 }
 
 void pose(ecs::World& world, const std::vector<ecs::Entity>& targets, const assets::ModelAnimation& clip, f32 time) {
+    auto* transforms = world.storage<scene::Transform>();
+    if (transforms == nullptr) {
+        return;
+    }
     for (const assets::AnimationChannel& channel : clip.channels) {
         if (channel.node >= targets.size()) {
             continue;
         }
-        auto* transform = world.tryGet<scene::Transform>(targets[channel.node]);
+        const ecs::Entity target = targets[channel.node];
+        auto* transform = world.alive(target) ? transforms->tryGet(target.index) : nullptr;
         if (transform == nullptr) {
             continue;
         }
@@ -51,37 +56,32 @@ void applyAnimation(ecs::World& world, ecs::Entity root, const assets::ModelAnim
 }
 
 void updateAnimations(ecs::World& world, f32 dt) {
-    // Players first, then their poses: finding targets walks the hierarchy,
-    // which is no business of a view's iteration.
-    std::vector<std::pair<ecs::Entity, AnimationPlayer*>> players;
     world.view<AnimationPlayer>().each([&](ecs::Entity entity, AnimationPlayer& player) {
-        if (player.clip != nullptr) {
-            players.emplace_back(entity, &player);
+        if (player.clip == nullptr) {
+            return;
         }
-    });
-    for (const auto& [entity, player] : players) {
-        const f32 duration = player->clip->duration;
-        if (player->playing && std::isfinite(player->speed) && std::isfinite(dt)) {
-            player->time += dt * player->speed;
-            if (player->loop && duration > 0.0f) {
-                player->time = std::fmod(player->time, duration);
-                if (player->time < 0.0f) {
-                    player->time += duration;
+        const f32 duration = player.clip->duration;
+        if (player.playing && std::isfinite(player.speed) && std::isfinite(dt)) {
+            player.time += dt * player.speed;
+            if (player.loop && duration > 0.0f) {
+                player.time = std::fmod(player.time, duration);
+                if (player.time < 0.0f) {
+                    player.time += duration;
                 }
-            } else if (player->time >= duration || player->time <= 0.0f) {
-                player->time = std::clamp(player->time, 0.0f, duration);
-                player->playing = player->speed > 0.0f ? player->time < duration : player->time > 0.0f;
+            } else if (player.time >= duration || player.time <= 0.0f) {
+                player.time = std::clamp(player.time, 0.0f, duration);
+                player.playing = player.speed > 0.0f ? player.time < duration : player.time > 0.0f;
             }
         }
         // Targets are found once, and again when one disappears.
-        const bool stale = player->targets.empty() ||
-                           std::any_of(player->targets.begin(), player->targets.end(),
+        const bool stale = player.targets.empty() ||
+                           std::any_of(player.targets.begin(), player.targets.end(),
                                        [&](ecs::Entity target) { return target.valid() && !world.alive(target); });
         if (stale) {
-            player->targets = findTargets(world, entity);
+            player.targets = findTargets(world, entity);
         }
-        pose(world, player->targets, *player->clip, player->time);
-    }
+        pose(world, player.targets, *player.clip, player.time);
+    });
 }
 
 void addComponentSerializers(scene::ComponentSerializers& serializers, const ClipNames& clips) {
