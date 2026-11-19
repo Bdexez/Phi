@@ -23,6 +23,7 @@
 #include <cmath>
 #include <format>
 #include <numbers>
+#include <vector>
 
 using namespace bdex;
 
@@ -111,6 +112,22 @@ protected:
     }
 
 private:
+    /// Normal map of `cells` x `cells` square tiles whose edges slope down
+    /// over `bevel` texels.
+    static assets::ImageData beveledTiles(u32 size, u32 cells, f32 bevel, f32 strength) {
+        const f32 cell = static_cast<f32>(size) / static_cast<f32>(cells);
+        std::vector<f32> heights(static_cast<usize>(size) * size);
+        for (u32 y = 0; y < size; ++y) {
+            for (u32 x = 0; x < size; ++x) {
+                const f32 u = std::fmod(static_cast<f32>(x) + 0.5f, cell);
+                const f32 v = std::fmod(static_cast<f32>(y) + 0.5f, cell);
+                const f32 edge = std::min({u, v, cell - u, cell - v});
+                heights[static_cast<usize>(y) * size + x] = std::min(edge, bevel);
+            }
+        }
+        return assets::makeNormalMap(heights, size, size, strength / bevel);
+    }
+
     /// Logs the CPU time of every engine task since the previous profile.
     void logProfile() {
         Scheduler& scheduler = engine().scheduler();
@@ -150,9 +167,17 @@ private:
         const render::TextureHandle crate = gfx.createTexture(
             assets::makeCheckerboard(64, 4, {255, 255, 255, 255}, {200, 200, 200, 255}));
 
+        // Beveled tiles, matching the checker cells, give the floor and the
+        // crates some relief through normal maps.
+        const render::TextureHandle tiles = gfx.createTexture(beveledTiles(256, 8, 6.0f, 3.0f),
+                                                              render::TextureColorSpace::Linear);
+        const render::TextureHandle panels = gfx.createTexture(beveledTiles(64, 4, 3.0f, 2.0f),
+                                                               render::TextureColorSpace::Linear);
+
         render::MaterialDesc ground;
         ground.baseColor = Vec4(0.55f, 0.6f, 0.55f, 1.0f);
         ground.albedo = checker;
+        ground.normalMap = tiles;
         ground.specular = 0.05f;
         groundMaterial_ = gfx.createMaterial(ground);
 
@@ -181,6 +206,7 @@ private:
             render::MaterialDesc painted;
             painted.baseColor = Vec4(hsvToRgb(static_cast<f32>(i) / kCubeCount, 0.65f, 0.95f), 1.0f);
             painted.albedo = crate;
+            painted.normalMap = panels;
             painted.specular = 0.4f;
             cubeMaterials_[i] = gfx.createMaterial(painted);
         }
