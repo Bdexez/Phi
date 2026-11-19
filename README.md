@@ -101,7 +101,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F3` | Log the CPU time of every engine task and the last frame's draw statistics. |
 | `Escape` | Quit. |
 
-Every control is an input action that can be rebound in the `[input]` section of `sandbox.ini` (for example `move_forward = Z, Up` on an AZERTY keyboard). Applications define their actions the same way and query them through `InputActions`.
+A gamepad works too: the left stick moves, the right stick looks around, the bumpers go up and down, and the right trigger goes faster. Every control is an input action that can be rebound in the `[input]` section of `sandbox.ini` (for example `move_forward = Z, Up` on an AZERTY keyboard), from keys, mouse buttons, gamepad buttons, or stick directions. Applications define their actions the same way and query them through `InputActions`, with `value()` for analog strength.
 
 Screenshots are saved in the current working directory.
 
