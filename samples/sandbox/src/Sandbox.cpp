@@ -10,12 +10,13 @@
 // Controls (rebindable in the [input] section of sandbox.ini): hold the
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
-// F3 to log a frame profile, Escape to quit. A gamepad works too: sticks to
+// F3 to log a frame profile, F4 for debug gizmos, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
 
 #include <bdex/app/Application.hpp>
+#include <bdex/render/DebugDraw.hpp>
 #include <bdex/core/Log.hpp>
 
 #include <algorithm>
@@ -74,6 +75,7 @@ protected:
         config.setDefault("input.look_right", "RightStickRight");
         config.setDefault("input.screenshot", "F2, GamepadY");
         config.setDefault("input.profile", "F3");
+        config.setDefault("input.debug_view", "F4");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -108,6 +110,12 @@ protected:
             if (controls->pressed("profile")) {
                 logProfile();
             }
+            if (controls->pressed("debug_view")) {
+                debugView_ = !debugView_;
+            }
+        }
+        if (debugView_) {
+            drawDebugView();
         }
     }
 
@@ -126,6 +134,28 @@ private:
             }
         }
         return assets::makeNormalMap(heights, size, size, strength / bevel);
+    }
+
+    /// Gizmos: the sun's direction, point light ranges, and the axes of
+    /// everything drawn.
+    void drawDebugView() {
+        auto* debug = engine().services().tryGet<render::DebugDraw>();
+        if (debug == nullptr) {
+            return;
+        }
+        ecs::World& world = scene().world();
+        world.view<const render::DirectionalLight>().each([&](const render::DirectionalLight& sun) {
+            const Vec3 from(0.0f, 6.0f, 0.0f);
+            debug->line(from, from + glm::normalize(sun.direction) * 3.0f, Vec4(1.0f, 0.9f, 0.2f, 1.0f));
+        });
+        world.view<const render::PointLight, const scene::WorldTransform>().each(
+            [&](const render::PointLight& light, const scene::WorldTransform& transform) {
+                debug->sphere(Vec3(transform.matrix[3]), light.range, Vec4(light.color, 0.6f), 48);
+            });
+        world.view<const render::MeshRenderer, const scene::WorldTransform>().each(
+            [&](const render::MeshRenderer&, const scene::WorldTransform& transform) {
+                debug->axes(transform.matrix, 0.75f);
+            });
     }
 
     /// Logs the CPU time of every engine task since the previous profile.
@@ -361,6 +391,7 @@ private:
     render::MaterialHandle groundMaterial_;
     render::MaterialHandle sphereMaterial_;
     render::MaterialHandle glassMaterial_;
+    bool debugView_ = false;
     std::array<render::MaterialHandle, 2> moonMaterials_{};
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
