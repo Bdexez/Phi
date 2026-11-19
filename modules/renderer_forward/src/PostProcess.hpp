@@ -7,10 +7,10 @@
 
 namespace bdex::forward {
 
-/// Post pass of the forward renderer: holds the HDR target the scene is
-/// drawn into, then applies exposure and tone mapping from it into the
+/// Post-processing of the forward renderer: holds the HDR target the scene
+/// is drawn into, then applies exposure and tone mapping from it into the
 /// display (or capture) target with a full-screen triangle.
-class ToneMapPass {
+class PostProcess {
 public:
     /// Format of the HDR scene target.
     static constexpr rhi::Format kSceneFormat = rhi::Format::RGBA16Float;

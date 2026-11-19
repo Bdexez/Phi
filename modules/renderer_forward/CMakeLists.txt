@@ -4,7 +4,7 @@ bdex_add_module(renderer_forward
         src/ForwardRenderer.cpp
         src/ForwardRendererModule.cpp
         src/MeshFeature.cpp
-        src/ToneMapPass.cpp
+        src/PostProcess.cpp
     DEPS
         bdex::core
         bdex::ecs
@@ -25,5 +25,7 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/fullscreen.vert
         shaders/tonemap.frag
         shaders/debug.vert
-        shaders/debug.frag)
+        shaders/debug.frag
+        shaders/bloom_down.frag
+        shaders/bloom_up.frag)
 add_dependencies(bdex_module_renderer_forward bdex_renderer_forward_shaders)

@@ -120,7 +120,7 @@ Result<> ForwardRenderer::initialize() {
     // --- Post-processing ----------------------------------------------------------------
     hdr_ = config.getBool("renderer.hdr", true);
     if (hdr_) {
-        ToneMapPass::Settings settings;
+        PostProcess::Settings settings;
         settings.exposure =
             static_cast<f32>(std::max(config.getFloat("renderer.exposure", 1.0), 0.0));
         const std::string tonemap = config.getString("renderer.tonemap", "aces");
@@ -128,7 +128,7 @@ Result<> ForwardRenderer::initialize() {
             log::warn("renderer", "unknown renderer.tonemap '{}'; using 'aces'", tonemap);
         }
         settings.aces = tonemap != "none";
-        if (const auto created = toneMap_.create(
+        if (const auto created = postProcess_.create(
                 device_, engine_.services().get<assets::AssetManager>(), colorFormat_, settings);
             !created) {
             return created;
@@ -174,7 +174,7 @@ void ForwardRenderer::shutdown() {
     frameBindGroups_.clear();
     frameBuffers_.clear();
 
-    toneMap_.destroy(device_);
+    postProcess_.destroy(device_);
     device_.destroySampler(defaultSampler_);
     device_.destroySampler(shadowSampler_);
     device_.destroyTexture(shadowMap_);
@@ -190,7 +190,7 @@ render::RenderSetupContext ForwardRenderer::setupContext() {
     // With HDR, features draw the scene in 16-bit float; only the post pass
     // writes the output.
     return render::RenderSetupContext{device_,      engine_.services(),
-                                      hdr_ ? ToneMapPass::kSceneFormat : colorFormat_,
+                                      hdr_ ? PostProcess::kSceneFormat : colorFormat_,
                                       depthFormat_, shadowFormat_,      frameLayout_};
 }
 
@@ -586,10 +586,10 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
             ensureCaptureTarget(extent_);
         }
         if (hdr_) {
-            renderScene(commands, toneMap_.sceneTarget(device_, extent_), extent_, camera, time);
-            toneMap_.apply(commands, target, extent_);
+            renderScene(commands, postProcess_.sceneTarget(device_, extent_), extent_, camera, time);
+            postProcess_.apply(commands, target, extent_);
             if (extraCapture) {
-                toneMap_.apply(commands, captureTarget_, extent_);
+                postProcess_.apply(commands, captureTarget_, extent_);
             }
         } else {
             renderScene(commands, target, extent_, camera, time);
