@@ -44,6 +44,7 @@ private:
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
     const Pipeline* boundPipeline_ = nullptr;
     std::vector<rhi::TextureHandle> colorTargets_;
+    rhi::TextureHandle depthTarget_;
     rhi::FrameStats stats_;
     bool rendering_ = false;
 };
