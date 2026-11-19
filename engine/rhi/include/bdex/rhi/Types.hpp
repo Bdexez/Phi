@@ -105,6 +105,7 @@ struct TextureDesc {
 
 enum class Filter : u8 { Nearest, Linear };
 enum class AddressMode : u8 { Repeat, MirroredRepeat, ClampToEdge };
+enum class CompareOp : u8 { Never, Less, Equal, LessOrEqual, Greater, NotEqual, GreaterOrEqual, Always };
 
 struct SamplerDesc {
     Filter minFilter = Filter::Linear;
@@ -113,6 +114,11 @@ struct SamplerDesc {
     /// Anisotropic filtering level; 1 disables it. Clamped to what the device
     /// supports.
     f32 maxAnisotropy = 1.0f;
+    /// Depth comparison sampler (shadow maps): sampling a depth texture
+    /// returns `reference <op> stored` (0 or 1, filtered between texels)
+    /// instead of the stored depth. In GLSL, bind it as a sampler2DShadow.
+    bool compare = false;
+    CompareOp compareOp = CompareOp::LessOrEqual;
     std::string debugName;
 };
 
@@ -190,7 +196,6 @@ struct VertexLayout {
 enum class PrimitiveTopology : u8 { TriangleList, TriangleStrip, LineList, PointList };
 enum class CullMode : u8 { None, Front, Back };
 enum class FrontFace : u8 { CounterClockwise, Clockwise };
-enum class CompareOp : u8 { Never, Less, Equal, LessOrEqual, Greater, NotEqual, GreaterOrEqual, Always };
 enum class BlendMode : u8 { Opaque, AlphaBlend, Additive };
 
 struct GraphicsPipelineDesc {

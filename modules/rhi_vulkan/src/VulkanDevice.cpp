@@ -896,6 +896,10 @@ rhi::SamplerHandle Device::createSampler(const rhi::SamplerDesc& desc) {
         samplerInfo.anisotropyEnable = VK_TRUE;
         samplerInfo.maxAnisotropy = std::min(desc.maxAnisotropy, maxSamplerAnisotropy_);
     }
+    if (desc.compare) {
+        samplerInfo.compareEnable = VK_TRUE;
+        samplerInfo.compareOp = toVkCompareOp(desc.compareOp);
+    }
 
     Sampler sampler;
     BDEX_VK_CHECK(vkCreateSampler(device_, &samplerInfo, nullptr, &sampler.handle));
