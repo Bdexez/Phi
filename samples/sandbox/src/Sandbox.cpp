@@ -33,7 +33,7 @@ struct Spin {
 
 /// Application-defined system. Systems are plain functions over ECS views.
 void spinSystem(ecs::World& world, f32 deltaSeconds) {
-    world.view<scene::Transform, Spin>().each([deltaSeconds](scene::Transform& transform,
+    world.view<scene::Transform, const Spin>().each([deltaSeconds](scene::Transform& transform,
                                                             const Spin& spin) {
         transform.rotation =
             glm::normalize(glm::angleAxis(spin.speed * deltaSeconds, spin.axis) * transform.rotation);
