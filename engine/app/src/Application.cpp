@@ -29,6 +29,7 @@ constexpr std::string_view kUsage =
     "  --frames <n>         exit after n frames\n"
     "  --screenshot <file>  save a PNG capture\n"
     "  --log-level <level>  trace | debug | info | warn | error | off\n"
+    "  --log-file <file>    also write the log to a file\n"
     "  --strict             fail if the RHI reports validation errors\n"
     "  --help               show this message\n";
 
@@ -71,6 +72,10 @@ Result<CommandLine> parseCommandLine(int argc, char** argv) {
             const auto v = value();
             if (!v) return std::unexpected(v.error());
             cli.overrides.set("app.screenshot", *v);
+        } else if (arg == "--log-file") {
+            const auto v = value();
+            if (!v) return std::unexpected(v.error());
+            cli.overrides.set("log.file", *v);
         } else if (arg == "--log-level") {
             const auto v = value();
             if (!v) return std::unexpected(v.error());
@@ -188,6 +193,22 @@ int Application::run(int argc, char** argv) {
         log::setLevel(level);
     } else {
         log::warn("app", "unknown log level '{}'", config.getString("log.level"));
+    }
+    // Closed when run() returns, after the last message.
+    struct FileLog {
+        u32 sink = 0;
+        ~FileLog() {
+            if (sink != 0) {
+                log::removeSink(sink);
+            }
+        }
+    } fileLog;
+    if (const std::string logFile = config.getString("log.file"); !logFile.empty()) {
+        if (const auto sink = log::addFileSink(logFile)) {
+            fileLog.sink = *sink;
+        } else {
+            log::warn("app", "{}", sink.error().message);
+        }
     }
 
     // Headless: keep the configured stack but swap the window backend.

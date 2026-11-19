@@ -38,6 +38,7 @@ namespace bdex::app {
 ///   --screenshot <file>  save a PNG of the last frame (or of frame
 ///                        app.screenshot_frame)
 ///   --log-level <level>  trace | debug | info | warn | error | off
+///   --log-file <file>    also write the log to a file (log.file)
 ///   --strict             exit with code 3 if the RHI reported validation errors
 ///   --help
 ///
