@@ -19,8 +19,17 @@ layout(location = 2) out vec2 outUv;
 void main() {
     vec4 worldPosition = object.model * vec4(inPosition, 1.0);
     outWorldPosition = worldPosition.xyz;
-    // Inverse-transpose keeps normals perpendicular under non-uniform scale.
-    outWorldNormal = mat3(transpose(inverse(object.model))) * inNormal;
+    // Normals transform by the inverse-transpose of the model matrix, which
+    // keeps them perpendicular under non-uniform scale. The cofactor matrix
+    // equals it times the determinant: three cross products instead of a
+    // 4x4 inverse per vertex. The fragment shader normalizes, so only the
+    // determinant's sign (mirroring) has to be applied.
+    mat3 linear = mat3(object.model);
+    mat3 cofactor = mat3(cross(linear[1], linear[2]),
+                         cross(linear[2], linear[0]),
+                         cross(linear[0], linear[1]));
+    float handedness = dot(linear[0], cofactor[0]) < 0.0 ? -1.0 : 1.0;
+    outWorldNormal = cofactor * inNormal * handedness;
     outUv = inUv;
     gl_Position = frame.viewProjection * worldPosition;
 }
