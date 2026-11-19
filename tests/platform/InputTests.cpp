@@ -1,4 +1,5 @@
 #include <bdex/core/EventBus.hpp>
+#include <bdex/platform/Actions.hpp>
 #include <bdex/platform/Events.hpp>
 #include <bdex/platform/Input.hpp>
 
@@ -109,4 +110,54 @@ TEST(KeyNames, ParsingIgnoresCaseAndAcceptsAliases) {
     EXPECT_EQ(parseMouseButton("mouseright"), MouseButton::Right);
     EXPECT_EQ(mouseButtonName(MouseButton::Middle), "MouseMiddle");
     EXPECT_FALSE(parseMouseButton("Mouse9").has_value());
+}
+
+TEST(InputActions, BindsKeysAndButtonsFromConfiguration) {
+    EventBus events;
+    InputState input(events);
+    InputActions actions(input);
+
+    Config config;
+    config.set("input.jump", "Space");
+    config.set("input.fire", "MouseLeft, f");
+    config.set("input.broken", "Space, Kaboom");
+    config.set("window.width", "800");  // other sections are ignored
+    const auto loaded = actions.load(config);
+    ASSERT_FALSE(loaded.has_value());  // "broken" is reported...
+    EXPECT_NE(loaded.error().message.find("Kaboom"), std::string::npos);
+    EXPECT_TRUE(actions.has("jump"));  // ...the others still bound
+    EXPECT_TRUE(actions.has("fire"));
+    EXPECT_FALSE(actions.has("broken"));
+    EXPECT_FALSE(actions.has("width"));
+    EXPECT_EQ(actions.bindings("fire"), (std::vector<std::string>{"MouseLeft", "F"}));
+
+    input.beginFrame();
+    events.publish(KeyEvent{Key::F, KeyAction::Press});
+    EXPECT_TRUE(actions.down("fire"));
+    EXPECT_TRUE(actions.pressed("fire"));
+    EXPECT_FALSE(actions.down("jump"));
+    EXPECT_FALSE(actions.down("unknown"));
+
+    // Held through two bindings: releasing one keeps the action down.
+    input.beginFrame();
+    events.publish(MouseButtonEvent{MouseButton::Left, true});
+    events.publish(KeyEvent{Key::F, KeyAction::Release});
+    EXPECT_TRUE(actions.down("fire"));
+    EXPECT_FALSE(actions.released("fire"));
+
+    input.beginFrame();
+    events.publish(MouseButtonEvent{MouseButton::Left, false});
+    EXPECT_FALSE(actions.down("fire"));
+    EXPECT_TRUE(actions.released("fire"));
+}
+
+TEST(InputActions, RebindingReplacesBindings) {
+    EventBus events;
+    InputState input(events);
+    InputActions actions(input);
+    ASSERT_TRUE(actions.bind("jump", "Space").has_value());
+    ASSERT_TRUE(actions.bind("jump", "J, K").has_value());
+    EXPECT_EQ(actions.bindings("jump"), (std::vector<std::string>{"J", "K"}));
+    EXPECT_FALSE(actions.bind("jump", "Nope").has_value());
+    EXPECT_EQ(actions.bindings("jump"), (std::vector<std::string>{"J", "K"}));  // unchanged
 }
