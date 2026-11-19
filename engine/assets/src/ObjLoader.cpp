@@ -188,6 +188,7 @@ Result<MeshData> parseObj(std::string_view text) {
             }
         }
     }
+    computeTangents(mesh);
     return mesh;
 }
 

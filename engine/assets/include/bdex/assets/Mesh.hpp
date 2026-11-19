@@ -13,6 +13,11 @@ struct Vertex {
     Vec3 position{0.0f};
     Vec3 normal{0.0f, 1.0f, 0.0f};
     Vec2 uv{0.0f};
+    /// xyz: direction of increasing U on the surface. w (+1 or -1): the
+    /// bitangent cross(normal, tangent) * w points up in the texture
+    /// (decreasing V), so a normal map with Y up (OpenGL convention) maps
+    /// to tangent * x + bitangent * y + normal * z.
+    Vec4 tangent{1.0f, 0.0f, 0.0f, 1.0f};
 };
 
 /// CPU-side triangle mesh (counter-clockwise front faces). Renderer-agnostic:
@@ -23,6 +28,12 @@ struct MeshData {
 
     [[nodiscard]] usize triangleCount() const { return indices.size() / 3; }
 };
+
+/// Fills Vertex::tangent from positions, normals and UVs (per-triangle
+/// gradients averaged per vertex, then made orthogonal to the normal).
+/// Vertices whose UVs give no direction get any tangent perpendicular to
+/// their normal. Primitives and the OBJ loader call it already.
+void computeTangents(MeshData& mesh);
 
 // --- Procedural primitives, centered on the origin ----------------------------
 
