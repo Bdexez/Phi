@@ -3,6 +3,7 @@
 #include <bdex/render/Renderer.hpp>
 #include <bdex/render/Shadows.hpp>
 #include <bdex/scene/Scene.hpp>
+#include <bdex/scene/Serialization.hpp>
 
 #include <gtest/gtest.h>
 
@@ -390,4 +391,92 @@ TEST(Picking, RaysThroughPixelsHitWhatIsDrawnThere) {
     EXPECT_FALSE(render::intersect(ray, {target + Vec3(3.0f, 0.0f, 0.0f), 0.5f}).has_value());
     EXPECT_FALSE(render::intersect(center, {Vec3(0.0f, 0.0f, 20.0f), 1.0f}).has_value());
     EXPECT_EQ(render::intersect(center, {center.origin, 1.0f}), 0.0f);  // inside
+}
+
+// --- Serialization -----------------------------------------------------------------
+
+TEST(SceneFiles, RoundTripAHierarchy) {
+    Scene source("source");
+    ecs::World& world = source.world();
+    world.destroy(source.createEntity("gap"));  // slots need not be dense
+    const ecs::Entity root = source.createEntity("Root");
+    const ecs::Entity child = source.createEntity("Child = with equals");
+    world.emplace<Parent>(child, root);
+    world.get<Transform>(root).position = Vec3(1.5f, -2.0f, 0.1f);
+    world.get<Transform>(root).rotation = glm::angleAxis(0.7f, glm::normalize(Vec3(1.0f, 2.0f, 3.0f)));
+    world.get<Transform>(child).scale = Vec3(0.25f, 3.0f, 1.0f);
+    const ecs::Entity bare = world.create();  // nothing registered: not saved
+    (void)bare;
+
+    const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    const std::string text = serializers.save(world);
+
+    Scene target("target");
+    target.createEntity("already here");  // loading adds to what exists
+    const auto loaded = serializers.load(target.world(), text);
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().message << "\n" << text;
+    ASSERT_EQ(loaded->size(), 2u);
+    EXPECT_EQ(target.world().entityCount(), 3u);
+
+    const ecs::Entity newRoot = target.find("Root");
+    const ecs::Entity newChild = target.find("Child = with equals");
+    ASSERT_TRUE(newRoot.valid());
+    ASSERT_TRUE(newChild.valid());
+    EXPECT_EQ(target.world().get<Parent>(newChild).entity, newRoot);
+    EXPECT_TRUE(target.world().has<WorldTransform>(newChild));
+    // Floats are written in their shortest exact form: values come back bit for bit.
+    EXPECT_EQ(target.world().get<Transform>(newRoot).position, world.get<Transform>(root).position);
+    EXPECT_EQ(target.world().get<Transform>(newChild).scale, world.get<Transform>(child).scale);
+    const Quat rotation = target.world().get<Transform>(newRoot).rotation;
+    EXPECT_NEAR(std::abs(glm::dot(rotation, world.get<Transform>(root).rotation)), 1.0f, 1e-6f);
+
+    // Saving the loaded world gives the same file.
+    Scene again("again");
+    ASSERT_TRUE(serializers.load(again.world(), text).has_value());
+    EXPECT_EQ(serializers.save(again.world()), text);
+}
+
+TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {
+    const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    ecs::World world;
+
+    const auto badNumber = serializers.load(world, "[entity.0]\nTransform.position = 1 two 3\n");
+    ASSERT_FALSE(badNumber.has_value());
+    EXPECT_NE(badNumber.error().message.find("position"), std::string::npos);
+    EXPECT_EQ(world.entityCount(), 0u);
+
+    EXPECT_FALSE(serializers.load(world, "[entity.0]\nParent.entity = 7\n").has_value());
+    EXPECT_FALSE(serializers.load(world, "[stuff]\nkey = 1\n").has_value());
+    EXPECT_EQ(world.entityCount(), 0u);
+
+    // Unknown components are skipped, not fatal.
+    const auto unknown = serializers.load(world, "[entity.0]\nName.value = a\nWeapon.ammo = 3\n");
+    ASSERT_TRUE(unknown.has_value());
+    EXPECT_EQ(world.get<Name>(unknown->front()).value, "a");
+}
+
+TEST(SceneFiles, ApplicationsRegisterTheirComponents) {
+    struct Health {
+        f32 points = 100.0f;
+        bool invulnerable = false;
+    };
+    ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    serializers.add<Health>(
+        "Health",
+        [](const Health& health, Fields& out, const EntityRefs&) {
+            out["points"] = formatField(health.points);
+            out["invulnerable"] = formatField(health.invulnerable);
+        },
+        [](Health& health, const Fields& in, const EntityRefs&) -> Result<> {
+            if (auto parsed = parseField(in, "points", health.points); !parsed) return parsed;
+            return parseField(in, "invulnerable", health.invulnerable);
+        });
+
+    ecs::World world;
+    world.emplace<Health>(world.create(), Health{42.5f, true});
+    ecs::World copy;
+    const auto loaded = serializers.load(copy, serializers.save(world));
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().message;
+    EXPECT_FLOAT_EQ(copy.get<Health>(loaded->front()).points, 42.5f);
+    EXPECT_TRUE(copy.get<Health>(loaded->front()).invulnerable);
 }
