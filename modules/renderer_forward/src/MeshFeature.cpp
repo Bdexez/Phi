@@ -231,27 +231,36 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
     if (context.world == nullptr) {
         return;
     }
-    // Opaque meshes within the light's volume, grouped by mesh (materials do
-    // not matter for depth).
+    // Opaque meshes, gathered once per frame (at the first cascade) and
+    // sorted by mesh (materials do not matter for depth)...
+    if (context.shadowCascade == 0) {
+        shadowCandidates_.clear();
+        context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
+            [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
+                const GpuMesh* mesh = renderable.visible ? renderer_->mesh(renderable.mesh) : nullptr;
+                if (mesh == nullptr || renderer_->materialOrDefault(renderable.material).desc.transparent) {
+                    return;
+                }
+                shadowCandidates_.push_back({renderable.mesh.index, mesh, transform.matrix,
+                                             render::transformSphere(mesh->bounds, transform.matrix)});
+            });
+        std::sort(shadowCandidates_.begin(), shadowCandidates_.end(),
+                  [](const ShadowCandidate& a, const ShadowCandidate& b) { return a.meshKey < b.meshKey; });
+    }
+
+    // ...then each cascade keeps those within its volume, still sorted.
     casters_.clear();
     casterOrder_.clear();
     const render::Frustum lightVolume(context.camera.viewProjection);
-    context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
-        [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
-            const GpuMesh* mesh = renderable.visible ? renderer_->mesh(renderable.mesh) : nullptr;
-            if (mesh == nullptr ||
-                renderer_->materialOrDefault(renderable.material).desc.transparent ||
-                !lightVolume.intersects(render::transformSphere(mesh->bounds, transform.matrix))) {
-                return;
-            }
-            casterOrder_.push_back({renderable.mesh.index, static_cast<u32>(casters_.size())});
-            casters_.push_back({{}, mesh, {transform.matrix, Vec4(0.0f), Vec4(0.0f), Vec4(0.0f)}});
-        });
+    for (const ShadowCandidate& candidate : shadowCandidates_) {
+        if (lightVolume.intersects(candidate.bounds)) {
+            casterOrder_.push_back({candidate.meshKey, static_cast<u32>(casters_.size())});
+            casters_.push_back({{}, candidate.mesh, {candidate.model, Vec4(0.0f), Vec4(0.0f), Vec4(0.0f)}});
+        }
+    }
     if (casters_.empty()) {
         return;
     }
-    std::sort(casterOrder_.begin(), casterOrder_.end(),
-              [](const SortKey& a, const SortKey& b) { return a.key < b.key; });
 
     objects_.clear();
     for (const SortKey& entry : casterOrder_) {

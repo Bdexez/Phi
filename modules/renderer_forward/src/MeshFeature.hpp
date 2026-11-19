@@ -77,6 +77,13 @@ private:
     std::vector<DrawItem> transparent_;
     std::vector<SortKey> opaqueOrder_;
     std::vector<SortKey> transparentOrder_;
+    struct ShadowCandidate {
+        u64 meshKey;
+        const GpuMesh* mesh;
+        Mat4 model;
+        render::BoundingSphere bounds;  ///< In world space.
+    };
+    std::vector<ShadowCandidate> shadowCandidates_;  ///< This frame's opaque meshes.
     std::vector<DrawItem> casters_;
     std::vector<SortKey> casterOrder_;
     std::vector<ObjectData> objects_;
