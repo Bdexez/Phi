@@ -101,6 +101,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F3` | Log the CPU time of every engine task and the last frame's draw statistics. |
 | `F4` | Toggle debug gizmos: the sun's direction, point light ranges, and object axes. |
 | Left click | Select the object under the cursor (logged and circled). |
+| `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
 | `Escape` | Quit. |
 
 A gamepad works too: the left stick moves, the right stick looks around, the bumpers go up and down, and the right trigger goes faster. Every control is an input action that can be rebound in the `[input]` section of `sandbox.ini` (for example `move_forward = Z, Up` on an AZERTY keyboard), from keys, mouse buttons, gamepad buttons, or stick directions. Applications define their actions the same way and query them through `InputActions`, with `value()` for analog strength.
