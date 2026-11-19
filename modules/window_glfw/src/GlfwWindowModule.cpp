@@ -19,6 +19,7 @@
 #include <bdex/platform/Window.hpp>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 
 namespace bdex {
@@ -141,9 +142,14 @@ private:
     EventBus* events_;
 };
 
+// GLFW's gamepad mapping uses the same button and axis order as the engine.
+static_assert(GLFW_GAMEPAD_BUTTON_LAST + 1 == static_cast<int>(GamepadButton::Count));
+static_assert(GLFW_GAMEPAD_AXIS_LAST + 1 == static_cast<int>(GamepadAxis::Count));
+
 class GlfwWindowSystem final : public IWindowSystem {
 public:
-    explicit GlfwWindowSystem(std::unique_ptr<GlfwWindow> window) : window_(std::move(window)) {}
+    GlfwWindowSystem(std::unique_ptr<GlfwWindow> window, EventBus& events)
+        : window_(std::move(window)), events_(&events) {}
 
     [[nodiscard]] IWindow* primaryWindow() override { return window_.get(); }
     [[nodiscard]] bool isHeadless() const override { return false; }
@@ -167,12 +173,66 @@ public:
         } else {
             glfwPollEvents();
         }
+        pollGamepads();
     }
 
 private:
+    struct PadState {
+        bool connected = false;
+        GLFWgamepadstate state{};
+    };
+
+    /// GLFW has no gamepad callbacks: compare each pad with the previous
+    /// frame and publish what changed.
+    void pollGamepads() {
+        for (u32 pad = 0; pad < kMaxGamepads; ++pad) {
+            const int joystick = GLFW_JOYSTICK_1 + static_cast<int>(pad);
+            PadState& previous = pads_[pad];
+            GLFWgamepadstate current{};
+            const bool connected = glfwJoystickIsGamepad(joystick) == GLFW_TRUE &&
+                                   glfwGetGamepadState(joystick, &current) == GLFW_TRUE;
+            if (connected != previous.connected) {
+                if (connected) {
+                    log::info("glfw", "gamepad {} connected: {}", pad,
+                              glfwGetGamepadName(joystick) != nullptr ? glfwGetGamepadName(joystick) : "?");
+                }
+                events_->publish(GamepadConnected{pad, connected});
+                previous = PadState{connected, {}};
+                if (!connected) {
+                    continue;
+                }
+                // Released triggers rest at -1 in GLFW: start from that so
+                // they are not reported as moved.
+                previous.state.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] = -1.0f;
+                previous.state.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.0f;
+            }
+            if (!connected) {
+                continue;
+            }
+            for (int button = 0; button <= GLFW_GAMEPAD_BUTTON_LAST; ++button) {
+                if (current.buttons[button] != previous.state.buttons[button]) {
+                    events_->publish(GamepadButtonEvent{pad, static_cast<GamepadButton>(button),
+                                                        current.buttons[button] == GLFW_PRESS});
+                }
+            }
+            for (int axis = 0; axis <= GLFW_GAMEPAD_AXIS_LAST; ++axis) {
+                if (current.axes[axis] != previous.state.axes[axis]) {
+                    const bool trigger = axis == GLFW_GAMEPAD_AXIS_LEFT_TRIGGER ||
+                                         axis == GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER;
+                    // Triggers go from -1 to 1 in GLFW, from 0 to 1 in the engine.
+                    const f32 value = trigger ? (current.axes[axis] + 1.0f) * 0.5f : current.axes[axis];
+                    events_->publish(GamepadAxisMoved{pad, static_cast<GamepadAxis>(axis), value});
+                }
+            }
+            previous.state = current;
+        }
+    }
+
     static constexpr double kMinimizedWaitSeconds = 0.1;
 
     std::unique_ptr<GlfwWindow> window_;
+    EventBus* events_;
+    std::array<PadState, kMaxGamepads> pads_{};
 };
 
 class GlfwWindowModule final : public IModule {
@@ -211,7 +271,7 @@ public:
         }
 
         system_ = std::make_shared<GlfwWindowSystem>(
-            std::make_unique<GlfwWindow>(handle, engine.events()));
+            std::make_unique<GlfwWindow>(handle, engine.events()), engine.events());
         engine.services().provide<IWindowSystem>(system_);
 
         input_ = std::make_shared<InputState>(engine.events());
