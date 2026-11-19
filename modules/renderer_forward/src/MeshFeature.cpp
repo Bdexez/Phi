@@ -79,6 +79,7 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     // Consecutive draws often share a material or a mesh: skip redundant binds.
     rhi::BindGroupHandle boundMaterial;
     const GpuMesh* boundMesh = nullptr;
+    const render::Frustum frustum(context.camera.viewProjection);
 
     context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
         [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
@@ -88,6 +89,9 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
             const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
             if (mesh == nullptr) {
                 return;  // destroyed or never assigned
+            }
+            if (!frustum.intersects(render::transformSphere(mesh->bounds, transform.matrix))) {
+                return;  // outside the view
             }
             const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
 

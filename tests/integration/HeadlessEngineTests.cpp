@@ -287,6 +287,26 @@ TEST(HeadlessEngine, ScreenshotIsWrittenAndAnnounced) {
     std::filesystem::remove(path);
 }
 
+TEST(HeadlessEngine, MeshesOutsideTheViewAreNotDrawn) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    const std::vector<ecs::Entity> cubes = test.populate(3);  // in front of the camera
+
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 3u);
+
+    // Behind the camera, and far off to the side.
+    test.world().get<scene::Transform>(cubes[0]).position = Vec3(0.0f, 0.0f, 20.0f);
+    test.world().get<scene::Transform>(cubes[1]).position = Vec3(500.0f, 0.0f, 0.0f);
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 1u);
+
+    // A cube scaled up enough reaches back into the view.
+    test.world().get<scene::Transform>(cubes[1]).scale = Vec3(1000.0f);
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 2u);
+}
+
 TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
     std::vector<std::string> trace;  // outlives the engine, which detaches the probe
     TestEngine test(kNullStack);
