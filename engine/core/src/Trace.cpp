@@ -1,9 +1,66 @@
 #include <phi/core/Trace.hpp>
 
 #include <phi/core/FileSystem.hpp>
-#include <phi/core/Json.hpp>
+
+#include <charconv>
+#include <cmath>
+#include <format>
 
 namespace phi {
+
+namespace {
+
+void appendJsonString(std::string& out, std::string_view text) {
+    out += '"';
+    usize chunkStart = 0;
+    for (usize i = 0; i < text.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == '"' || c == '\\' || c < 0x20) {
+            if (i > chunkStart) {
+                out.append(text.data() + chunkStart, i - chunkStart);
+            }
+            switch (c) {
+                case '"': out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\b': out += "\\b"; break;
+                case '\f': out += "\\f"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default: out += std::format("\\u{:04x}", static_cast<unsigned int>(c)); break;
+            }
+            chunkStart = i + 1;
+        }
+    }
+    if (text.size() > chunkStart) {
+        out.append(text.data() + chunkStart, text.size() - chunkStart);
+    }
+    out += '"';
+}
+
+void appendJsonDouble(std::string& out, f64 value) {
+    if (!std::isfinite(value)) {
+        out += "null";
+        return;
+    }
+    char buffer[32];
+    const auto [end, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    if (ec == std::errc{}) {
+        out.append(buffer, static_cast<usize>(end - buffer));
+    } else {
+        out += "0";
+    }
+}
+
+void appendJsonU32(std::string& out, u32 value) {
+    char buffer[16];
+    const auto [end, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    if (ec == std::errc{}) {
+        out.append(buffer, static_cast<usize>(end - buffer));
+    }
+}
+
+}  // namespace
 
 void TraceRecorder::record(std::string_view name, std::string_view category, Clock::time_point start,
                            Clock::time_point end, u32 thread) {
@@ -29,30 +86,40 @@ void TraceRecorder::nameThread(u32 thread, std::string_view name) {
 
 std::string TraceRecorder::toChromeJson() const {
     const std::lock_guard lock(mutex_);
-    json::Array spans;
-    spans.reserve(events_.size() + threadNames_.size());
+    std::string out;
+    out.reserve(64 + threadNames_.size() * 80 + events_.size() * 112);
+    out += "{\"displayTimeUnit\":\"ms\",\"traceEvents\":[";
+    bool first = true;
     for (const auto& [thread, name] : threadNames_) {
-        // Metadata: the label of a thread's row.
-        spans.emplace_back(json::Object{
-            {"name", "thread_name"},
-            {"ph", "M"},
-            {"pid", 1},
-            {"tid", static_cast<f64>(thread)},
-            {"args", json::Object{{"name", name}}},
-        });
+        if (!first) {
+            out += ',';
+        }
+        first = false;
+        out += "{\"args\":{\"name\":";
+        appendJsonString(out, name);
+        out += "},\"name\":\"thread_name\",\"ph\":\"M\",\"pid\":1,\"tid\":";
+        appendJsonU32(out, thread);
+        out += '}';
     }
     for (const TraceEvent& event : events_) {
-        spans.emplace_back(json::Object{
-            {"name", event.name},
-            {"cat", event.category},
-            {"ph", "X"},  // a complete event: start and duration
-            {"ts", event.startMicroseconds},
-            {"dur", event.durationMicroseconds},
-            {"pid", 1},
-            {"tid", static_cast<f64>(event.thread)},
-        });
+        if (!first) {
+            out += ',';
+        }
+        first = false;
+        out += "{\"cat\":";
+        appendJsonString(out, event.category);
+        out += ",\"dur\":";
+        appendJsonDouble(out, event.durationMicroseconds);
+        out += ",\"name\":";
+        appendJsonString(out, event.name);
+        out += ",\"ph\":\"X\",\"pid\":1,\"tid\":";
+        appendJsonU32(out, event.thread);
+        out += ",\"ts\":";
+        appendJsonDouble(out, event.startMicroseconds);
+        out += '}';
     }
-    return json::write(json::Object{{"traceEvents", std::move(spans)}, {"displayTimeUnit", "ms"}});
+    out += "]}";
+    return out;
 }
 
 Result<> TraceRecorder::writeFile(const std::filesystem::path& path) const {
