@@ -68,6 +68,7 @@ private:
     void renderView(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent,
                     const render::CameraData& camera, const FrameTime& time);
     void saveCapture(const std::filesystem::path& path);
+    [[nodiscard]] rhi::BindGroupHandle createMaterialBindGroup(const render::MaterialDesc& desc);
     [[nodiscard]] render::RenderSetupContext setupContext();
 
     Engine& engine_;
