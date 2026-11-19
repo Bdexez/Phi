@@ -161,3 +161,40 @@ TEST(InputActions, RebindingReplacesBindings) {
     EXPECT_FALSE(actions.bind("jump", "Nope").has_value());
     EXPECT_EQ(actions.bindings("jump"), (std::vector<std::string>{"J", "K"}));  // unchanged
 }
+
+TEST(InputState, TracksGamepads) {
+    EventBus events;
+    InputState input(events);
+    EXPECT_FALSE(input.gamepadConnected(0));
+
+    input.beginFrame();
+    events.publish(GamepadConnected{1, true});
+    events.publish(GamepadButtonEvent{1, GamepadButton::A, true});
+    events.publish(GamepadAxisMoved{1, GamepadAxis::LeftY, -0.75f});
+    EXPECT_TRUE(input.gamepadConnected(1));
+    EXPECT_TRUE(input.gamepadButtonDown(GamepadButton::A, 1));
+    EXPECT_TRUE(input.gamepadButtonPressed(GamepadButton::A, 1));
+    EXPECT_FALSE(input.gamepadButtonDown(GamepadButton::A, 0));  // another pad
+    EXPECT_FLOAT_EQ(input.gamepadAxis(GamepadAxis::LeftY, 1), -0.75f);
+
+    input.beginFrame();
+    EXPECT_FALSE(input.gamepadButtonPressed(GamepadButton::A, 1));
+    EXPECT_TRUE(input.gamepadButtonDown(GamepadButton::A, 1));
+
+    // Unplugging releases everything and recenters the sticks.
+    input.beginFrame();
+    events.publish(GamepadConnected{1, false});
+    EXPECT_FALSE(input.gamepadConnected(1));
+    EXPECT_TRUE(input.gamepadButtonReleased(GamepadButton::A, 1));
+    EXPECT_FLOAT_EQ(input.gamepadAxis(GamepadAxis::LeftY, 1), 0.0f);
+
+    // Out-of-range pads are ignored.
+    events.publish(GamepadButtonEvent{9, GamepadButton::B, true});
+    EXPECT_FALSE(input.gamepadButtonDown(GamepadButton::B, 9));
+}
+
+TEST(KeyNames, GamepadButtonsHaveNames) {
+    EXPECT_EQ(gamepadButtonName(GamepadButton::Start), "GamepadStart");
+    EXPECT_EQ(parseGamepadButton("gamepaddpadleft"), GamepadButton::DpadLeft);
+    EXPECT_FALSE(parseGamepadButton("GamepadZ").has_value());
+}

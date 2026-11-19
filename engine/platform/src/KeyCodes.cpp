@@ -76,6 +76,24 @@ constexpr std::array kButtonNames = std::to_array<std::pair<MouseButton, std::st
     {MouseButton::Button5, "Mouse5"},
 });
 
+constexpr std::array kGamepadButtonNames = std::to_array<std::pair<GamepadButton, std::string_view>>({
+    {GamepadButton::A, "GamepadA"},
+    {GamepadButton::B, "GamepadB"},
+    {GamepadButton::X, "GamepadX"},
+    {GamepadButton::Y, "GamepadY"},
+    {GamepadButton::LeftBumper, "GamepadLeftBumper"},
+    {GamepadButton::RightBumper, "GamepadRightBumper"},
+    {GamepadButton::Back, "GamepadBack"},
+    {GamepadButton::Start, "GamepadStart"},
+    {GamepadButton::Guide, "GamepadGuide"},
+    {GamepadButton::LeftThumb, "GamepadLeftThumb"},
+    {GamepadButton::RightThumb, "GamepadRightThumb"},
+    {GamepadButton::DpadUp, "GamepadDpadUp"},
+    {GamepadButton::DpadRight, "GamepadDpadRight"},
+    {GamepadButton::DpadDown, "GamepadDpadDown"},
+    {GamepadButton::DpadLeft, "GamepadDpadLeft"},
+});
+
 bool equalsIgnoringCase(std::string_view a, std::string_view b) {
     const auto lower = [](char c) {
         return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
@@ -117,6 +135,24 @@ std::string_view mouseButtonName(MouseButton button) {
 
 std::optional<MouseButton> parseMouseButton(std::string_view name) {
     for (const auto& [button, candidate] : kButtonNames) {
+        if (equalsIgnoringCase(candidate, name)) {
+            return button;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view gamepadButtonName(GamepadButton button) {
+    for (const auto& [candidate, name] : kGamepadButtonNames) {
+        if (candidate == button) {
+            return name;
+        }
+    }
+    return {};
+}
+
+std::optional<GamepadButton> parseGamepadButton(std::string_view name) {
+    for (const auto& [button, candidate] : kGamepadButtonNames) {
         if (equalsIgnoringCase(candidate, name)) {
             return button;
         }
