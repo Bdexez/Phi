@@ -208,6 +208,8 @@ Tests cover the core, plugin loading, ECS, assets, scenes, and renderer integrat
 
 If GoogleTest is missing, CMake prints a warning and continues configuration without building the tests.
 
+[Continuous integration](.github/workflows/ci.yml) builds the `release`, `static`, and `asan` presets on Ubuntu 24.04 with GCC 14 and warnings treated as errors, then runs the tests. Vulkan tests run there too, on lavapipe, Mesa's CPU implementation of Vulkan (the `asan` preset leaves them out).
+
 ## Extending the engine
 
 - **Create an application:** derive from [`bdex::app::Application`](engine/app/include/bdex/app/Application.hpp), implement the callbacks you need (`onStart`, `onUpdate`, `onFixedUpdate`, `onStop`), and define the entry point with `BDEX_MAIN`.
