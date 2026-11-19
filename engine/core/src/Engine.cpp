@@ -9,7 +9,6 @@ namespace {
 
 // A long stall (debugger, window drag) must not explode the simulation.
 constexpr f64 kMaxFrameDelta = 0.25;
-constexpr u32 kMaxFixedStepsPerFrame = 8;
 
 }  // namespace
 
@@ -23,6 +22,7 @@ Result<> Engine::initialize() {
     fixedTimestep_ = std::max(config_.getFloat("engine.fixed_timestep", 1.0 / 60.0), 1e-4);
     forcedDelta_ = std::max(config_.getFloat("engine.forced_delta", 0.0), 0.0);
     maxFrames_ = static_cast<u64>(std::max<i64>(config_.getInt("engine.max_frames", 0), 0));
+    maxFixedSteps_ = static_cast<u32>(std::clamp<i64>(config_.getInt("engine.max_fixed_steps", 8), 1, 1000));
     return modules_.initializeAll(*this);
 }
 
@@ -54,7 +54,7 @@ bool Engine::tick() {
     fixedTime.delta = fixedTimestep_;
     fixedTime.fixedAlpha = 0.0;
     u32 steps = 0;
-    while (fixedAccumulator_ >= fixedTimestep_ && steps < kMaxFixedStepsPerFrame) {
+    while (fixedAccumulator_ >= fixedTimestep_ && steps < maxFixedSteps_) {
         fixedElapsed_ += fixedTimestep_;
         fixedTime.elapsed = fixedElapsed_;
         scheduler_.run(Phase::FixedUpdate, fixedTime);

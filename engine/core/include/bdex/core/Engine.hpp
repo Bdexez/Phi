@@ -26,6 +26,9 @@ namespace bdex {
 ///
 /// Recognized configuration keys:
 ///   engine.fixed_timestep  seconds per FixedUpdate step (default 1/60)
+///   engine.max_fixed_steps FixedUpdate steps run at most per frame; the
+///                          time beyond is dropped so a slow frame cannot
+///                          snowball (default 8)
 ///   engine.max_frames      exit after N frames, 0 = unlimited (default 0)
 ///   engine.forced_delta    if > 0, use this delta instead of the wall clock
 ///                          (deterministic runs, captures, tests)
@@ -79,6 +82,7 @@ private:
     f64 fixedElapsed_ = 0.0;
     f64 forcedDelta_ = 0.0;
     u64 maxFrames_ = 0;
+    u32 maxFixedSteps_ = 8;
     bool firstTick_ = true;
     bool exitRequested_ = false;
     bool shutDown_ = false;
