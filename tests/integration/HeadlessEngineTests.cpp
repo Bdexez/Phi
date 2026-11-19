@@ -291,6 +291,36 @@ TEST(HeadlessEngine, ScreenshotIsWrittenAndAnnounced) {
     std::filesystem::remove(path);
 }
 
+TEST(HeadlessEngine, DrawsAreGroupedByMaterialAndMesh) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(0);  // camera only
+
+    // Two materials and two meshes, interleaved in creation order.
+    const render::MeshHandle cube = test.renderer().createMesh(assets::makeCube());
+    const render::MeshHandle sphere = test.renderer().createMesh(assets::makeSphere());
+    render::MaterialDesc red;
+    red.baseColor = Vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    render::MaterialDesc blue;
+    blue.baseColor = Vec4(0.0f, 0.0f, 1.0f, 1.0f);
+    const render::MaterialHandle materials[] = {test.renderer().createMaterial(red),
+                                                test.renderer().createMaterial(blue)};
+    for (int i = 0; i < 8; ++i) {
+        const ecs::Entity entity = test.scene().createEntity("item");
+        test.world().get<scene::Transform>(entity).position =
+            Vec3(static_cast<f32>(i % 4) - 1.5f, static_cast<f32>(i / 4) - 0.5f, 0.0f);
+        test.world().emplace<render::MeshRenderer>(entity, (i / 2) % 2 == 0 ? cube : sphere,
+                                                   materials[i % 2]);
+    }
+
+    test.engine->tick();
+    const rhi::FrameStats stats = test.device().lastFrameStats();
+    EXPECT_EQ(stats.drawCalls, 8u);
+    EXPECT_EQ(stats.bindGroupBinds, 1u + 2u);  // frame, then each material once
+    // Each material uses both meshes: at most 2 mesh switches per material.
+    EXPECT_EQ(stats.bufferBinds, 2u * 4u);
+}
+
 TEST(HeadlessEngine, MeshesOutsideTheViewAreNotDrawn) {
     TestEngine test(kNullStack);
     ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
