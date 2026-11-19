@@ -24,7 +24,7 @@ struct GpuMesh {
 
 struct GpuMaterial {
     render::MaterialDesc desc;
-    rhi::BindGroupHandle bindGroup;  ///< Set 1: albedo texture + sampler.
+    rhi::BindGroupHandle bindGroup;  ///< Set 1: albedo (0) and normal map (1).
 };
 
 /// Single-pass forward renderer written purely against the RHI: it runs
@@ -58,7 +58,9 @@ public:
     // --- render::IRenderer -----------------------------------------------------
     [[nodiscard]] render::MeshHandle createMesh(const assets::MeshData& mesh) override;
     void destroyMesh(render::MeshHandle mesh) override;
-    [[nodiscard]] render::TextureHandle createTexture(const assets::ImageData& image) override;
+    [[nodiscard]] render::TextureHandle createTexture(
+        const assets::ImageData& image,
+        render::TextureColorSpace colorSpace = render::TextureColorSpace::Srgb) override;
     void destroyTexture(render::TextureHandle texture) override;
     [[nodiscard]] render::MaterialHandle createMaterial(const render::MaterialDesc& desc) override;
     void destroyMaterial(render::MaterialHandle material) override;
@@ -137,6 +139,7 @@ private:
     rhi::BindGroupLayoutHandle materialLayout_;
     rhi::SamplerHandle defaultSampler_;
     render::TextureHandle whiteTexture_;
+    render::TextureHandle flatNormalTexture_;  ///< For materials without a normal map.
     render::MaterialHandle defaultMaterial_;
     HandlePool<GpuMesh, render::MeshTag> meshes_;
     HandlePool<rhi::TextureHandle, render::TextureTag> textures_;

@@ -102,7 +102,8 @@ Result<> ForwardRenderer::initialize() {
 
     // --- Material resources (set 1) --------------------------------------------------
     materialLayout_ = device_.createBindGroupLayout({
-        {{0, rhi::BindingType::CombinedTextureSampler, rhi::ShaderStage::Fragment}},
+        {{0, rhi::BindingType::CombinedTextureSampler, rhi::ShaderStage::Fragment},
+         {1, rhi::BindingType::CombinedTextureSampler, rhi::ShaderStage::Fragment}},
         "material layout",
     });
     rhi::SamplerDesc samplerDesc;
@@ -111,6 +112,9 @@ Result<> ForwardRenderer::initialize() {
     samplerDesc.debugName = "default sampler";
     defaultSampler_ = device_.createSampler(samplerDesc);
     whiteTexture_ = createTexture(assets::makeSolidImage(1, 1, {255, 255, 255, 255}));
+    // Tangent-space (0, 0, 1): leaves the surface normal as it is.
+    flatNormalTexture_ = createTexture(assets::makeSolidImage(1, 1, {128, 128, 255, 255}),
+                                       render::TextureColorSpace::Linear);
     defaultMaterial_ = createMaterial({});
 
     // --- Post-processing ----------------------------------------------------------------
@@ -228,7 +232,8 @@ void ForwardRenderer::destroyMesh(render::MeshHandle handle) {
     }
 }
 
-render::TextureHandle ForwardRenderer::createTexture(const assets::ImageData& image) {
+render::TextureHandle ForwardRenderer::createTexture(const assets::ImageData& image,
+                                                     render::TextureColorSpace colorSpace) {
     if (!image.valid()) {
         log::warn("renderer", "createTexture called with an invalid image");
         return {};
@@ -236,7 +241,8 @@ render::TextureHandle ForwardRenderer::createTexture(const assets::ImageData& im
     rhi::TextureDesc desc;
     desc.width = image.width;
     desc.height = image.height;
-    desc.format = rhi::Format::RGBA8Srgb;  // color data, authored in sRGB
+    desc.format = colorSpace == render::TextureColorSpace::Srgb ? rhi::Format::RGBA8Srgb
+                                                                 : rhi::Format::RGBA8Unorm;
     desc.usage = rhi::TextureUsage::Sampled;
     desc.mipLevels = 0;  // full chain, generated on upload
     desc.debugName = "texture";
@@ -246,7 +252,7 @@ render::TextureHandle ForwardRenderer::createTexture(const assets::ImageData& im
 }
 
 void ForwardRenderer::destroyTexture(render::TextureHandle handle) {
-    if (handle == whiteTexture_) {
+    if (handle == whiteTexture_ || handle == flatNormalTexture_) {
         return;
     }
     const auto texture = textures_.take(handle);
@@ -257,8 +263,13 @@ void ForwardRenderer::destroyTexture(render::TextureHandle handle) {
     // fall back to the default texture. Their old bind groups, like the
     // texture itself, are released once in-flight frames are done with them.
     materials_.forEach([&](render::MaterialHandle, GpuMaterial& material) {
-        if (material.desc.albedo == handle) {
-            material.desc.albedo = {};
+        if (material.desc.albedo == handle || material.desc.normalMap == handle) {
+            if (material.desc.albedo == handle) {
+                material.desc.albedo = {};
+            }
+            if (material.desc.normalMap == handle) {
+                material.desc.normalMap = {};
+            }
             device_.destroyBindGroup(material.bindGroup);
             material.bindGroup = createMaterialBindGroup(material.desc);
         }
@@ -267,18 +278,23 @@ void ForwardRenderer::destroyTexture(render::TextureHandle handle) {
 }
 
 rhi::BindGroupHandle ForwardRenderer::createMaterialBindGroup(const render::MaterialDesc& desc) {
-    const rhi::TextureHandle* albedo = textures_.get(desc.albedo);
-    if (albedo == nullptr) {
-        albedo = textures_.get(whiteTexture_);
-    }
+    const auto textureOr = [&](render::TextureHandle handle, render::TextureHandle fallback) {
+        const rhi::TextureHandle* texture = textures_.get(handle);
+        return texture != nullptr ? *texture : *textures_.get(fallback);
+    };
 
     rhi::BindGroupDesc groupDesc;
     groupDesc.layout = materialLayout_;
     rhi::BindGroupEntry albedoEntry;
     albedoEntry.binding = 0;
-    albedoEntry.texture = *albedo;
+    albedoEntry.texture = textureOr(desc.albedo, whiteTexture_);
     albedoEntry.sampler = defaultSampler_;
     groupDesc.entries.push_back(albedoEntry);
+    rhi::BindGroupEntry normalEntry;
+    normalEntry.binding = 1;
+    normalEntry.texture = textureOr(desc.normalMap, flatNormalTexture_);
+    normalEntry.sampler = defaultSampler_;
+    groupDesc.entries.push_back(normalEntry);
     groupDesc.debugName = "material";
     return device_.createBindGroup(groupDesc);
 }
@@ -288,6 +304,9 @@ render::MaterialHandle ForwardRenderer::createMaterial(const render::MaterialDes
     material.desc = desc;
     if (!textures_.contains(material.desc.albedo)) {
         material.desc.albedo = {};  // invalid or stale: untextured
+    }
+    if (!textures_.contains(material.desc.normalMap)) {
+        material.desc.normalMap = {};
     }
     material.bindGroup = createMaterialBindGroup(material.desc);
     return materials_.insert(material);

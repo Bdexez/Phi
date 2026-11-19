@@ -45,6 +45,7 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
         {0, rhi::VertexFormat::Float3, offsetof(assets::Vertex, position)},
         {1, rhi::VertexFormat::Float3, offsetof(assets::Vertex, normal)},
         {2, rhi::VertexFormat::Float2, offsetof(assets::Vertex, uv)},
+        {3, rhi::VertexFormat::Float4, offsetof(assets::Vertex, tangent)},
     };
     objectLayout_ = device.createBindGroupLayout({
         {{0, rhi::BindingType::StorageBuffer, rhi::ShaderStage::Vertex}},
@@ -169,7 +170,10 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
                 material.bindGroup,
                 mesh,
                 {transform.matrix, material.desc.baseColor,
-                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f),
+                 // Without a normal map the strength is 0, which keeps the
+                 // surface normal exact (the flat texel is only ~(0, 0, 1)).
+                 Vec4(material.desc.specular, material.desc.shininess,
+                      material.desc.normalMap.valid() ? material.desc.normalStrength : 0.0f, 0.0f),
                  Vec4(material.desc.emissive, 0.0f)},
             };
             if (material.desc.transparent) {
