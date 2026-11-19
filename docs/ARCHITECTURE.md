@@ -273,6 +273,6 @@ Known gaps, listed so they are not mistaken for design decisions:
 - One window; `IWindowSystem` exposes a primary window only.
 - The forward renderer has a single pass: no shadows, post-processing, transparency sorting, culling, or instancing.
 - The RHI is main-thread only.
-- Image loading supports TGA only; the PNG writer stores data uncompressed.
+- The PNG writer stores data uncompressed.
 - No audio, physics, or scripting modules yet.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.

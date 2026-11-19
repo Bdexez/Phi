@@ -29,7 +29,7 @@ struct ShaderBinary {
 ///   assets.registerLoader<ImageData>(".png", [](std::span<const u8> bytes) { ... });
 ///   auto image = assets.load<ImageData>("app:/textures/crate.png");
 ///
-/// Built-in loaders: MeshData (.obj), ImageData (.tga), ShaderBinary (.spv).
+/// Built-in loaders: MeshData (.obj), ImageData (.png, .tga), ShaderBinary (.spv).
 class AssetManager {
 public:
     explicit AssetManager(const VirtualFileSystem& vfs);

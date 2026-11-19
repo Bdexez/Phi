@@ -35,6 +35,11 @@ struct ImageData {
 /// Decodes a TGA file (true-color 24/32-bit, raw or RLE).
 [[nodiscard]] Result<ImageData> decodeTga(std::span<const u8> bytes);
 
+/// Decodes a PNG file: every standard color type and bit depth, palettes
+/// and tRNS transparency, interlaced or not. 16-bit channels are reduced to
+/// 8 bits; color-space chunks (gAMA, sRGB, iCCP) are ignored.
+[[nodiscard]] Result<ImageData> decodePng(std::span<const u8> bytes);
+
 /// Encodes to PNG. The stream is stored uncompressed, which keeps the encoder
 /// dependency-free; it is meant for captures and debugging output.
 [[nodiscard]] std::vector<u8> encodePng(const ImageData& image);

@@ -227,6 +227,19 @@ TEST(AssetManager, LoadsThroughTheVirtualFileSystemAndCaches) {
     EXPECT_EQ(assets.cachedCount(), 1u);
 }
 
+TEST(AssetManager, LoadsPngImages) {
+    const TempDir dir;
+    const ImageData source = makeCheckerboard(8, 2, {255, 0, 0, 255}, {0, 255, 0, 255});
+    ASSERT_TRUE(writePng(dir.path / "checker.png", source).has_value());
+
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    AssetManager assets(vfs);
+    const auto image = assets.load<ImageData>("data:/checker.png");
+    ASSERT_TRUE(image.has_value()) << image.error().message;
+    EXPECT_EQ((*image)->pixels, source.pixels);
+}
+
 TEST(AssetManager, MatchesExtensionsRegardlessOfCase) {
     const TempDir dir;
     dir.write("TRIANGLE.OBJ", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
