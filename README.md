@@ -155,6 +155,8 @@ Override any key at startup with `--set`:
 ./build/bin/sandbox --set window.width=1920 --set window.height=1080 --set renderer.vsync=false
 ```
 
+With `renderer.vsync=false`, `engine.max_fps` caps the frame rate (for example `--set engine.max_fps=144`) instead of running flat out.
+
 Shadows from the directional light are on by default; `renderer.shadows`, `renderer.shadow_map_size` (texels per side, default `2048`), and `renderer.shadow_distance` (how far from the camera shadows are drawn, default `40`) tune them.
 
 The scene is rendered in HDR and tone mapped for display: `renderer.exposure` scales the light (default `1`), `renderer.tonemap` picks `aces` (default) or `none` (clamp), and `renderer.hdr=false` draws straight into the display target instead, which is cheaper but clips anything brighter than white.

@@ -32,6 +32,8 @@ namespace bdex {
 ///   engine.max_frames      exit after N frames, 0 = unlimited (default 0)
 ///   engine.forced_delta    if > 0, use this delta instead of the wall clock
 ///                          (deterministic runs, captures, tests)
+///   engine.max_fps         if > 0, tick() waits so frames start at most this
+///                          often (saves power when vsync is off; default 0)
 class Engine {
 public:
     explicit Engine(Config config = {});
@@ -83,6 +85,8 @@ private:
     f64 forcedDelta_ = 0.0;
     u64 maxFrames_ = 0;
     u32 maxFixedSteps_ = 8;
+    Clock::duration minFrameTime_{0};
+    Clock::time_point nextFrame_;
     bool firstTick_ = true;
     bool exitRequested_ = false;
     bool shutDown_ = false;
