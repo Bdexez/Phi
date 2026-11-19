@@ -19,4 +19,8 @@ namespace bdex::assets {
 [[nodiscard]] Result<std::vector<u8>> zlibDecompress(
     std::span<const u8> stream, usize maxSize = std::numeric_limits<usize>::max());
 
+/// Compresses `data` into a zlib stream: LZ77 with a 32 KiB window, then for
+/// each block the smallest of stored, fixed- and dynamic-Huffman encoding.
+[[nodiscard]] std::vector<u8> zlibCompress(std::span<const u8> data);
+
 }  // namespace bdex::assets
