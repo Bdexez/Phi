@@ -36,7 +36,8 @@ private:
     struct ObjectData {
         Mat4 model;
         Vec4 baseColor;
-        Vec4 params;  // x: specular strength, y: shininess
+        Vec4 params;    // x: specular strength, y: shininess
+        Vec4 emissive;  // rgb
     };
     struct DrawItem {
         rhi::BindGroupHandle material;
