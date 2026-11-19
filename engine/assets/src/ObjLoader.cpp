@@ -1,8 +1,7 @@
 #include <bdex/assets/Mesh.hpp>
 
 #include <charconv>
-#include <map>
-#include <tuple>
+#include <unordered_map>
 
 namespace bdex::assets {
 namespace {
@@ -52,6 +51,23 @@ i64 resolveIndex(std::string_view text, usize count) {
     return index >= 0 && index < static_cast<i64>(count) ? index : -2;
 }
 
+/// (position, uv, normal) indices of a face corner; -1 when absent.
+struct CornerKey {
+    i64 position;
+    i64 uv;
+    i64 normal;
+    friend bool operator==(const CornerKey&, const CornerKey&) = default;
+};
+
+struct CornerKeyHash {
+    usize operator()(const CornerKey& key) const noexcept {
+        u64 hash = static_cast<u64>(key.position) * 0x9e3779b97f4a7c15ull;
+        hash ^= static_cast<u64>(key.uv) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+        hash ^= static_cast<u64>(key.normal) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+        return static_cast<usize>(hash);
+    }
+};
+
 }  // namespace
 
 Result<MeshData> parseObj(std::string_view text) {
@@ -60,8 +76,9 @@ Result<MeshData> parseObj(std::string_view text) {
     std::vector<Vec2> uvs;
 
     MeshData mesh;
-    // (position, uv, normal) -> index of the merged vertex
-    std::map<std::tuple<i64, i64, i64>, u32> lookup;
+    // Corner -> index of the merged vertex.
+    std::unordered_map<CornerKey, u32, CornerKeyHash> lookup;
+    std::vector<u32> corners;  // of the current face, reused across faces
     bool missingNormals = false;
     usize lineNumber = 0;
 
@@ -96,7 +113,7 @@ Result<MeshData> parseObj(std::string_view text) {
             // OBJ has V pointing up; the engine samples with V pointing down.
             uvs.emplace_back(v[0], 1.0f - v[1]);
         } else if (keyword == "f") {
-            std::vector<u32> corners;
+            corners.clear();
             for (std::string_view corner = nextToken(line); !corner.empty();
                  corner = nextToken(line)) {
                 // v, v/vt, v//vn or v/vt/vn
@@ -122,7 +139,7 @@ Result<MeshData> parseObj(std::string_view text) {
                     return fail("obj line {}: invalid face index '{}'", lineNumber, corner);
                 }
 
-                const auto key = std::make_tuple(p, t, n);
+                const CornerKey key{p, t, n};
                 auto it = lookup.find(key);
                 if (it == lookup.end()) {
                     Vertex vertex;
