@@ -198,3 +198,42 @@ TEST(KeyNames, GamepadButtonsHaveNames) {
     EXPECT_EQ(parseGamepadButton("gamepaddpadleft"), GamepadButton::DpadLeft);
     EXPECT_FALSE(parseGamepadButton("GamepadZ").has_value());
 }
+
+TEST(InputActions, ReadGamepadButtonsAndSticks) {
+    EventBus events;
+    InputState input(events);
+    InputActions actions(input);
+    ASSERT_TRUE(actions.bind("forward", "W, LeftStickUp").has_value());
+    ASSERT_TRUE(actions.bind("jump", "Space, GamepadA").has_value());
+    ASSERT_TRUE(actions.bind("brake", "LeftTrigger").has_value());
+    EXPECT_EQ(actions.bindings("forward"), (std::vector<std::string>{"W", "LeftStickUp"}));
+
+    input.beginFrame();
+    events.publish(GamepadConnected{2, true});
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftY, -0.1f});  // inside the dead zone
+    EXPECT_FLOAT_EQ(actions.value("forward"), 0.0f);
+
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftY, -0.6f});  // halfway past it
+    EXPECT_FLOAT_EQ(actions.value("forward"), 0.5f);
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftY, -0.4f});
+    EXPECT_FLOAT_EQ(actions.value("forward"), 0.25f);
+    EXPECT_FALSE(actions.down("forward"));  // not past halfway
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftY, 0.9f});   // pushed the other way
+    EXPECT_FLOAT_EQ(actions.value("forward"), 0.0f);
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftY, -1.0f});
+    EXPECT_FLOAT_EQ(actions.value("forward"), 1.0f);
+    EXPECT_TRUE(actions.down("forward"));
+
+    events.publish(GamepadAxisMoved{2, GamepadAxis::LeftTrigger, 0.6f});
+    EXPECT_FLOAT_EQ(actions.value("brake"), 0.5f);
+
+    events.publish(GamepadButtonEvent{2, GamepadButton::A, true});
+    EXPECT_TRUE(actions.pressed("jump"));
+    EXPECT_FLOAT_EQ(actions.value("jump"), 1.0f);
+
+    // A disconnected pad no longer counts.
+    input.beginFrame();
+    events.publish(GamepadConnected{2, false});
+    EXPECT_FLOAT_EQ(actions.value("forward"), 0.0f);
+    EXPECT_TRUE(actions.released("jump"));
+}
