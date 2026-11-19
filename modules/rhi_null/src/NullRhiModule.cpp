@@ -34,10 +34,10 @@ public:
 
     void setViewport(const Viewport&) override {}
     void setScissor(const Rect&) override {}
-    void bindPipeline(PipelineHandle) override {}
-    void bindBindGroup(u32, BindGroupHandle) override {}
-    void bindVertexBuffer(BufferHandle, u64) override {}
-    void bindIndexBuffer(BufferHandle, IndexType, u64) override {}
+    void bindPipeline(PipelineHandle) override { ++stats.pipelineBinds; }
+    void bindBindGroup(u32, BindGroupHandle) override { ++stats.bindGroupBinds; }
+    void bindVertexBuffer(BufferHandle, u64) override { ++stats.bufferBinds; }
+    void bindIndexBuffer(BufferHandle, IndexType, u64) override { ++stats.bufferBinds; }
     void pushConstants(u32, std::span<const std::byte>) override {}
 
     void draw(u32 vertexCount, u32 instanceCount, u32, u32) override {

@@ -161,6 +161,10 @@ TEST(HeadlessEngine, DrawsOneCallPerVisibleMeshEntity) {
     EXPECT_EQ(test.device().lastFrameStats().drawCalls, 3u);
     EXPECT_EQ(test.device().lastFrameStats().triangles, 36u);
     EXPECT_EQ(test.renderer().renderExtent(), (Extent2D{320, 200}));
+    // One mesh and one material: everything is bound once.
+    EXPECT_EQ(test.device().lastFrameStats().pipelineBinds, 1u);
+    EXPECT_EQ(test.device().lastFrameStats().bindGroupBinds, 2u);  // frame + material
+    EXPECT_EQ(test.device().lastFrameStats().bufferBinds, 2u);     // vertices + indices
 
     test.world().get<render::MeshRenderer>(cubes[0]).visible = false;
     test.world().destroy(cubes[1]);
