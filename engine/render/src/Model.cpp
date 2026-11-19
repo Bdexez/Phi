@@ -105,7 +105,7 @@ void releaseModel(IRenderer& renderer, ModelResources& resources) {
 ecs::Entity instantiateModel(scene::Scene& scene, const assets::ModelData& model, const ModelResources& resources,
                              std::string_view name) {
     ecs::World& world = scene.world();
-    const ecs::Entity root = scene.createEntity(std::string(name));
+    const ecs::Entity root = scene.createEntity(name);
     const auto materialOf = [&](i32 index) {
         return index >= 0 && static_cast<usize>(index) < resources.materials.size()
                    ? resources.materials[static_cast<usize>(index)]

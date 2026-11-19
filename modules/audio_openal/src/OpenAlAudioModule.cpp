@@ -55,7 +55,7 @@ public:
         const char* name = alcGetString(device_, ALC_ALL_DEVICES_SPECIFIER);
         log::info("openal", "playing on '{}' at {} Hz, {} frames per buffer", name != nullptr ? name : "?", rate,
                   bufferFrames_);
-        thread_ = std::jthread([this, rate](std::stop_token stop) { stream(stop, rate); });
+        thread_ = std::jthread([this, rate](const std::stop_token& stop) { stream(stop, rate); });
         return {};
     }
 

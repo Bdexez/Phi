@@ -240,8 +240,9 @@ void Device::destroySwapchain(rhi::SwapchainHandle handle) {
     }
     PHI_ASSERT(!inFrame_, "destroySwapchain must not be called while recording a frame");
     vkDeviceWaitIdle(device_);
-    auto swapchain = swapchains_.take(handle);
-    destroySwapchainObjects(*swapchain);
+    if (auto swapchain = swapchains_.take(handle)) {
+        destroySwapchainObjects(*swapchain);
+    }
 }
 
 rhi::Format Device::swapchainFormat(rhi::SwapchainHandle handle) const {

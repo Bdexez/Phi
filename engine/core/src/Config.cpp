@@ -85,7 +85,10 @@ std::string Config::toText() const {
     // Top-level keys first: after a section header they would belong to it.
     for (const auto& [key, value] : values_) {
         if (key.find('.') == std::string::npos) {
-            text += key + " = " + value + "\n";
+            text += key;
+            text += " = ";
+            text += value;
+            text += '\n';
         }
     }
     std::string_view section;
@@ -97,9 +100,14 @@ std::string Config::toText() const {
         const std::string_view keySection = std::string_view(key).substr(0, dot);
         if (keySection != section) {
             section = keySection;
-            text += (text.empty() ? "[" : "\n[") + std::string(section) + "]\n";
+            text += text.empty() ? "[" : "\n[";
+            text += section;
+            text += "]\n";
         }
-        text += key.substr(dot + 1) + " = " + value + "\n";
+        text += std::string_view(key).substr(dot + 1);
+        text += " = ";
+        text += value;
+        text += '\n';
     }
     return text;
 }
