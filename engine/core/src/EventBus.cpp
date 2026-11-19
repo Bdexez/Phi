@@ -8,7 +8,9 @@ namespace detail {
 struct EventBusState {
     struct Slot {
         u64 id = 0;  // 0 = removed, waiting for compaction
-        std::function<void(const void*)> handler;
+        // Shared so a dispatch can keep a handler alive (it may unsubscribe
+        // itself) without copying the callable for every event.
+        std::shared_ptr<const std::function<void(const void*)>> handler;
     };
 
     std::unordered_map<TypeId, std::vector<Slot>> handlers;
@@ -87,7 +89,8 @@ EventBus::~EventBus() = default;
 
 Subscription EventBus::subscribeRaw(TypeId type, RawHandler handler) {
     const u64 id = state_->nextId++;
-    state_->handlers[type].push_back({id, std::move(handler)});
+    state_->handlers[type].push_back(
+        {id, std::make_shared<const RawHandler>(std::move(handler))});
     return Subscription(state_, type, id);
 }
 
@@ -107,9 +110,9 @@ void EventBus::publishRaw(TypeId type, const void* event) {
     const usize count = it->second.size();
     for (usize i = 0; i < count; ++i) {
         if (it->second[i].id != 0) {
-            // Copy the callable: the handler may unsubscribe itself.
+            // Hold a reference: the handler may unsubscribe itself.
             const auto handler = it->second[i].handler;
-            handler(event);
+            (*handler)(event);
         }
     }
     --state->dispatchDepth;
