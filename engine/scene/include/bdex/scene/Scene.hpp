@@ -44,6 +44,11 @@ private:
     Scene* active_ = nullptr;
 };
 
+/// Destroys `root` and every entity attached below it through Parent links.
+/// (World::destroy alone leaves children behind, as roots placed at their
+/// local transform.) Returns the number of entities destroyed.
+usize destroyHierarchy(ecs::World& world, ecs::Entity root);
+
 /// Recomputes WorldTransform for every entity with a Transform, following
 /// Parent links. Each matrix is computed once, in O(n) overall, and parents
 /// may be stored in any order. A link to a dead entity or to one without a

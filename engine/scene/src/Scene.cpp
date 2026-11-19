@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <optional>
 #include <span>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace bdex::scene {
@@ -28,6 +30,42 @@ void SceneManager::destroy(Scene& scene) {
         active_ = nullptr;
     }
     std::erase_if(scenes_, [&scene](const auto& owned) { return owned.get() == &scene; });
+}
+
+usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
+    if (!world.alive(root)) {
+        return 0;
+    }
+
+    // Children of each entity, gathered in one pass over the Parent links.
+    std::vector<ecs::Entity> doomed = {root};
+    if (const auto* parents = world.storage<Parent>(); parents != nullptr) {
+        std::unordered_map<u32, std::vector<ecs::Entity>> children;
+        for (const u32 index : parents->entities()) {
+            const ecs::Entity parent = parents->get(index).entity;
+            if (world.alive(parent)) {
+                children[parent.index].push_back(world.entityAt(index));
+            }
+        }
+        // Breadth-first; the set guards against cycles.
+        std::unordered_set<u32> seen = {root.index};
+        for (usize i = 0; i < doomed.size(); ++i) {
+            const auto found = children.find(doomed[i].index);
+            if (found == children.end()) {
+                continue;
+            }
+            for (const ecs::Entity child : found->second) {
+                if (seen.insert(child.index).second) {
+                    doomed.push_back(child);
+                }
+            }
+        }
+    }
+
+    for (const ecs::Entity entity : doomed) {
+        world.destroy(entity);
+    }
+    return doomed.size();
 }
 
 void updateWorldTransforms(ecs::World& world) {

@@ -160,6 +160,36 @@ TEST(Hierarchy, ParentsWithoutWorldTransformStillCount) {
     expectNear(worldPosition(world, child), Vec3(0.0f, 0.0f, 4.0f));
 }
 
+TEST(Hierarchy, DestroyingARootTakesItsDescendants) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+    const ecs::Entity root = scene.createEntity("root");
+    const ecs::Entity child = scene.createEntity("child");
+    const ecs::Entity grandchild = scene.createEntity("grandchild");
+    const ecs::Entity sibling = scene.createEntity("sibling");
+    const ecs::Entity bystander = scene.createEntity("bystander");
+    world.emplace<Parent>(child, root);
+    world.emplace<Parent>(sibling, root);
+    world.emplace<Parent>(grandchild, child);
+
+    EXPECT_EQ(destroyHierarchy(world, child), 2u);  // child + grandchild
+    EXPECT_FALSE(world.alive(grandchild));
+    EXPECT_TRUE(world.alive(root));
+    EXPECT_TRUE(world.alive(sibling));
+
+    EXPECT_EQ(destroyHierarchy(world, root), 2u);  // root + sibling
+    EXPECT_FALSE(world.alive(sibling));
+    EXPECT_TRUE(world.alive(bystander));
+    EXPECT_EQ(destroyHierarchy(world, root), 0u);  // stale handle
+
+    // Cycles below the root terminate.
+    const ecs::Entity a = scene.createEntity("a");
+    const ecs::Entity b = scene.createEntity("b");
+    world.emplace<Parent>(a, b);
+    world.emplace<Parent>(b, a);
+    EXPECT_EQ(destroyHierarchy(world, a), 2u);
+}
+
 TEST(Camera, LooksDownNegativeZWithYUp) {
     Transform cameraTransform;
     cameraTransform.position = Vec3(0.0f, 0.0f, 5.0f);
