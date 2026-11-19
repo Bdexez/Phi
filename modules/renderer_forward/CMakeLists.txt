@@ -27,5 +27,6 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/debug.vert
         shaders/debug.frag
         shaders/bloom_down.frag
-        shaders/bloom_up.frag)
+        shaders/bloom_up.frag
+        shaders/fxaa.frag)
 add_dependencies(bdex_module_renderer_forward bdex_renderer_forward_shaders)

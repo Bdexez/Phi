@@ -1040,3 +1040,57 @@ TEST(VulkanHeadless, BloomSpreadsBrightLight) {
     EXPECT_EQ(haloAround(false), 0);  // plain black background
     EXPECT_GT(withBloom, 20);         // the glow reaches past the edge
 }
+
+TEST(VulkanHeadless, FxaaSmoothsEdges) {
+    // Pixels partly red along the edges of a tilted, uniformly red square.
+    const auto partialPixels = [](std::string_view antialiasing) -> int {
+        Config config;
+        config.set("rhi.validation", "true");
+        config.set("renderer.hdr", "true");
+        config.set("renderer.tonemap", "none");
+        config.set("renderer.bloom", "false");
+        config.set("renderer.antialiasing", antialiasing);
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return -1;
+        }
+        test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        test.populate(0);
+        const ecs::Entity sun = test.scene().createEntity("sun");  // flat lighting
+        test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+        test.world().get<render::DirectionalLight>(sun).ambient = Vec3(1.0f);
+        render::MaterialDesc red;
+        red.baseColor = Vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        red.specular = 0.0f;
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().get<scene::Transform>(cube).rotation = glm::angleAxis(0.5f, Vec3(0.0f, 0.0f, 1.0f));
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube(2.0f)),
+                                                   test.renderer().createMaterial(red));
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_fxaa.png";
+        test.engine->tick();
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return -2;
+        }
+        int partial = 0;
+        for (usize i = 0; i < image->pixels.size(); i += 4) {
+            partial += image->pixels[i] > 25 && image->pixels[i] < 230 ? 1 : 0;
+        }
+        return partial;
+    };
+
+    const int aliased = partialPixels("none");
+    if (aliased == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    const int smoothed = partialPixels("fxaa");
+    ASSERT_GE(smoothed, 0) << "capture failed or validation errors";
+    EXPECT_GT(smoothed, aliased * 3 + 50) << "aliased " << aliased << ", fxaa " << smoothed;
+}

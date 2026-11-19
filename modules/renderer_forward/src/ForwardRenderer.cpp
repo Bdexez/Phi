@@ -128,6 +128,11 @@ Result<> ForwardRenderer::initialize() {
             log::warn("renderer", "unknown renderer.tonemap '{}'; using 'aces'", tonemap);
         }
         settings.aces = tonemap != "none";
+        const std::string antialiasing = config.getString("renderer.antialiasing", "fxaa");
+        if (antialiasing != "fxaa" && antialiasing != "none") {
+            log::warn("renderer", "unknown renderer.antialiasing '{}'; using 'fxaa'", antialiasing);
+        }
+        settings.antialiasing = antialiasing != "none";
         settings.bloomIntensity = config.getBool("renderer.bloom", true)
                                       ? static_cast<f32>(std::clamp(config.getFloat("renderer.bloom_intensity", 0.04), 0.0, 1.0))
                                       : 0.0f;
