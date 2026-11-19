@@ -162,6 +162,16 @@ class View {
 public:
     View(World& world, PoolOf<Components>&... pools) : world_(&world), pools_(&pools...) {}
 
+    /// The same view, skipping entities that own any of `Excluded`:
+    ///
+    ///   world.view<Transform>().exclude<Parent>().each(...);  // roots only
+    template <class... Excluded>
+    [[nodiscard]] View exclude() const {
+        View filtered = *this;
+        (filtered.addExcluded(world_->template storage<Excluded>()), ...);
+        return filtered;
+    }
+
     /// Calls `fn` for each matching entity, as either
     /// `fn(Entity, Components&...)` or `fn(Components&...)`.
     ///
@@ -180,7 +190,7 @@ public:
                 continue;
             }
             const u32 index = entities[i];
-            if (!(std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
+            if (!matches(index)) {
                 continue;
             }
             if constexpr (std::is_invocable_v<Fn, Entity, Components&...>) {
@@ -193,11 +203,11 @@ public:
     }
 
     /// Number of matching entities (walks the smallest pool).
-    [[nodiscard]] usize count() {
+    [[nodiscard]] usize count() const {
         usize result = 0;
         IComponentPool* driver = smallestPool();
         for (const u32 index : driver->entities()) {
-            if ((std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
+            if (matches(index)) {
                 ++result;
             }
         }
@@ -205,7 +215,25 @@ public:
     }
 
 private:
-    IComponentPool* smallestPool() {
+    void addExcluded(const IComponentPool* pool) {
+        if (pool != nullptr) {  // a type no entity ever had excludes nothing
+            excluded_.push_back(pool);
+        }
+    }
+
+    [[nodiscard]] bool matches(u32 index) const {
+        if (!(std::get<PoolOf<Components>*>(pools_)->contains(index) && ...)) {
+            return false;
+        }
+        for (const IComponentPool* pool : excluded_) {
+            if (pool->contains(index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    IComponentPool* smallestPool() const {
         IComponentPool* smallest = nullptr;
         const auto consider = [&smallest](IComponentPool* candidate) {
             if (smallest == nullptr || candidate->size() < smallest->size()) {
@@ -218,6 +246,7 @@ private:
 
     World* world_;
     std::tuple<PoolOf<Components>*...> pools_;
+    std::vector<const IComponentPool*> excluded_;
 };
 
 }  // namespace bdex::ecs

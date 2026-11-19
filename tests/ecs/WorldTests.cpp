@@ -186,3 +186,28 @@ TEST(World, RemovingAnUnknownComponentIsANoOp) {
     EXPECT_FALSE(world.has<Label>(e));
     EXPECT_TRUE(world.alive(e));
 }
+
+TEST(World, ViewsCanExcludeComponents) {
+    World world;
+    const Entity moving = world.create();
+    world.emplace<Position>(moving);
+    world.emplace<Velocity>(moving);
+    const Entity still = world.create();
+    world.emplace<Position>(still);
+    const Entity tagged = world.create();
+    world.emplace<Position>(tagged);
+    world.emplace<Tag>(tagged);
+
+    std::set<u32> seen;
+    world.view<Position>().exclude<Velocity, Tag>().each(
+        [&](Entity entity, Position&) { seen.insert(entity.index); });
+    EXPECT_EQ(seen, (std::set<u32>{still.index}));
+    EXPECT_EQ(world.view<Position>().exclude<Velocity>().count(), 2u);
+
+    // Excluding a type no entity ever had filters nothing.
+    EXPECT_EQ(world.view<Position>().exclude<Label>().count(), 3u);
+    // The original view is unaffected.
+    const auto all = world.view<Position>();
+    const auto filtered = all.exclude<Tag>();
+    EXPECT_EQ(filtered.count(), 2u);
+}
