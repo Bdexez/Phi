@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace bdex::forward {
 
@@ -45,10 +46,33 @@ Result<> ForwardRenderer::initialize() {
     }
     initialized_ = true;
 
-    // --- Frame constants (set 0) ---------------------------------------------------
+    // --- Shadow map -------------------------------------------------------------------
+    shadowsEnabled_ = config.getBool("renderer.shadows", true);
+    shadowMapSize_ =
+        shadowsEnabled_
+            ? static_cast<u32>(std::clamp<i64>(config.getInt("renderer.shadow_map_size", 2048), 64, 8192))
+            : 1;
+    shadowDistance_ =
+        static_cast<f32>(std::clamp(config.getFloat("renderer.shadow_distance", 40.0), 1.0, 1000.0));
+    rhi::TextureDesc shadowDesc;
+    shadowDesc.width = shadowMapSize_;
+    shadowDesc.height = shadowMapSize_;
+    shadowDesc.format = shadowFormat_;
+    shadowDesc.usage = rhi::TextureUsage::DepthStencilAttachment | rhi::TextureUsage::Sampled;
+    shadowDesc.debugName = "shadow map";
+    shadowMap_ = device_.createTexture(shadowDesc);
+    rhi::SamplerDesc shadowSamplerDesc;
+    shadowSamplerDesc.addressMode = rhi::AddressMode::ClampToEdge;
+    shadowSamplerDesc.compare = true;
+    shadowSamplerDesc.compareOp = rhi::CompareOp::LessOrEqual;
+    shadowSamplerDesc.debugName = "shadow sampler";
+    shadowSampler_ = device_.createSampler(shadowSamplerDesc);
+
+    // --- Frame constants and shadow map (set 0) ------------------------------------
     frameLayout_ = device_.createBindGroupLayout({
         {{0, rhi::BindingType::UniformBuffer,
-          rhi::ShaderStage::Vertex | rhi::ShaderStage::Fragment}},
+          rhi::ShaderStage::Vertex | rhi::ShaderStage::Fragment},
+         {1, rhi::BindingType::CombinedTextureSampler, rhi::ShaderStage::Fragment}},
         "frame layout",
     });
     for (u32 slot = 0; slot < device_.framesInFlight(); ++slot) {
@@ -65,6 +89,11 @@ Result<> ForwardRenderer::initialize() {
         uniforms.binding = 0;
         uniforms.buffer = frameBuffers_.back();
         groupDesc.entries.push_back(uniforms);
+        rhi::BindGroupEntry shadows;
+        shadows.binding = 1;
+        shadows.texture = shadowMap_;
+        shadows.sampler = shadowSampler_;
+        groupDesc.entries.push_back(shadows);
         groupDesc.debugName = "frame bind group";
         frameBindGroups_.push_back(device_.createBindGroup(groupDesc));
     }
@@ -122,6 +151,8 @@ void ForwardRenderer::shutdown() {
     frameBuffers_.clear();
 
     device_.destroySampler(defaultSampler_);
+    device_.destroySampler(shadowSampler_);
+    device_.destroyTexture(shadowMap_);
     device_.destroyBindGroupLayout(materialLayout_);
     device_.destroyBindGroupLayout(frameLayout_);
     device_.destroyTexture(depthTarget_);
@@ -131,8 +162,8 @@ void ForwardRenderer::shutdown() {
 }
 
 render::RenderSetupContext ForwardRenderer::setupContext() {
-    return render::RenderSetupContext{device_, engine_.services(), colorFormat_, depthFormat_,
-                                      frameLayout_};
+    return render::RenderSetupContext{device_,      engine_.services(), colorFormat_,
+                                      depthFormat_, shadowFormat_,      frameLayout_};
 }
 
 // =============================================================================
@@ -326,14 +357,88 @@ void ForwardRenderer::ensureCaptureTarget(Extent2D extent) {
     captureExtent_ = extent;
 }
 
-void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
-                                          const FrameTime& time) {
+render::DirectionalLight ForwardRenderer::findSun() const {
     render::DirectionalLight light;  // defaults when the scene has none
     if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
         scenes != nullptr && scenes->active() != nullptr) {
         scenes->active()->world().view<const render::DirectionalLight>().each(
             [&light](const render::DirectionalLight& candidate) { light = candidate; });
     }
+    return light;
+}
+
+void ForwardRenderer::updateShadowView(const render::CameraData& camera) {
+    shadowsThisFrame_ = shadowsEnabled_ && sun_.castShadows;
+    if (!shadowsThisFrame_) {
+        return;
+    }
+    const f32 directionLength = glm::length(sun_.direction);
+    const Vec3 direction =
+        directionLength > 0.0f ? sun_.direction / directionLength : Vec3(0.0f, -1.0f, 0.0f);
+    const Vec3 upHint = std::abs(direction.y) > 0.99f ? Vec3(0.0f, 0.0f, 1.0f) : Vec3(0.0f, 1.0f, 0.0f);
+
+    // Sphere around the part of the view frustum within shadow_distance: its
+    // size does not change as the camera turns, so shadows do not swim.
+    const Mat4 cameraWorld = glm::inverse(camera.view);
+    const Vec3 back = glm::normalize(Vec3(cameraWorld[2]));
+    const f32 tanX = 1.0f / std::abs(camera.projection[0][0]);
+    const f32 tanY = 1.0f / std::abs(camera.projection[1][1]);
+    const f32 distance = shadowDistance_;
+    Vec3 center = camera.position - back * (distance * 0.5f);
+    const f32 radius = std::ceil(distance * std::sqrt(0.25f + tanX * tanX + tanY * tanY));
+
+    // Snap the center to whole shadow-map texels, so moving the camera does
+    // not make shadow edges crawl.
+    const Mat4 rotation = glm::lookAt(Vec3(0.0f), direction, upHint);
+    const f32 texel = 2.0f * radius / static_cast<f32>(shadowMapSize_);
+    Vec3 snapped = Vec3(rotation * Vec4(center, 1.0f));
+    snapped.x = std::floor(snapped.x / texel) * texel;
+    snapped.y = std::floor(snapped.y / texel) * texel;
+    center = Vec3(glm::inverse(rotation) * Vec4(snapped, 1.0f));
+
+    // Casters up to shadow_distance beyond the sphere, toward the sun, still
+    // cast into it.
+    const f32 reach = distance;
+    const Vec3 eye = center - direction * (radius + reach);
+    shadowView_.view = glm::lookAt(eye, center, upHint);
+    shadowView_.projection = glm::ortho(-radius, radius, -radius, radius, 0.0f, 2.0f * radius + reach);
+    shadowView_.projection[1][1] *= -1.0f;  // same clip-space convention as the camera
+    shadowView_.viewProjection = shadowView_.projection * shadowView_.view;
+    shadowView_.position = eye;
+}
+
+void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameTime& time) {
+    // Runs even without shadows: clearing keeps the map in a valid state for
+    // the frame bind group that references it.
+    const rhi::DepthAttachment depth{shadowMap_, rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
+    commands.beginRendering({{}, &depth});
+    commands.setViewport({0.0f, 0.0f, static_cast<f32>(shadowMapSize_),
+                          static_cast<f32>(shadowMapSize_), 0.0f, 1.0f});
+    commands.setScissor({0, 0, shadowMapSize_, shadowMapSize_});
+    if (shadowsThisFrame_) {
+        auto* scenes = engine_.services().tryGet<scene::SceneManager>();
+        scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
+        const render::RenderFrameContext context{
+            device_,
+            commands,
+            activeScene != nullptr ? &activeScene->world() : nullptr,
+            shadowView_,
+            {shadowMapSize_, shadowMapSize_},
+            frameBindGroups_[device_.frameSlot()],
+            time,
+        };
+        commands.beginDebugGroup("shadows");
+        for (const auto& feature : features_) {
+            feature->renderShadows(context);
+        }
+        commands.endDebugGroup();
+    }
+    commands.endRendering();
+}
+
+void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
+                                          const FrameTime& time) {
+    const render::DirectionalLight& light = sun_;
 
     render::FrameUniforms uniforms;
     uniforms.view = camera.view;
@@ -346,6 +451,14 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
         directionLength > 0.0f ? light.direction / directionLength : Vec3(0.0f, -1.0f, 0.0f), 0.0f);
     uniforms.lightColor = Vec4(light.color * light.intensity, 1.0f);
     uniforms.ambientColor = Vec4(light.ambient, 1.0f);
+    uniforms.lightViewProjection = shadowView_.viewProjection;
+    if (shadowsThisFrame_) {
+        // Biases scale with the size of a shadow-map texel in the world.
+        const f32 texelWorld = 2.0f / (shadowView_.projection[0][0] * static_cast<f32>(shadowMapSize_));
+        const f32 depthRange = 1.0f / std::abs(shadowView_.projection[2][2]);
+        uniforms.shadowParams = Vec4(1.0f, 1.0f / static_cast<f32>(shadowMapSize_),
+                                     texelWorld / depthRange, 1.5f * texelWorld);
+    }
     uniforms.timeAndExtent =
         Vec4(static_cast<f32>(time.elapsed), static_cast<f32>(time.delta),
              static_cast<f32>(extent.width), static_cast<f32>(extent.height));
@@ -450,7 +563,10 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
                 });
         }
 
+        sun_ = findSun();
+        updateShadowView(camera);
         updateFrameUniforms(camera, extent_, time);
+        renderShadowPass(commands, time);
         renderView(commands, target, extent_, camera, time);
 
         if (capture) {

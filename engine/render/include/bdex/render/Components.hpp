@@ -45,6 +45,9 @@ struct DirectionalLight {
     Vec3 color{1.0f};
     f32 intensity = 1.0f;
     Vec3 ambient{0.08f};
+    /// Opaque meshes near the camera block this light (when the renderer
+    /// has shadows enabled).
+    bool castShadows = true;
 };
 
 }  // namespace bdex::render

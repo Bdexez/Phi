@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "bdex/frame_uniforms.glsl"
+#include "bdex/shadows.glsl"
 
 layout(set = 1, binding = 0) uniform sampler2D albedoTexture;
 
@@ -31,7 +32,7 @@ void main() {
     // The render target is sRGB-encoded: lighting is computed linearly.
     vec3 color = albedo.rgb * frame.ambientColor.rgb;
     color += shade(albedo.rgb, normal, toCamera, normalize(-frame.lightDirection.xyz),
-                   frame.lightColor.rgb);
+                   frame.lightColor.rgb * bdexSunShadow(inWorldPosition, normal));
 
     int pointLights = int(frame.pointLightCount.x);
     for (int i = 0; i < pointLights; ++i) {

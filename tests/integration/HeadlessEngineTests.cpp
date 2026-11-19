@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace bdex;
@@ -33,6 +34,9 @@ struct TestEngine {
         config.setDefault("engine.forced_delta", "0.016");
         config.setDefault("window.width", "320");
         config.setDefault("window.height", "200");
+        // Frame statistics then count the main pass only; shadow tests turn
+        // shadows back on.
+        config.setDefault("renderer.shadows", "false");
         engine = std::make_unique<Engine>(config);
 
         auto vfs = std::make_shared<VirtualFileSystem>();
@@ -344,6 +348,30 @@ TEST(HeadlessEngine, MeshesOutsideTheViewAreNotDrawn) {
     EXPECT_EQ(test.device().lastFrameStats().instances, 2u);
 }
 
+TEST(HeadlessEngine, OpaqueMeshesCastShadowsFromTheSun) {
+    Config config;
+    config.set("renderer.shadows", "true");
+    TestEngine test(kNullStack, config);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(3);  // opaque cubes
+    const ecs::Entity sun = test.scene().createEntity("sun");
+    test.world().emplace<render::DirectionalLight>(sun);
+
+    render::MaterialDesc glass;
+    glass.transparent = true;
+    const ecs::Entity pane = test.scene().createEntity("pane");
+    test.world().emplace<render::MeshRenderer>(pane, test.renderer().createMesh(assets::makeCube()),
+                                               test.renderer().createMaterial(glass));
+
+    // Shadow pass (3 opaque casters) + main pass (4 meshes).
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().instances, 3u + 4u);
+
+    test.world().get<render::DirectionalLight>(sun).castShadows = false;
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().instances, 4u);
+}
+
 TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
     std::vector<std::string> trace;  // outlives the engine, which detaches the probe
     TestEngine test(kNullStack);
@@ -645,4 +673,78 @@ TEST(VulkanHeadless, TransparentSurfacesBlendBackToFront) {
     EXPECT_GT(center[2], 50);  // the far pane still shows through
     EXPECT_EQ(test.device().lastFrameStats().pipelineBinds, 1u);  // transparent only
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
+}
+
+TEST(VulkanHeadless, TheSunCastsShadows) {
+    const auto render = [](bool shadows) -> std::pair<int, int> {
+        Config config;
+        config.set("rhi.validation", "true");
+        config.set("renderer.shadows", shadows ? "true" : "false");
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return {-1, -1};
+        }
+        // Looking down at a ground plane, with a cube floating above it and
+        // the sun straight overhead.
+        const ecs::Entity camera = test.scene().createEntity("camera");
+        test.world().emplace<render::Camera>(camera);
+        scene::Transform& eye = test.world().get<scene::Transform>(camera);
+        eye.position = Vec3(0.0f, 10.0f, 10.0f);
+        eye.rotation = glm::quatLookAt(glm::normalize(Vec3(0.0f, -1.0f, -1.0f)), Vec3(0.0f, 1.0f, 0.0f));
+
+        const ecs::Entity sun = test.scene().createEntity("sun");
+        test.world().emplace<render::DirectionalLight>(
+            sun, render::DirectionalLight{.direction = Vec3(0.0f, -1.0f, 0.0f),
+                                          .color = Vec3(1.0f),
+                                          .intensity = 1.0f,
+                                          .ambient = Vec3(0.1f)});
+        const ecs::Entity ground = test.scene().createEntity("ground");
+        test.world().emplace<render::MeshRenderer>(
+            ground, test.renderer().createMesh(assets::makePlane(20.0f)),
+            test.renderer().createMaterial({}));
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().get<scene::Transform>(cube).position = Vec3(0.0f, 3.0f, 0.0f);
+        test.world().get<scene::Transform>(cube).scale = Vec3(2.0f);
+        test.world().emplace<render::MeshRenderer>(
+            cube, test.renderer().createMesh(assets::makeCube()), test.renderer().createMaterial({}));
+
+        const std::filesystem::path path =
+            std::filesystem::temp_directory_path() / "bdex_tests_shadows.png";
+        test.engine->tick();  // world transforms
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return {-2, -2};
+        }
+
+        // Where two ground points land on screen.
+        const render::CameraData view = render::makeCameraData(
+            test.world().get<scene::WorldTransform>(camera).matrix, render::Camera{},
+            static_cast<f32>(image->width) / static_cast<f32>(image->height));
+        const auto brightness = [&](const Vec3& point) {
+            const Vec4 clip = view.viewProjection * Vec4(point, 1.0f);
+            const u32 x = static_cast<u32>((clip.x / clip.w * 0.5f + 0.5f) * static_cast<f32>(image->width));
+            const u32 y = static_cast<u32>((clip.y / clip.w * 0.5f + 0.5f) * static_cast<f32>(image->height));
+            return static_cast<int>(image->pixels[(y * image->width + x) * 4]);
+        };
+        // Under the cube, near its front edge (seen past the cube), and well
+        // away from it.
+        return {brightness(Vec3(0.0f, 0.0f, 0.8f)), brightness(Vec3(5.0f, 0.0f, 5.0f))};
+    };
+
+    const auto [shadowed, lit] = render(true);
+    if (shadowed == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    ASSERT_NE(shadowed, -2) << "capture failed or validation errors";
+    EXPECT_LT(shadowed * 2, lit) << "shadowed " << shadowed << ", lit " << lit;
+
+    // Without shadows, both points are lit alike.
+    const auto [first, second] = render(false);
+    EXPECT_NEAR(first, second, 6);
 }

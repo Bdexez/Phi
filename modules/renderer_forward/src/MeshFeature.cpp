@@ -21,6 +21,15 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     if (!fragmentBinary) {
         return std::unexpected(fragmentBinary.error());
     }
+    const auto shadowVertexBinary = assets.load<assets::ShaderBinary>("engine:/shaders/shadow.vert.spv");
+    if (!shadowVertexBinary) {
+        return std::unexpected(shadowVertexBinary.error());
+    }
+    const auto shadowFragmentBinary =
+        assets.load<assets::ShaderBinary>("engine:/shaders/shadow.frag.spv");
+    if (!shadowFragmentBinary) {
+        return std::unexpected(shadowFragmentBinary.error());
+    }
 
     rhi::IDevice& device = context.device;
     const rhi::ShaderHandle vertexShader =
@@ -42,6 +51,7 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
         "forward.objects layout",
     });
     objectBuffers_.assign(device.framesInFlight(), ObjectBuffer{});
+    shadowObjectBuffers_.assign(device.framesInFlight(), ObjectBuffer{});
     desc.bindGroupLayouts = {context.frameLayout, renderer_->materialLayout(), objectLayout_};
     desc.colorFormats = {context.colorFormat};
     desc.depthFormat = context.depthFormat;
@@ -57,21 +67,48 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     desc.debugName = "forward.meshes.transparent";
     transparentPipeline_ = device.createGraphicsPipeline(desc);
 
-    // The pipeline keeps what it needs from the shader modules.
+    // Shadow casters: depth only, into the shadow map. Back faces (as seen
+    // from the light) are drawn so lit surfaces do not shadow themselves.
+    const rhi::ShaderHandle shadowVertexShader = device.createShader(
+        {rhi::ShaderStage::Vertex, (*shadowVertexBinary)->words, "main", "shadow.vert"});
+    const rhi::ShaderHandle shadowFragmentShader = device.createShader(
+        {rhi::ShaderStage::Fragment, (*shadowFragmentBinary)->words, "main", "shadow.frag"});
+    rhi::GraphicsPipelineDesc shadowDesc = desc;
+    shadowDesc.vertexShader = shadowVertexShader;
+    shadowDesc.fragmentShader = shadowFragmentShader;
+    shadowDesc.vertexLayout.attributes = {
+        {0, rhi::VertexFormat::Float3, offsetof(assets::Vertex, position)},
+    };
+    shadowDesc.colorFormats = {};
+    shadowDesc.depthFormat = context.shadowFormat;
+    shadowDesc.blend = rhi::BlendMode::Opaque;
+    shadowDesc.depthWrite = true;
+    shadowDesc.cullMode = rhi::CullMode::Front;
+    shadowDesc.debugName = "forward.meshes.shadows";
+    shadowPipeline_ = device.createGraphicsPipeline(shadowDesc);
+
+    // The pipelines keep what they need from the shader modules.
     device.destroyShader(vertexShader);
     device.destroyShader(fragmentShader);
+    device.destroyShader(shadowVertexShader);
+    device.destroyShader(shadowFragmentShader);
     return {};
 }
 
 void MeshFeature::onDetach(rhi::IDevice& device) {
-    for (const ObjectBuffer& slot : objectBuffers_) {
-        device.destroyBindGroup(slot.bindGroup);
-        device.destroyBuffer(slot.buffer);
+    for (const auto* buffers : {&objectBuffers_, &shadowObjectBuffers_}) {
+        for (const ObjectBuffer& slot : *buffers) {
+            device.destroyBindGroup(slot.bindGroup);
+            device.destroyBuffer(slot.buffer);
+        }
     }
     objectBuffers_.clear();
+    shadowObjectBuffers_.clear();
     device.destroyBindGroupLayout(objectLayout_);
     device.destroyPipeline(opaquePipeline_);
     device.destroyPipeline(transparentPipeline_);
+    device.destroyPipeline(shadowPipeline_);
+    shadowPipeline_ = {};
     objectLayout_ = {};
     opaquePipeline_ = {};
     transparentPipeline_ = {};
@@ -180,6 +217,42 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     drawBatch(commands, context, transparentPipeline_, transparent_, transparentOrder_,
               static_cast<u32>(opaqueOrder_.size()), slot.bindGroup);
     commands.endDebugGroup();
+}
+
+void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
+    if (context.world == nullptr) {
+        return;
+    }
+    // Opaque meshes within the light's volume, grouped by mesh (materials do
+    // not matter for depth).
+    casters_.clear();
+    casterOrder_.clear();
+    const render::Frustum lightVolume(context.camera.viewProjection);
+    context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
+        [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
+            const GpuMesh* mesh = renderable.visible ? renderer_->mesh(renderable.mesh) : nullptr;
+            if (mesh == nullptr ||
+                renderer_->materialOrDefault(renderable.material).desc.transparent ||
+                !lightVolume.intersects(render::transformSphere(mesh->bounds, transform.matrix))) {
+                return;
+            }
+            casterOrder_.push_back({renderable.mesh.index, static_cast<u32>(casters_.size())});
+            casters_.push_back({{}, mesh, {transform.matrix, Vec4(0.0f), Vec4(0.0f)}});
+        });
+    if (casters_.empty()) {
+        return;
+    }
+    std::sort(casterOrder_.begin(), casterOrder_.end(),
+              [](const SortKey& a, const SortKey& b) { return a.key < b.key; });
+
+    objects_.clear();
+    for (const SortKey& entry : casterOrder_) {
+        objects_.push_back(casters_[entry.draw].object);
+    }
+    ObjectBuffer& slot = shadowObjectBuffers_[context.device.frameSlot()];
+    ensureObjectCapacity(context.device, slot, objects_.size());
+    context.device.writeBuffer(slot.buffer, rhi::asBytes(std::span<const ObjectData>(objects_)));
+    drawBatch(context.commands, context, shadowPipeline_, casters_, casterOrder_, 0, slot.bindGroup);
 }
 
 void MeshFeature::drawBatch(rhi::ICommandList& commands, const render::RenderFrameContext& context,

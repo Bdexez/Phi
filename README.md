@@ -11,7 +11,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **Modular core:** plugin loading, module dependency resolution, a service registry, an event bus, and INI configuration.
 - **Simulation loop:** ordered execution phases, fixed timestep updates, and a multithreaded job system.
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
-- **3D rendering:** perspective cameras, meshes, textures, materials, Blinn-Phong lighting from a directional light and up to 16 point lights, frustum culling, draw sorting, instancing, and blended transparency through an extensible forward renderer.
+- **3D rendering:** perspective cameras, meshes, textures, materials, Blinn-Phong lighting from a directional light with soft shadows and up to 16 point lights, frustum culling, draw sorting, instancing, and blended transparency through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Assets:** a virtual file system, asset caching, OBJ, PNG, TGA, and SPIR-V loaders, plus procedural cubes, planes, spheres, and textures.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
@@ -150,6 +150,8 @@ Override any key at startup with `--set`:
 ```sh
 ./build/bin/sandbox --set window.width=1920 --set window.height=1080 --set renderer.vsync=false
 ```
+
+Shadows from the directional light are on by default; `renderer.shadows`, `renderer.shadow_map_size` (texels per side, default `2048`), and `renderer.shadow_distance` (how far from the camera shadows are drawn, default `40`) tune them.
 
 | Option | Effect |
 | --- | --- |

@@ -27,6 +27,8 @@ public:
     Result<> onAttach(const render::RenderSetupContext& context) override;
     void onDetach(rhi::IDevice& device) override;
     void render(const render::RenderFrameContext& context) override;
+    /// Opaque meshes cast shadows; transparent ones do not.
+    void renderShadows(const render::RenderFrameContext& context) override;
 
 private:
     /// One per instance, in the object storage buffer (set 2). Mirrors
@@ -65,13 +67,17 @@ private:
     const ForwardRenderer* renderer_;
     rhi::PipelineHandle opaquePipeline_;
     rhi::PipelineHandle transparentPipeline_;
+    rhi::PipelineHandle shadowPipeline_;
     rhi::BindGroupLayoutHandle objectLayout_;
     std::vector<ObjectBuffer> objectBuffers_;
+    std::vector<ObjectBuffer> shadowObjectBuffers_;  ///< The shadow pass's own.
     // Reused across frames.
     std::vector<DrawItem> opaque_;
     std::vector<DrawItem> transparent_;
     std::vector<SortKey> opaqueOrder_;
     std::vector<SortKey> transparentOrder_;
+    std::vector<DrawItem> casters_;
+    std::vector<SortKey> casterOrder_;
     std::vector<ObjectData> objects_;
 };
 
