@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ToneMapPass.hpp"
+
 #include <bdex/core/Engine.hpp>
 #include <bdex/core/Handle.hpp>
 #include <bdex/platform/Window.hpp>
@@ -84,17 +86,13 @@ private:
     /// Fits the sun's shadow volume around the camera's nearby view.
     void updateShadowView(const render::CameraData& camera);
     void renderShadowPass(rhi::ICommandList& commands, const FrameTime& time);
-    void ensureHdrTarget(Extent2D extent);
     /// Features draw the scene into `target` (the HDR target, or the output
     /// without HDR).
     void renderScene(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent,
                      const render::CameraData& camera, const FrameTime& time);
-    /// Exposure and tone mapping, from the HDR target into `target`.
-    void postProcess(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent);
     void saveCapture(const std::filesystem::path& path);
     [[nodiscard]] rhi::BindGroupHandle createMaterialBindGroup(const render::MaterialDesc& desc);
     [[nodiscard]] render::RenderSetupContext setupContext();
-    [[nodiscard]] Result<> createPostPipeline();
 
     Engine& engine_;
     rhi::IDevice& device_;
@@ -104,25 +102,17 @@ private:
     rhi::SwapchainHandle swapchain_;  ///< Invalid when rendering offscreen.
     rhi::TextureHandle depthTarget_;
     rhi::TextureHandle captureTarget_;  ///< Offscreen color target (headless, screenshots).
-    rhi::TextureHandle hdrTarget_;      ///< Scene color before tone mapping.
-    Extent2D hdrExtent_;
     Extent2D depthExtent_;
     Extent2D captureExtent_;
     Extent2D extent_;
     Extent2D fallbackExtent_{1280, 720};
     rhi::Format colorFormat_ = rhi::Format::RGBA8Srgb;  ///< Of the output.
-    rhi::Format hdrFormat_ = rhi::Format::RGBA16Float;  ///< What features draw into.
     rhi::Format depthFormat_ = rhi::Format::D32Float;
     Vec4 clearColor_{0.02f, 0.02f, 0.03f, 1.0f};
     std::filesystem::path screenshotPath_;
 
     // Post-processing
-    rhi::BindGroupLayoutHandle postLayout_;
-    rhi::BindGroupHandle postBindGroup_;  ///< The HDR target; follows its size.
-    rhi::SamplerHandle postSampler_;
-    rhi::PipelineHandle postPipeline_;
-    f32 exposure_ = 1.0f;
-    bool acesTonemap_ = true;
+    ToneMapPass toneMap_;
     bool hdr_ = true;
 
     // Shadows. The map always exists (1x1 when shadows are off) because the

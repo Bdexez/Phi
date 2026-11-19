@@ -3,6 +3,7 @@ bdex_add_module(renderer_forward
         src/ForwardRenderer.cpp
         src/ForwardRendererModule.cpp
         src/MeshFeature.cpp
+        src/ToneMapPass.cpp
     DEPS
         bdex::core
         bdex::ecs
