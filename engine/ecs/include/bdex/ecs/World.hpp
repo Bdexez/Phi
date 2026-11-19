@@ -95,6 +95,19 @@ public:
         return View<Components...>(*this, pool<Components>()...);
     }
 
+    /// Direct access to the storage of a component type, or null if no entity
+    /// ever had it. Meant for engine systems that need tight loops (indices
+    /// are entity slots; check alive() before trusting an index from outside
+    /// the pool).
+    template <class T>
+    [[nodiscard]] ComponentPool<std::remove_cvref_t<T>>* storage() {
+        return findPool<T>();
+    }
+    template <class T>
+    [[nodiscard]] const ComponentPool<std::remove_cvref_t<T>>* storage() const {
+        return findPool<T>();
+    }
+
     /// Rebuilds the full handle of a live entity from its index.
     [[nodiscard]] Entity entityAt(u32 index) const {
         BDEX_ASSERT(index < generations_.size());
