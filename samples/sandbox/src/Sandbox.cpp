@@ -157,6 +157,14 @@ private:
         polished.shininess = 96.0f;
         sphereMaterial_ = gfx.createMaterial(polished);
 
+        // The moons glow with the color of the lamp they carry.
+        for (u32 i = 0; i < 2; ++i) {
+            render::MaterialDesc moon;
+            moon.baseColor = Vec4(0.05f, 0.05f, 0.05f, 1.0f);
+            moon.emissive = i == 0 ? Vec3(1.0f, 0.35f, 0.05f) : Vec3(0.05f, 0.4f, 1.0f);
+            moonMaterials_[i] = gfx.createMaterial(moon);
+        }
+
         render::MaterialDesc glass;  // tinted and see-through
         glass.baseColor = Vec4(0.3f, 0.7f, 1.0f, 0.45f);
         glass.specular = 1.0f;
@@ -237,7 +245,7 @@ private:
             transform.scale = Vec3(0.45f);
             world.emplace<scene::Parent>(moon, pivot);
             world.emplace<render::MeshRenderer>(moon, i == 0 ? sphereMesh_ : cubeMesh_,
-                                                cubeMaterials_[i * 4]);
+                                                moonMaterials_[i]);
             world.emplace<Spin>(moon, Vec3(1.0f, 0.0f, 0.0f), 2.0f);
 
             // Each moon carries a colored lamp, slightly below it, that
@@ -319,6 +327,7 @@ private:
     render::MaterialHandle groundMaterial_;
     render::MaterialHandle sphereMaterial_;
     render::MaterialHandle glassMaterial_;
+    std::array<render::MaterialHandle, 2> moonMaterials_{};
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
     ecs::Entity camera_;
