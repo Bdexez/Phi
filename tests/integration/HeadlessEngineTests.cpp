@@ -4,6 +4,7 @@
 // real GPU when one is available.
 
 #include <bdex/assets/AssetManager.hpp>
+#include <bdex/assets/Image.hpp>
 #include <bdex/core/Engine.hpp>
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/Log.hpp>
@@ -122,38 +123,6 @@ private:
 };
 
 const std::vector<std::string> kNullStack = {"renderer_forward", "rhi_null", "window_null"};
-
-u32 readBigEndian(const std::vector<u8>& bytes, usize offset) {
-    return (static_cast<u32>(bytes[offset]) << 24) | (static_cast<u32>(bytes[offset + 1]) << 16) |
-           (static_cast<u32>(bytes[offset + 2]) << 8) | bytes[offset + 3];
-}
-
-/// Decodes a PNG produced by assets::encodePng (single IDAT, stored deflate
-/// blocks, filter 0), which is all the engine ever writes.
-assets::ImageData decodeEnginePng(const std::vector<u8>& png) {
-    assets::ImageData image;
-    image.width = readBigEndian(png, 16);
-    image.height = readBigEndian(png, 20);
-
-    const usize idatLength = readBigEndian(png, 33);
-    usize cursor = 41 + 2;  // IDAT payload, after the 2-byte zlib header
-    const usize end = 41 + idatLength - 4;  // before the adler32
-    std::vector<u8> raw;
-    while (cursor < end) {
-        const usize blockSize = png[cursor + 1] | (static_cast<usize>(png[cursor + 2]) << 8);
-        cursor += 5;
-        raw.insert(raw.end(), png.begin() + static_cast<std::ptrdiff_t>(cursor),
-                   png.begin() + static_cast<std::ptrdiff_t>(cursor + blockSize));
-        cursor += blockSize;
-    }
-
-    const usize rowBytes = static_cast<usize>(image.width) * 4;
-    for (u32 y = 0; y < image.height; ++y) {
-        const auto row = raw.begin() + static_cast<std::ptrdiff_t>(y * (rowBytes + 1) + 1);
-        image.pixels.insert(image.pixels.end(), row, row + static_cast<std::ptrdiff_t>(rowBytes));
-    }
-    return image;
-}
 
 }  // namespace
 
@@ -382,7 +351,9 @@ TEST(VulkanHeadless, RendersTheSceneOffscreenWithoutValidationErrors) {
 
     // Check what was actually rendered: the corner shows the clear color, the
     // center shows the middle cube (red-ish material, lit).
-    const assets::ImageData frame = decodeEnginePng(*png);
+    const auto decoded = assets::decodePng(*png);
+    ASSERT_TRUE(decoded.has_value()) << decoded.error().message;
+    const assets::ImageData& frame = *decoded;
     ASSERT_EQ(frame.width, 320u);
     ASSERT_EQ(frame.height, 200u);
     ASSERT_TRUE(frame.valid());

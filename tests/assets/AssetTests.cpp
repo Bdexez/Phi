@@ -199,12 +199,12 @@ TEST(Image, EncodesWellFormedPng) {
     // The file ends with an empty IEND chunk.
     EXPECT_EQ(std::string(png.end() - 8, png.end() - 4), "IEND");
 
-    // 300 * (300 * 4 + 1) bytes of scanlines need several stored blocks
-    // (65535 bytes max each): the payload must still be accounted for exactly.
-    const usize rawSize = 300u * (300u * 4u + 1u);
-    const usize blocks = (rawSize + 65534) / 65535;
-    const usize idatSize = 2 + blocks * 5 + rawSize + 4;
-    EXPECT_EQ(readBigEndian(png, 33), idatSize);
+    // A flat checkerboard compresses to a tiny fraction of its 360 KB of
+    // pixels, and decodes back to them.
+    EXPECT_LT(png.size(), image.pixels.size() / 100);
+    const auto decoded = decodePng(png);
+    ASSERT_TRUE(decoded.has_value()) << decoded.error().message;
+    EXPECT_EQ(decoded->pixels, image.pixels);
 }
 
 // --- AssetManager ------------------------------------------------------------------

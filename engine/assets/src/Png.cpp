@@ -31,6 +31,17 @@ u32 crc32(const u8* data, usize size, u32 crc = 0) {
     return ~crc;
 }
 
+u8 paeth(u8 left, u8 up, u8 upLeft) {
+    const int estimate = int{left} + int{up} - int{upLeft};
+    const int toLeft = std::abs(estimate - int{left});
+    const int toUp = std::abs(estimate - int{up});
+    const int toUpLeft = std::abs(estimate - int{upLeft});
+    if (toLeft <= toUp && toLeft <= toUpLeft) {
+        return left;
+    }
+    return toUp <= toUpLeft ? up : upLeft;
+}
+
 void appendBigEndian(std::vector<u8>& out, u32 value) {
     out.push_back(static_cast<u8>(value >> 24));
     out.push_back(static_cast<u8>(value >> 16));
@@ -49,35 +60,49 @@ void appendChunk(std::vector<u8>& out, const char type[4], const std::vector<u8>
 }  // namespace
 
 std::vector<u8> encodePng(const ImageData& image) {
-    // Raw scanlines, each prefixed with filter type 0 (none).
-    const usize rowBytes = static_cast<usize>(image.width) * 4;
+    // Each scanline gets the filter that leaves the smallest residuals (sum
+    // of absolute values, the usual heuristic), then the whole stream is
+    // deflated.
+    constexpr usize kPixelBytes = 4;
+    const usize rowBytes = static_cast<usize>(image.width) * kPixelBytes;
     std::vector<u8> raw;
     raw.reserve((rowBytes + 1) * image.height);
-    for (u32 y = 0; y < image.height; ++y) {
-        raw.push_back(0);
-        const u8* row = image.pixels.data() + y * rowBytes;
-        raw.insert(raw.end(), row, row + rowBytes);
+    std::array<std::vector<u8>, 5> candidates;
+    for (auto& candidate : candidates) {
+        candidate.resize(rowBytes);
     }
-
-    // zlib stream made of "stored" deflate blocks (at most 65535 bytes each).
-    std::vector<u8> zlib;
-    zlib.reserve(raw.size() + raw.size() / 65535 * 5 + 16);
-    zlib.push_back(0x78);
-    zlib.push_back(0x01);
-    usize offset = 0;
-    do {
-        const usize blockSize = std::min<usize>(raw.size() - offset, 65535);
-        const bool last = offset + blockSize == raw.size();
-        zlib.push_back(last ? 1 : 0);
-        zlib.push_back(static_cast<u8>(blockSize & 0xff));
-        zlib.push_back(static_cast<u8>(blockSize >> 8));
-        zlib.push_back(static_cast<u8>(~blockSize & 0xff));
-        zlib.push_back(static_cast<u8>((~blockSize >> 8) & 0xff));
-        zlib.insert(zlib.end(), raw.begin() + static_cast<std::ptrdiff_t>(offset),
-                    raw.begin() + static_cast<std::ptrdiff_t>(offset + blockSize));
-        offset += blockSize;
-    } while (offset < raw.size());
-    appendBigEndian(zlib, adler32(raw));
+    for (u32 y = 0; y < image.height; ++y) {
+        const u8* row = image.pixels.data() + y * rowBytes;
+        const u8* previous = y > 0 ? row - rowBytes : nullptr;
+        u64 bestCost = ~u64{0};
+        usize best = 0;
+        for (usize filter = 0; filter < candidates.size(); ++filter) {
+            u64 cost = 0;
+            for (usize i = 0; i < rowBytes; ++i) {
+                const u8 left = i >= kPixelBytes ? row[i - kPixelBytes] : 0;
+                const u8 up = previous != nullptr ? previous[i] : 0;
+                const u8 upLeft = previous != nullptr && i >= kPixelBytes ? previous[i - kPixelBytes] : 0;
+                u8 predicted = 0;
+                switch (filter) {
+                    case 1: predicted = left; break;
+                    case 2: predicted = up; break;
+                    case 3: predicted = static_cast<u8>((int{left} + int{up}) >> 1); break;
+                    case 4: predicted = paeth(left, up, upLeft); break;
+                    default: break;
+                }
+                const u8 residual = static_cast<u8>(row[i] - predicted);
+                candidates[filter][i] = residual;
+                cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+            }
+            if (cost < bestCost) {
+                bestCost = cost;
+                best = filter;
+            }
+        }
+        raw.push_back(static_cast<u8>(best));
+        raw.insert(raw.end(), candidates[best].begin(), candidates[best].end());
+    }
+    const std::vector<u8> zlib = zlibCompress(raw);
 
     std::vector<u8> header;
     appendBigEndian(header, image.width);
@@ -158,17 +183,6 @@ u32 passExtent(u32 size, u32 start, u32 step) {
 usize rowBytes(const PngHeader& header, u32 width) {
     const u64 bits = u64{width} * channelCount(header.colorType) * header.bitDepth;
     return static_cast<usize>((bits + 7) / 8);
-}
-
-u8 paeth(u8 left, u8 up, u8 upLeft) {
-    const int estimate = int{left} + int{up} - int{upLeft};
-    const int toLeft = std::abs(estimate - int{left});
-    const int toUp = std::abs(estimate - int{up});
-    const int toUpLeft = std::abs(estimate - int{upLeft});
-    if (toLeft <= toUp && toLeft <= toUpLeft) {
-        return left;
-    }
-    return toUp <= toUpLeft ? up : upLeft;
 }
 
 /// Reverses the per-row filters of one pass, in place. `rows` holds `count`
