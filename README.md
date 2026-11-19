@@ -98,6 +98,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `Space` / `Left Ctrl` | Move up / down. |
 | `Left Shift` | Move faster. |
 | `F2` | Save a screenshot as `screenshot_<frame>.png`. |
+| `F3` | Log the CPU time of every engine task and the last frame's draw statistics. |
 | `Escape` | Quit. |
 
 Screenshots are saved in the current working directory.
