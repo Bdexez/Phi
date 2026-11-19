@@ -10,7 +10,8 @@
 // Controls (rebindable in the [input] section of sandbox.ini): hold the
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
-// F3 to log a frame profile, F4 for debug gizmos, Escape to quit. A gamepad works too: sticks to
+// F3 to log a frame profile, F4 for debug gizmos, left click to select an
+// object, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
@@ -23,6 +24,7 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -76,6 +78,7 @@ protected:
         config.setDefault("input.screenshot", "F2, GamepadY");
         config.setDefault("input.profile", "F3");
         config.setDefault("input.debug_view", "F4");
+        config.setDefault("input.select", "MouseLeft");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -113,10 +116,14 @@ protected:
             if (controls->pressed("debug_view")) {
                 debugView_ = !debugView_;
             }
+            if (controls->pressed("select")) {
+                selectUnderCursor();
+            }
         }
         if (debugView_) {
             drawDebugView();
         }
+        highlightSelection();
     }
 
 private:
@@ -134,6 +141,61 @@ private:
             }
         }
         return assets::makeNormalMap(heights, size, size, strength / bevel);
+    }
+
+    /// Picks the nearest drawn object under the cursor (bounding spheres).
+    void selectUnderCursor() {
+        const platform::InputState* pointer = input();
+        if (pointer == nullptr || !engine().services().has<render::IRenderer>()) {
+            return;
+        }
+        ecs::World& world = scene().world();
+        const Extent2D extent = renderer().renderExtent();
+        const render::CameraData view = render::makeCameraData(
+            world.get<scene::WorldTransform>(camera_).matrix, world.get<render::Camera>(camera_),
+            static_cast<f32>(extent.width) / static_cast<f32>(std::max(extent.height, 1u)));
+        // Cursor coordinates are taken as framebuffer pixels, which holds
+        // unless the display scales the window (HiDPI).
+        const render::Ray ray = render::rayThroughPixel(view.viewProjection, pointer->mousePosition(), extent);
+
+        selected_ = {};
+        f32 nearest = std::numeric_limits<f32>::max();
+        world.view<const render::MeshRenderer, const scene::WorldTransform>().each(
+            [&](ecs::Entity entity, const render::MeshRenderer& mesh, const scene::WorldTransform& transform) {
+                const auto bounds = renderer().meshBounds(mesh.mesh);
+                if (!bounds || !mesh.visible) {
+                    return;
+                }
+                const auto hit = render::intersect(ray, render::transformSphere(*bounds, transform.matrix));
+                if (!hit) {
+                    return;
+                }
+                // Bounds around the camera (the ground) say nothing about what
+                // is under the cursor: they only win when nothing else is hit.
+                const f32 rank = *hit > 0.0f ? *hit : std::numeric_limits<f32>::max() * 0.5f;
+                if (rank < nearest) {
+                    nearest = rank;
+                    selected_ = entity;
+                }
+            });
+        if (const auto* name = world.tryGet<scene::Name>(selected_)) {
+            log::info("sandbox", "selected '{}'", name->value);
+        }
+    }
+
+    /// Circles the selected object.
+    void highlightSelection() {
+        auto* debug = engine().services().tryGet<render::DebugDraw>();
+        ecs::World& world = scene().world();
+        const auto* mesh = world.tryGet<render::MeshRenderer>(selected_);
+        if (debug == nullptr || mesh == nullptr) {
+            return;
+        }
+        if (const auto bounds = renderer().meshBounds(mesh->mesh)) {
+            const render::BoundingSphere around =
+                render::transformSphere(*bounds, world.get<scene::WorldTransform>(selected_).matrix);
+            debug->sphere(around.center, around.radius, Vec4(1.0f, 0.85f, 0.1f, 1.0f), 48);
+        }
     }
 
     /// Gizmos: the sun's direction, point light ranges, and the axes of
@@ -392,6 +454,7 @@ private:
     render::MaterialHandle sphereMaterial_;
     render::MaterialHandle glassMaterial_;
     bool debugView_ = false;
+    ecs::Entity selected_;
     std::array<render::MaterialHandle, 2> moonMaterials_{};
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
