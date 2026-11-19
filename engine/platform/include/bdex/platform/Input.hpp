@@ -14,6 +14,10 @@ namespace bdex::platform {
 ///
 /// Window modules provide it as a service and call beginFrame() right before
 /// pumping OS events.
+///
+/// When a window loses focus, every held key and button is released (and
+/// reported as released that frame): the matching release events would go to
+/// another application, which would leave them stuck down otherwise.
 class InputState {
 public:
     explicit InputState(EventBus& events);
@@ -57,6 +61,7 @@ private:
     Subscription buttonSubscription_;
     Subscription moveSubscription_;
     Subscription scrollSubscription_;
+    Subscription focusSubscription_;
 };
 
 }  // namespace bdex::platform
