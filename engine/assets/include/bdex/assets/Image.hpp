@@ -30,6 +30,13 @@ struct ImageData {
 /// `cells` x `cells` checkerboard alternating between two colors.
 [[nodiscard]] ImageData makeCheckerboard(u32 size, u32 cells, Color8 first, Color8 second);
 
+/// Tangent-space normal map (Y up) of a height field: `heights` is
+/// row-major, `width` x `height` values, top row first; `strength` scales
+/// the slopes. Edges wrap, so tiling heights give a tiling map. Upload the
+/// result as linear data, not sRGB.
+[[nodiscard]] ImageData makeNormalMap(std::span<const f32> heights, u32 width, u32 height,
+                                      f32 strength = 1.0f);
+
 // --- Decoding / encoding ---------------------------------------------------------
 
 /// Decodes a TGA file (true-color 24/32-bit, raw or RLE).

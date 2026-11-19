@@ -214,6 +214,41 @@ TEST(Image, DecodesRawAndRleTga) {
     EXPECT_FALSE(decodeTga(std::vector<u8>(header.begin(), header.end())).has_value());  // truncated
 }
 
+TEST(Image, NormalMapsFollowTheSlopes) {
+    // Heights rising to the right: normals lean left (-X).
+    std::vector<f32> ramp(8 * 8);
+    for (u32 y = 0; y < 8; ++y) {
+        for (u32 x = 1; x < 7; ++x) {
+            ramp[y * 8 + x] = static_cast<f32>(x);
+        }
+    }
+    const ImageData right = makeNormalMap(ramp, 8, 8);
+    ASSERT_TRUE(right.valid());
+    const u8* middle = right.pixels.data() + (4 * 8 + 4) * 4;
+    EXPECT_LT(middle[0], 128);
+    EXPECT_EQ(middle[1], 128);
+    EXPECT_GT(middle[2], 128);
+
+    // Heights rising toward the bottom rows: the surface faces up the
+    // texture, so normals lean toward +Y (texture up).
+    std::vector<f32> down(8 * 8);
+    for (u32 y = 1; y < 7; ++y) {
+        for (u32 x = 0; x < 8; ++x) {
+            down[y * 8 + x] = static_cast<f32>(y);
+        }
+    }
+    const ImageData rising = makeNormalMap(down, 8, 8);
+    const u8* lower = rising.pixels.data() + (4 * 8 + 4) * 4;
+    EXPECT_GT(lower[1], 128);
+
+    // Flat: straight up.
+    const ImageData flat = makeNormalMap(std::vector<f32>(16, 3.0f), 4, 4);
+    EXPECT_EQ(flat.pixels[0], 128);
+    EXPECT_EQ(flat.pixels[1], 128);
+    EXPECT_EQ(flat.pixels[2], 255);
+    EXPECT_FALSE(makeNormalMap(std::vector<f32>(3), 2, 2).valid());  // size mismatch
+}
+
 TEST(Image, EncodesWellFormedPng) {
     const ImageData image = makeCheckerboard(300, 3, {255, 0, 0, 255}, {0, 0, 255, 255});
     const std::vector<u8> png = encodePng(image);
