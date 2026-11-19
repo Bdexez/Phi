@@ -154,6 +154,7 @@ void CommandList::pushConstants(u32 offset, std::span<const std::byte> data) {
 void CommandList::draw(u32 vertexCount, u32 instanceCount, u32 firstVertex, u32 firstInstance) {
     vkCmdDraw(commandBuffer_, vertexCount, instanceCount, firstVertex, firstInstance);
     ++stats_.drawCalls;
+    stats_.instances += instanceCount;
     stats_.triangles += static_cast<u64>(vertexCount / 3) * instanceCount;
 }
 
@@ -162,6 +163,7 @@ void CommandList::drawIndexed(u32 indexCount, u32 instanceCount, u32 firstIndex,
     vkCmdDrawIndexed(commandBuffer_, indexCount, instanceCount, firstIndex, vertexOffset,
                      firstInstance);
     ++stats_.drawCalls;
+    stats_.instances += instanceCount;
     stats_.triangles += static_cast<u64>(indexCount / 3) * instanceCount;
 }
 

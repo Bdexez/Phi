@@ -149,7 +149,7 @@ TEST(HeadlessEngine, RendererWorksWithoutAnyWindowModule) {
     ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
     test.populate(2);
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 2u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 2u);
     EXPECT_EQ(test.renderer().renderExtent(), (Extent2D{1280, 720}));  // renderer.* defaults
 }
 
@@ -159,7 +159,7 @@ TEST(HeadlessEngine, DrawsOneCallPerVisibleMeshEntity) {
     const std::vector<ecs::Entity> cubes = test.populate(3);
 
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 3u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 3u);
     EXPECT_EQ(test.device().lastFrameStats().triangles, 36u);
     EXPECT_EQ(test.renderer().renderExtent(), (Extent2D{320, 200}));
     // One mesh and one material: everything is bound once.
@@ -170,7 +170,7 @@ TEST(HeadlessEngine, DrawsOneCallPerVisibleMeshEntity) {
     test.world().get<render::MeshRenderer>(cubes[0]).visible = false;
     test.world().destroy(cubes[1]);
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 1u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 1u);
 }
 
 TEST(HeadlessEngine, DestroyedRenderResourcesAreSkippedNotDereferenced) {
@@ -181,11 +181,11 @@ TEST(HeadlessEngine, DestroyedRenderResourcesAreSkippedNotDereferenced) {
     const render::MeshRenderer renderable = test.world().get<render::MeshRenderer>(cubes[0]);
     test.renderer().destroyMaterial(renderable.material);  // falls back to the default material
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 2u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 2u);
 
     test.renderer().destroyMesh(renderable.mesh);  // stale mesh handles are ignored
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 0u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 0u);
 }
 
 TEST(HeadlessEngine, ApplicationsExtendTheRendererWithFeatures) {
@@ -317,6 +317,7 @@ TEST(HeadlessEngine, DrawsAreGroupedByMaterialAndMesh) {
     test.engine->tick();
     const rhi::FrameStats stats = test.device().lastFrameStats();
     EXPECT_EQ(stats.drawCalls, 8u);
+    EXPECT_EQ(stats.instances, 8u);
     EXPECT_EQ(stats.bindGroupBinds, 1u + 2u);  // frame, then each material once
     // Each material uses both meshes: at most 2 mesh switches per material.
     EXPECT_EQ(stats.bufferBinds, 2u * 4u);
@@ -328,18 +329,18 @@ TEST(HeadlessEngine, MeshesOutsideTheViewAreNotDrawn) {
     const std::vector<ecs::Entity> cubes = test.populate(3);  // in front of the camera
 
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 3u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 3u);
 
     // Behind the camera, and far off to the side.
     test.world().get<scene::Transform>(cubes[0]).position = Vec3(0.0f, 0.0f, 20.0f);
     test.world().get<scene::Transform>(cubes[1]).position = Vec3(500.0f, 0.0f, 0.0f);
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 1u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 1u);
 
     // A cube scaled up enough reaches back into the view.
     test.world().get<scene::Transform>(cubes[1]).scale = Vec3(1000.0f);
     test.engine->tick();
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 2u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 2u);
 }
 
 TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
@@ -396,7 +397,7 @@ TEST(VulkanHeadless, RendersTheSceneOffscreenWithoutValidationErrors) {
     for (int i = 0; i < 4; ++i) {
         test.engine->tick();
     }
-    EXPECT_EQ(test.device().lastFrameStats().drawCalls, 3u);
+    EXPECT_EQ(test.device().lastFrameStats().instances, 3u);
 
     test.renderer().requestScreenshot(path);
     test.engine->tick();
