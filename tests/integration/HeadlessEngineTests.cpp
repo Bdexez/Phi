@@ -798,6 +798,7 @@ TEST(VulkanHeadless, HdrKeepsLightAboveWhiteForToneMapping) {
         config.set("renderer.hdr", "true");
         config.set("renderer.tonemap", tonemap);
         config.set("renderer.exposure", exposure);
+        config.set("renderer.bloom", "false");  // exact tone mapping values
         log::setLevel(log::Level::Warn);
         TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
         log::setLevel(log::Level::Info);
@@ -987,4 +988,55 @@ TEST(VulkanHeadless, DebugLinesShowUnlessHidden) {
     ASSERT_TRUE(hidden.valid());
     EXPECT_LT(redAtCenter(hidden), 20);
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
+}
+
+TEST(VulkanHeadless, BloomSpreadsBrightLight) {
+    // Red level just outside a small, very bright emissive cube.
+    const auto haloAround = [](bool bloom) -> int {
+        Config config;
+        config.set("rhi.validation", "true");
+        config.set("renderer.hdr", "true");
+        config.set("renderer.tonemap", "none");
+        config.set("renderer.bloom", bloom ? "true" : "false");
+        config.set("renderer.bloom_intensity", "0.2");
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return -1;
+        }
+        test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        test.populate(0);  // camera at z = 6, looking down -Z
+        const ecs::Entity sun = test.scene().createEntity("sun");
+        test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+        test.world().get<render::DirectionalLight>(sun).ambient = Vec3(0.0f);
+        render::MaterialDesc blazing;
+        blazing.emissive = Vec3(50.0f, 0.0f, 0.0f);
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().get<scene::Transform>(cube).scale = Vec3(0.5f);
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                                   test.renderer().createMaterial(blazing));
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_bloom.png";
+        test.engine->tick();  // world transforms
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return -2;
+        }
+        // The cube spans about +-15 pixels around the center at this size;
+        // sample 40 pixels to the right of it, on the background.
+        return image->pixels[(image->height / 2 * image->width + image->width / 2 + 40) * 4];
+    };
+
+    const int withBloom = haloAround(true);
+    if (withBloom == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    ASSERT_NE(withBloom, -2) << "capture failed or validation errors";
+    EXPECT_EQ(haloAround(false), 0);  // plain black background
+    EXPECT_GT(withBloom, 20);         // the glow reaches past the edge
 }
