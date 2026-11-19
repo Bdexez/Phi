@@ -9,6 +9,7 @@
 //   renderer.width, renderer.height   offscreen size when there is no window
 //                                     system at all (default 1280x720)
 
+#include "DebugFeature.hpp"
 #include "ForwardRenderer.hpp"
 
 #include <bdex/core/Module.hpp>
@@ -37,6 +38,20 @@ public:
         }
         engine.services().provide<render::IRenderer>(renderer_);
 
+        // Debug lines: drawn the frame they are added in (before Render),
+        // then cleared once the frame is over.
+        debugDraw_ = std::make_shared<render::DebugDraw>();
+        if (const auto added = renderer_->addFeature(std::make_unique<forward::DebugFeature>(debugDraw_));
+            !added) {
+            return added;
+        }
+        engine.services().provide<render::DebugDraw>(debugDraw_);
+        clearDebugTask_ = ScopedTask(
+            engine.scheduler(),
+            engine.scheduler().add(
+                Phase::EndFrame, "renderer_forward.clear_debug",
+                [debug = debugDraw_.get()](const FrameTime&) { debug->clear(); }, 1000));
+
         renderTask_ = ScopedTask(
             engine.scheduler(),
             engine.scheduler().add(Phase::Render, "renderer_forward.render",
@@ -48,6 +63,8 @@ public:
 
     void onShutdown(Engine& engine) override {
         renderTask_.reset();
+        clearDebugTask_.reset();
+        engine.services().remove<render::DebugDraw>();
         engine.services().remove<render::IRenderer>();
         if (renderer_ != nullptr) {
             // Explicit: the renderer must release its GPU objects while the
@@ -59,7 +76,9 @@ public:
 
 private:
     std::shared_ptr<forward::ForwardRenderer> renderer_;
+    std::shared_ptr<render::DebugDraw> debugDraw_;
     ScopedTask renderTask_;
+    ScopedTask clearDebugTask_;
 };
 
 }  // namespace

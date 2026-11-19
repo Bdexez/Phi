@@ -11,6 +11,7 @@
 #include <bdex/platform/Events.hpp>
 #include <bdex/platform/Input.hpp>
 #include <bdex/platform/Window.hpp>
+#include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/rhi/Device.hpp>
 #include <bdex/scene/Scene.hpp>
@@ -372,6 +373,32 @@ TEST(HeadlessEngine, OpaqueMeshesCastShadowsFromTheSun) {
     test.world().get<render::DirectionalLight>(sun).castShadows = false;
     test.engine->tick();
     EXPECT_EQ(test.device().lastFrameStats().instances, 4u);
+}
+
+TEST(HeadlessEngine, DebugLinesAreDrawnForOneFrame) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(1);
+    auto& debug = test.engine->services().get<render::DebugDraw>();
+
+    test.engine->tick();
+    const u32 sceneDraws = test.device().lastFrameStats().drawCalls;
+
+    // Added during the frame (here from an Update task), drawn in one call.
+    bool drawLines = true;
+    test.engine->scheduler().add(Phase::Update, "lines", [&](const FrameTime&) {
+        if (drawLines) {
+            debug.box(Vec3(-1.0f), Vec3(1.0f));
+            debug.line(Vec3(0.0f), Vec3(0.0f, 3.0f, 0.0f));
+        }
+    });
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, sceneDraws + 1);
+    EXPECT_EQ(debug.lineCount(), 0u);  // cleared once the frame is over
+
+    drawLines = false;
+    test.engine->tick();
+    EXPECT_EQ(test.device().lastFrameStats().drawCalls, sceneDraws);
 }
 
 TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
@@ -897,4 +924,56 @@ TEST(VulkanHeadless, NormalMapsBendTheLighting) {
     const Vec3 fromRight = glm::normalize(Vec3(-1.0f, 0.0f, -1.0f));
     EXPECT_EQ(render(1.0f, fromRight), 255);
     EXPECT_NEAR(render(0.0f, fromRight), 219, 4);
+}
+
+TEST(VulkanHeadless, DebugLinesShowUnlessHidden) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    test.populate(0);  // camera at z = 6, looking down -Z
+    auto& debug = test.engine->services().get<render::DebugDraw>();
+
+    const auto capture = [&]() -> assets::ImageData {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_debug.png";
+        // A horizontal red line through the middle of the view, behind z = 0.
+        debug.line(Vec3(-3.0f, 0.0f, -1.0f), Vec3(3.0f, 0.0f, -1.0f), Vec4(1.0f, 0.0f, 0.0f, 1.0f));
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        return image ? *image : assets::ImageData{};
+    };
+    // Brightest red in the center column: the 1-pixel line may fall on
+    // either row around the middle.
+    const auto redAtCenter = [](const assets::ImageData& image) {
+        int best = 0;
+        for (u32 y = image.height / 2 - 2; y <= image.height / 2 + 2; ++y) {
+            best = std::max<int>(best, image.pixels[(y * image.width + image.width / 2) * 4]);
+        }
+        return best;
+    };
+
+    const assets::ImageData visible = capture();
+    ASSERT_TRUE(visible.valid());
+    EXPECT_GT(redAtCenter(visible), 200);
+
+    // A cube in front of the line hides it.
+    render::MaterialDesc dark;
+    dark.baseColor = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    dark.specular = 0.0f;
+    const ecs::Entity cube = test.scene().createEntity("cube");
+    test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                               test.renderer().createMaterial(dark));
+    test.engine->tick();  // world transforms
+    const assets::ImageData hidden = capture();
+    ASSERT_TRUE(hidden.valid());
+    EXPECT_LT(redAtCenter(hidden), 20);
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
 }
