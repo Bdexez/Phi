@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -91,4 +92,28 @@ TEST(Config, ReportsSyntaxErrorsWithLineNumbers) {
 
     EXPECT_FALSE(Config::parse("[broken\n").has_value());
     EXPECT_FALSE(Config::parse("= value\n").has_value());
+}
+
+TEST(Config, WritesTextThatReadsBack) {
+    Config config;
+    config.set("name", "demo");
+    config.set("window.width", "1280");
+    config.set("window.title", "My Game = fun # really");
+    config.set("input.move_forward", "Z, Up");
+    config.set("entity.0.Transform.position", "0 1 0");  // several dots
+    config.set("empty.value", "");
+
+    const std::string text = config.toText();
+    EXPECT_TRUE(text.starts_with("name = demo\n"));
+    EXPECT_NE(text.find("[window]\n"), std::string::npos);
+    const auto reread = Config::parse(text);
+    ASSERT_TRUE(reread.has_value()) << reread.error().message << "\n" << text;
+    EXPECT_EQ(reread->entries(), config.entries());
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_config.ini";
+    ASSERT_TRUE(config.saveFile(path).has_value());
+    const auto loaded = Config::loadFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(loaded.has_value());
+    EXPECT_EQ(loaded->getString("window.title"), "My Game = fun # really");
 }
