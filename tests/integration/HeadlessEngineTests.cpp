@@ -406,3 +406,46 @@ TEST(VulkanHeadless, RhiRoundTripsTextureData) {
     EXPECT_EQ(device.textureDesc(texture).width, 0u);  // stale handle
     EXPECT_EQ(device.validationErrorCount(), 0u);
 }
+
+TEST(VulkanHeadless, BindGroupsOutgrowASingleDescriptorPool) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"rhi_vulkan"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    rhi::IDevice& device = test.device();
+
+    const rhi::BindGroupLayoutHandle layout = device.createBindGroupLayout({
+        {{0, rhi::BindingType::UniformBuffer, rhi::ShaderStage::Vertex}},
+        "uniform layout",
+    });
+    rhi::BufferDesc bufferDesc;
+    bufferDesc.size = 256;
+    bufferDesc.usage = rhi::BufferUsage::Uniform;
+    bufferDesc.memory = rhi::MemoryUsage::CpuToGpu;
+    const rhi::BufferHandle buffer = device.createBuffer(bufferDesc);
+
+    // More uniform-buffer descriptors than one pool holds.
+    constexpr int kGroupCount = 5000;
+    std::vector<rhi::BindGroupHandle> groups;
+    for (int i = 0; i < kGroupCount; ++i) {
+        rhi::BindGroupDesc groupDesc;
+        groupDesc.layout = layout;
+        rhi::BindGroupEntry entry;
+        entry.binding = 0;
+        entry.buffer = buffer;
+        groupDesc.entries.push_back(entry);
+        groups.push_back(device.createBindGroup(groupDesc));
+        ASSERT_TRUE(groups.back().valid());
+    }
+    for (const rhi::BindGroupHandle group : groups) {
+        device.destroyBindGroup(group);
+    }
+    device.destroyBuffer(buffer);
+    device.destroyBindGroupLayout(layout);
+    device.waitIdle();
+    EXPECT_EQ(device.validationErrorCount(), 0u);
+}
