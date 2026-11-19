@@ -40,6 +40,9 @@ class Scheduler {
 public:
     using Task = std::function<void(const FrameTime&)>;
 
+    /// Called from a running task, the new task is put in place once the
+    /// running phase ends: it never runs in the middle of that phase, but a
+    /// task added for a later phase runs in the same frame.
     TaskId add(Phase phase, std::string name, Task task, i32 order = 0);
     /// Safe to call from inside a running task (including on itself).
     void remove(TaskId id);
@@ -61,7 +64,13 @@ private:
         std::shared_ptr<const Task> task;
     };
 
+    void insert(Phase phase, Entry entry);
+    void settle();  // applies what was deferred while tasks ran
+
     std::array<std::vector<Entry>, static_cast<usize>(Phase::Count)> phases_;
+    // Tasks added while a phase runs: inserting them right away could shift
+    // the entry being executed.
+    std::vector<std::pair<Phase, Entry>> pendingAdds_;
     TaskId nextId_ = 1;
     u32 runDepth_ = 0;
     bool needsCompaction_ = false;
