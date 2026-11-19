@@ -105,7 +105,15 @@ Result<std::filesystem::path> VirtualFileSystem::resolve(std::string_view virtua
     if (it == mounts_.end()) {
         return fail("unknown mount point '{}' in '{}'", root, virtualPath);
     }
-    return it->second / std::filesystem::path(virtualPath.substr(separator + 2));
+    // Keep the path inside its mount point: an absolute path would replace
+    // the mount directory, and ".." could climb out of it. The check is
+    // lexical; symbolic links inside a mount are followed as usual.
+    const std::filesystem::path relative =
+        std::filesystem::path(virtualPath.substr(separator + 2)).lexically_normal();
+    if (relative.has_root_path() || (!relative.empty() && *relative.begin() == "..")) {
+        return fail("'{}' points outside of mount point '{}'", virtualPath, root);
+    }
+    return it->second / relative;
 }
 
 Result<std::vector<u8>> VirtualFileSystem::readBinary(std::string_view virtualPath) const {
