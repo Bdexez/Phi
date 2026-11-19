@@ -35,6 +35,23 @@ TEST(Scene, CreateEntityAddsStandardComponents) {
     EXPECT_TRUE((scene.world().has<Transform, WorldTransform>(entity)));
 }
 
+TEST(Scene, FindsEntitiesByName) {
+    Scene scene("test");
+    const ecs::Entity player = scene.createEntity("Player");
+    const ecs::Entity first = scene.createEntity("Crate");
+    scene.createEntity("Lamp");
+    const ecs::Entity second = scene.createEntity("Crate");
+
+    EXPECT_EQ(scene.find("Player"), player);
+    EXPECT_EQ(scene.find("Crate"), first);
+    EXPECT_EQ(scene.findAll("Crate"), (std::vector<ecs::Entity>{first, second}));
+    EXPECT_FALSE(scene.find("Ghost").valid());
+    EXPECT_TRUE(scene.findAll("Ghost").empty());
+
+    scene.world().destroy(first);
+    EXPECT_EQ(scene.find("Crate"), second);
+}
+
 TEST(SceneManager, FirstSceneBecomesActive) {
     SceneManager scenes;
     EXPECT_EQ(scenes.active(), nullptr);
