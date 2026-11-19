@@ -1,6 +1,10 @@
 #include <bdex/core/Config.hpp>
+#include <bdex/core/Log.hpp>
 
 #include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 using namespace bdex;
 
@@ -30,13 +34,40 @@ modules = window_glfw, rhi_vulkan ,, renderer_forward
 }
 
 TEST(Config, FallbacksApplyToMissingOrMalformedValues) {
+    std::vector<std::string> warnings;
+    const u32 sink = log::addSink([&](const log::Record& record) {
+        if (record.level == log::Level::Warn) {
+            warnings.emplace_back(record.message);
+        }
+    });
+
     Config config;
     config.set("a.number", "12abc");
-    EXPECT_EQ(config.getInt("a.number", 7), 7);
+    config.set("a.flag", "ture");
     EXPECT_EQ(config.getInt("a.missing", 9), 9);
     EXPECT_EQ(config.getString("a.missing", "x"), "x");
     EXPECT_FALSE(config.getBool("a.missing"));
     EXPECT_TRUE(config.getList("a.missing").empty());
+    EXPECT_TRUE(warnings.empty());  // missing keys are not an error
+
+    // Malformed values fall back too, but say so.
+    EXPECT_EQ(config.getInt("a.number", 7), 7);
+    EXPECT_DOUBLE_EQ(config.getFloat("a.number", 2.5), 2.5);
+    EXPECT_TRUE(config.getBool("a.flag", true));
+    log::removeSink(sink);
+    ASSERT_EQ(warnings.size(), 3u);
+    EXPECT_NE(warnings[0].find("a.number"), std::string::npos);
+    EXPECT_NE(warnings[2].find("ture"), std::string::npos);
+}
+
+TEST(Config, BooleansIgnoreLetterCase) {
+    Config config;
+    config.set("a", "True");
+    config.set("b", "OFF");
+    config.set("c", "Yes");
+    EXPECT_TRUE(config.getBool("a"));
+    EXPECT_FALSE(config.getBool("b", true));
+    EXPECT_TRUE(config.getBool("c"));
 }
 
 TEST(Config, DefaultsMergeAndOverrides) {
