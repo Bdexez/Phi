@@ -28,7 +28,10 @@ public:
     [[nodiscard]] bool keyReleased(Key key) const;
 
     [[nodiscard]] bool mouseButtonDown(MouseButton button) const;
+    /// True only during the frame the button went down.
     [[nodiscard]] bool mouseButtonPressed(MouseButton button) const;
+    /// True only during the frame the button went up.
+    [[nodiscard]] bool mouseButtonReleased(MouseButton button) const;
 
     [[nodiscard]] Vec2 mousePosition() const { return mousePosition_; }
     /// Cursor motion accumulated since beginFrame().
@@ -44,6 +47,7 @@ private:
     std::bitset<kKeyCount> keysReleased_;
     std::bitset<kButtonCount> buttonsDown_;
     std::bitset<kButtonCount> buttonsPressed_;
+    std::bitset<kButtonCount> buttonsReleased_;
     Vec2 mousePosition_{0.0f};
     Vec2 mouseDelta_{0.0f};
     Vec2 scrollDelta_{0.0f};
