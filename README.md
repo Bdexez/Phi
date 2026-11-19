@@ -101,6 +101,8 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F3` | Log the CPU time of every engine task and the last frame's draw statistics. |
 | `Escape` | Quit. |
 
+Every control is an input action that can be rebound in the `[input]` section of `sandbox.ini` (for example `move_forward = Z, Up` on an AZERTY keyboard). Applications define their actions the same way and query them through `InputActions`.
+
 Screenshots are saved in the current working directory.
 
 ### Run without a window
