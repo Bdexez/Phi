@@ -11,7 +11,8 @@
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
-// object, F5 / F9 to save / load the scene, Escape to quit. A gamepad works too: sticks to
+// object, F5 / F9 to save / load the scene, F11 for fullscreen, Escape to
+// quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
@@ -88,6 +89,7 @@ protected:
         config.setDefault("input.select", "MouseLeft");
         config.setDefault("input.save_scene", "F5");
         config.setDefault("input.load_scene", "F9");
+        config.setDefault("input.toggle_fullscreen", "F11");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -134,6 +136,9 @@ protected:
             }
             if (controls->pressed("load_scene")) {
                 loadScene();
+            }
+            if (platform::IWindow* target = window(); target != nullptr && controls->pressed("toggle_fullscreen")) {
+                target->setFullscreen(!target->fullscreen());
             }
         }
         if (debugView_) {

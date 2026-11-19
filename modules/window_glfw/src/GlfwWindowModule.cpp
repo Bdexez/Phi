@@ -4,6 +4,7 @@
 //   window.title                   (default "bdex")
 //   window.width, window.height    (default 1280x720)
 //   window.resizable               (default true)
+//   window.fullscreen              cover the primary monitor (default false)
 
 // GLFW only needs the Vulkan *types* to declare glfwCreateWindowSurface; no
 // Vulkan function is called from this module.
@@ -121,6 +122,31 @@ public:
         }
     }
 
+    void setFullscreen(bool fullscreen) override {
+        if (fullscreen == this->fullscreen()) {
+            return;
+        }
+        if (fullscreen) {
+            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = monitor != nullptr ? glfwGetVideoMode(monitor) : nullptr;
+            if (mode == nullptr) {
+                log::warn("glfw", "no monitor to go fullscreen on");
+                return;
+            }
+            // Remembered to come back to the same place. Wayland does not
+            // expose window positions (the compositor places windows).
+            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND) {
+                glfwGetWindowPos(handle_, &windowed_[0], &windowed_[1]);
+            }
+            glfwGetWindowSize(handle_, &windowed_[2], &windowed_[3]);
+            glfwSetWindowMonitor(handle_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        } else {
+            glfwSetWindowMonitor(handle_, nullptr, windowed_[0], windowed_[1], windowed_[2], windowed_[3], 0);
+        }
+    }
+
+    [[nodiscard]] bool fullscreen() const override { return glfwGetWindowMonitor(handle_) != nullptr; }
+
     [[nodiscard]] Result<u64> createVulkanSurface(void* vkInstance) override {
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         const VkResult result =
@@ -140,6 +166,7 @@ private:
 
     GLFWwindow* handle_;
     EventBus* events_;
+    std::array<int, 4> windowed_{};  ///< x, y, width, height before fullscreen.
 };
 
 // GLFW's gamepad mapping uses the same button and axis order as the engine.
@@ -272,6 +299,9 @@ public:
 
         system_ = std::make_shared<GlfwWindowSystem>(
             std::make_unique<GlfwWindow>(handle, engine.events()), engine.events());
+        if (config.getBool("window.fullscreen", false)) {
+            system_->primaryWindow()->setFullscreen(true);
+        }
         engine.services().provide<IWindowSystem>(system_);
 
         input_ = std::make_shared<InputState>(engine.events());
