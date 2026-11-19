@@ -2,6 +2,7 @@ bdex_add_library(render
     SOURCES
         src/Camera.cpp
         src/Frustum.cpp
+        src/Shadows.cpp
     PUBLIC_DEPS
         bdex::core
         bdex::ecs

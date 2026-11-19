@@ -1,5 +1,6 @@
 #include <bdex/render/Frustum.hpp>
 #include <bdex/render/Renderer.hpp>
+#include <bdex/render/Shadows.hpp>
 #include <bdex/scene/Scene.hpp>
 
 #include <gtest/gtest.h>
@@ -251,4 +252,57 @@ TEST(Frustum, BoundingSpheresFollowTransforms) {
     const render::BoundingSphere moved = render::transformSphere(cube, transform.localMatrix());
     expectNear(moved.center, Vec3(1.0f, 2.0f, 3.0f));
     EXPECT_NEAR(moved.radius, std::sqrt(3.0f) * 4.0f, 1e-4f);  // largest axis scale
+}
+
+TEST(Shadows, TheLightVolumeCoversTheNearbyView) {
+    Transform cameraTransform;
+    cameraTransform.position = Vec3(3.0f, 2.0f, 8.0f);
+    cameraTransform.rotation = glm::angleAxis(0.4f, Vec3(0.0f, 1.0f, 0.0f));
+    const render::CameraData camera =
+        render::makeCameraData(cameraTransform.localMatrix(), render::Camera{}, 16.0f / 9.0f);
+    const Vec3 sun = glm::normalize(Vec3(-0.4f, -1.0f, -0.3f));
+    const render::CameraData light = render::fitDirectionalShadow(camera, sun, 30.0f, 2048);
+
+    // Every point the camera sees within the shadow distance lands inside
+    // the shadow map, depth included.
+    const Mat4 inverseViewProjection = glm::inverse(camera.viewProjection);
+    for (const f32 x : {-1.0f, 0.0f, 1.0f}) {
+        for (const f32 y : {-1.0f, 0.0f, 1.0f}) {
+            const Vec4 far = inverseViewProjection * Vec4(x, y, 1.0f, 1.0f);
+            const Vec3 direction = glm::normalize(Vec3(far) / far.w - camera.position);
+            for (const f32 along : {0.5f, 10.0f, 29.0f}) {
+                const Vec4 clip = light.viewProjection * Vec4(camera.position + direction * along, 1.0f);
+                const Vec3 ndc = Vec3(clip) / clip.w;
+                EXPECT_LE(std::abs(ndc.x), 1.0f);
+                EXPECT_LE(std::abs(ndc.y), 1.0f);
+                EXPECT_GE(ndc.z, 0.0f);
+                EXPECT_LE(ndc.z, 1.0f);
+            }
+        }
+    }
+}
+
+TEST(Shadows, TheLightVolumeMovesByWholeTexels) {
+    const Vec3 sun = glm::normalize(Vec3(-0.4f, -1.0f, -0.3f));
+    constexpr u32 kMapSize = 1024;
+    const auto lightFor = [&](const Vec3& position, f32 yaw) {
+        Transform transform;
+        transform.position = position;
+        transform.rotation = glm::angleAxis(yaw, Vec3(0.0f, 1.0f, 0.0f));
+        return render::fitDirectionalShadow(
+            render::makeCameraData(transform.localMatrix(), render::Camera{}, 1.5f), sun, 40.0f, kMapSize);
+    };
+    const render::CameraData a = lightFor(Vec3(0.0f), 0.0f);
+
+    // Turning the camera keeps the volume's size.
+    EXPECT_FLOAT_EQ(lightFor(Vec3(0.0f), 1.3f).projection[0][0], a.projection[0][0]);
+
+    // Moving it shifts a fixed world point by a whole number of texels.
+    const render::CameraData b = lightFor(Vec3(0.37f, 0.0f, -0.21f), 0.0f);
+    const Vec4 point(5.0f, 1.0f, -3.0f, 1.0f);
+    const Vec2 uvA = Vec2(a.viewProjection * point) * 0.5f * static_cast<f32>(kMapSize);
+    const Vec2 uvB = Vec2(b.viewProjection * point) * 0.5f * static_cast<f32>(kMapSize);
+    const Vec2 shift = uvB - uvA;
+    EXPECT_NEAR(shift.x, std::round(shift.x), 1e-2f);
+    EXPECT_NEAR(shift.y, std::round(shift.y), 1e-2f);
 }
