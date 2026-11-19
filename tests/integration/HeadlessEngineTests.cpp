@@ -375,6 +375,17 @@ TEST(HeadlessEngine, OpaqueMeshesCastShadowsFromTheSun) {
     EXPECT_EQ(test.device().lastFrameStats().instances, 4u);
 }
 
+TEST(HeadlessEngine, TheRendererReportsMeshBounds) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    const render::MeshHandle cube = test.renderer().createMesh(assets::makeCube(2.0f));
+    const auto bounds = test.renderer().meshBounds(cube);
+    ASSERT_TRUE(bounds.has_value());
+    EXPECT_NEAR(bounds->radius, std::sqrt(3.0f), 1e-5f);
+    test.renderer().destroyMesh(cube);
+    EXPECT_FALSE(test.renderer().meshBounds(cube).has_value());
+}
+
 TEST(HeadlessEngine, DebugLinesAreDrawnForOneFrame) {
     TestEngine test(kNullStack);
     ASSERT_TRUE(test.ready()) << test.loadError << test.initError;

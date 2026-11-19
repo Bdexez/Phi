@@ -58,6 +58,11 @@ public:
     // --- render::IRenderer -----------------------------------------------------
     [[nodiscard]] render::MeshHandle createMesh(const assets::MeshData& mesh) override;
     void destroyMesh(render::MeshHandle mesh) override;
+    [[nodiscard]] std::optional<render::BoundingSphere> meshBounds(
+        render::MeshHandle mesh) const override {
+        const GpuMesh* found = meshes_.get(mesh);
+        return found != nullptr ? std::optional(found->bounds) : std::nullopt;
+    }
     [[nodiscard]] render::TextureHandle createTexture(
         const assets::ImageData& image,
         render::TextureColorSpace colorSpace = render::TextureColorSpace::Srgb) override;

@@ -365,3 +365,29 @@ TEST(DebugDraw, BuildsLineListsForShapes) {
         EXPECT_NEAR(std::abs(clip.y / clip.w), 1.0f, 1e-3f);
     }
 }
+
+TEST(Picking, RaysThroughPixelsHitWhatIsDrawnThere) {
+    Transform eye;
+    eye.position = Vec3(0.0f, 0.0f, 10.0f);
+    const render::CameraData camera = render::makeCameraData(eye.localMatrix(), render::Camera{}, 2.0f);
+    const Extent2D extent{200, 100};
+
+    // The center pixel looks straight ahead.
+    const render::Ray center = render::rayThroughPixel(camera.viewProjection, Vec2(100.0f, 50.0f), extent);
+    expectNear(center.direction, Vec3(0.0f, 0.0f, -1.0f));
+    EXPECT_NEAR(center.origin.z, 10.0f - render::Camera{}.nearPlane, 1e-3f);
+
+    // A point projected on screen is hit by the ray through its pixel.
+    const Vec3 target(2.0f, 1.0f, -3.0f);
+    const Vec4 clip = camera.viewProjection * Vec4(target, 1.0f);
+    const Vec2 pixel((clip.x / clip.w * 0.5f + 0.5f) * 200.0f, (clip.y / clip.w * 0.5f + 0.5f) * 100.0f);
+    const render::Ray ray = render::rayThroughPixel(camera.viewProjection, pixel, extent);
+    const auto hit = render::intersect(ray, {target, 0.5f});
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_NEAR(glm::length(ray.origin + ray.direction * (*hit) - target), 0.5f, 1e-3f);
+
+    // Misses and spheres behind the ray.
+    EXPECT_FALSE(render::intersect(ray, {target + Vec3(3.0f, 0.0f, 0.0f), 0.5f}).has_value());
+    EXPECT_FALSE(render::intersect(center, {Vec3(0.0f, 0.0f, 20.0f), 1.0f}).has_value());
+    EXPECT_EQ(render::intersect(center, {center.origin, 1.0f}), 0.0f);  // inside
+}
