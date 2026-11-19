@@ -11,7 +11,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **Modular core:** plugin loading, module dependency resolution, a service registry, an event bus, and INI configuration.
 - **Simulation loop:** ordered execution phases, fixed timestep updates, and a multithreaded job system.
 - **ECS and scenes:** entities with generational handles, application-defined components, typed views, and hierarchical transforms.
-- **3D rendering:** perspective cameras, meshes, textures, materials, Blinn-Phong lighting from a directional light and up to 16 point lights, frustum culling, draw sorting, and blended transparency through an extensible forward renderer.
+- **3D rendering:** perspective cameras, meshes, textures, materials, Blinn-Phong lighting from a directional light and up to 16 point lights, frustum culling, draw sorting, instancing, and blended transparency through an extensible forward renderer.
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Assets:** a virtual file system, asset caching, OBJ, PNG, TGA, and SPIR-V loaders, plus procedural cubes, planes, spheres, and textures.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
