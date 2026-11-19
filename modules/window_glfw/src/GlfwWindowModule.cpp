@@ -92,6 +92,14 @@ public:
         return {static_cast<u32>(std::max(width, 0)), static_cast<u32>(std::max(height, 0))};
     }
 
+    /// Iconified, or with an empty framebuffer (how some platforms report a
+    /// minimized window).
+    [[nodiscard]] bool minimized() const {
+        const Extent2D size = framebufferSize();
+        return glfwGetWindowAttrib(handle_, GLFW_ICONIFIED) == GLFW_TRUE || size.width == 0 ||
+               size.height == 0;
+    }
+
     [[nodiscard]] bool shouldClose() const override {
         return glfwWindowShouldClose(handle_) == GLFW_TRUE;
     }
@@ -150,9 +158,20 @@ public:
         return extensions;
     }
 
-    void pollEvents() override { glfwPollEvents(); }
+    void pollEvents() override {
+        // A minimized window has nothing to present, so no vsync paces the
+        // loop: wait for events instead of spinning a core, with a timeout
+        // so scheduled tasks keep running at a low rate.
+        if (window_->minimized()) {
+            glfwWaitEventsTimeout(kMinimizedWaitSeconds);
+        } else {
+            glfwPollEvents();
+        }
+    }
 
 private:
+    static constexpr double kMinimizedWaitSeconds = 0.1;
+
     std::unique_ptr<GlfwWindow> window_;
 };
 
