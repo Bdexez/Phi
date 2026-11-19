@@ -69,8 +69,15 @@ public:
         BDEX_ASSERT(contains(entityIndex), "entity does not have this component");
         return dense_[sparse_[entityIndex]];
     }
+    [[nodiscard]] const T& get(u32 entityIndex) const {
+        BDEX_ASSERT(contains(entityIndex), "entity does not have this component");
+        return dense_[sparse_[entityIndex]];
+    }
 
     [[nodiscard]] T* tryGet(u32 entityIndex) {
+        return contains(entityIndex) ? &dense_[sparse_[entityIndex]] : nullptr;
+    }
+    [[nodiscard]] const T* tryGet(u32 entityIndex) const {
         return contains(entityIndex) ? &dense_[sparse_[entityIndex]] : nullptr;
     }
 
