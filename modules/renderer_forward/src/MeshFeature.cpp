@@ -45,7 +45,14 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
     desc.cullMode = rhi::CullMode::Back;
     desc.frontFace = rhi::FrontFace::CounterClockwise;
     desc.debugName = "forward.meshes";
-    pipeline_ = device.createGraphicsPipeline(desc);
+    opaquePipeline_ = device.createGraphicsPipeline(desc);
+
+    // Transparent surfaces blend over what is behind them and must not hide
+    // the transparent surfaces drawn after them.
+    desc.blend = rhi::BlendMode::AlphaBlend;
+    desc.depthWrite = false;
+    desc.debugName = "forward.meshes.transparent";
+    transparentPipeline_ = device.createGraphicsPipeline(desc);
 
     // The pipeline keeps what it needs from the shader modules.
     device.destroyShader(vertexShader);
@@ -54,8 +61,10 @@ Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
 }
 
 void MeshFeature::onDetach(rhi::IDevice& device) {
-    device.destroyPipeline(pipeline_);
-    pipeline_ = {};
+    device.destroyPipeline(opaquePipeline_);
+    device.destroyPipeline(transparentPipeline_);
+    opaquePipeline_ = {};
+    transparentPipeline_ = {};
 }
 
 void MeshFeature::render(const render::RenderFrameContext& context) {
@@ -64,7 +73,8 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     }
 
     // Gather what is visible...
-    draws_.clear();
+    opaque_.clear();
+    transparent_.clear();
     const render::Frustum frustum(context.camera.viewProjection);
     context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
         [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
@@ -75,37 +85,55 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
             if (mesh == nullptr) {
                 return;  // destroyed or never assigned
             }
-            if (!frustum.intersects(render::transformSphere(mesh->bounds, transform.matrix))) {
+            const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform.matrix);
+            if (!frustum.intersects(bounds)) {
                 return;  // outside the view
             }
             const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
-            draws_.push_back({
-                material.bindGroup,
-                mesh,
-                {transform.matrix, material.desc.baseColor,
-                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
-            });
+            const Vec3 offset = bounds.center - context.camera.position;
+            (material.desc.transparent ? transparent_ : opaque_)
+                .push_back({
+                    material.bindGroup,
+                    mesh,
+                    {transform.matrix, material.desc.baseColor,
+                     Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
+                    glm::dot(offset, offset),
+                });
         });
-    if (draws_.empty()) {
+    if (opaque_.empty() && transparent_.empty()) {
         return;
     }
 
-    // ...group it by material, then mesh, so each is bound once...
-    std::sort(draws_.begin(), draws_.end(), [](const DrawItem& a, const DrawItem& b) {
+    // ...opaque surfaces grouped by material, then mesh, so each is bound
+    // once; transparent ones from back to front so they blend correctly...
+    std::sort(opaque_.begin(), opaque_.end(), [](const DrawItem& a, const DrawItem& b) {
         if (a.material.index != b.material.index) {
             return a.material.index < b.material.index;
         }
         return std::less<const GpuMesh*>{}(a.mesh, b.mesh);
     });
+    std::sort(transparent_.begin(), transparent_.end(), [](const DrawItem& a, const DrawItem& b) {
+        return a.distanceSquared > b.distanceSquared;
+    });
 
-    // ...and draw it.
+    // ...and draw them.
     rhi::ICommandList& commands = context.commands;
     commands.beginDebugGroup("forward.meshes");
-    commands.bindPipeline(pipeline_);
+    drawAll(commands, context, opaquePipeline_, opaque_);
+    drawAll(commands, context, transparentPipeline_, transparent_);
+    commands.endDebugGroup();
+}
+
+void MeshFeature::drawAll(rhi::ICommandList& commands, const render::RenderFrameContext& context,
+                          rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws) {
+    if (draws.empty()) {
+        return;
+    }
+    commands.bindPipeline(pipeline);
     commands.bindBindGroup(0, context.frameBindGroup);
     rhi::BindGroupHandle boundMaterial;
     const GpuMesh* boundMesh = nullptr;
-    for (const DrawItem& draw : draws_) {
+    for (const DrawItem& draw : draws) {
         if (draw.material != boundMaterial) {
             commands.bindBindGroup(1, draw.material);
             boundMaterial = draw.material;
@@ -118,7 +146,6 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
         commands.pushConstants(0, rhi::asBytes(draw.constants));
         commands.drawIndexed(draw.mesh->indexCount);
     }
-    commands.endDebugGroup();
 }
 
 }  // namespace bdex::forward

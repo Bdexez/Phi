@@ -595,3 +595,52 @@ TEST(VulkanHeadless, PointLightsLightTheScene) {
     EXPECT_LT(lit[1], 20);
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
 }
+
+TEST(VulkanHeadless, TransparentSurfacesBlendBackToFront) {
+    Config config;
+    config.set("rhi.validation", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    test.populate(0);  // camera at z = 6, looking at the origin
+
+    // Unlit look: full ambient, no sun, so a surface shows its base color.
+    const ecs::Entity sun = test.scene().createEntity("sun");
+    test.world().emplace<render::DirectionalLight>(sun).intensity = 0.0f;
+    test.world().get<render::DirectionalLight>(sun).ambient = Vec3(1.0f);
+
+    const render::MeshHandle cube = test.renderer().createMesh(assets::makeCube());
+    const auto addPane = [&](const Vec4& color, f32 z) {
+        render::MaterialDesc desc;
+        desc.baseColor = color;
+        desc.specular = 0.0f;
+        desc.transparent = true;
+        const ecs::Entity pane = test.scene().createEntity("pane");
+        test.world().get<scene::Transform>(pane).position = Vec3(0.0f, 0.0f, z);
+        test.world().emplace<render::MeshRenderer>(pane, cube, test.renderer().createMaterial(desc));
+    };
+    // The far pane is created first, so storage order alone would draw it last.
+    addPane(Vec4(0.0f, 0.0f, 1.0f, 0.5f), -1.5f);  // far, blue
+    addPane(Vec4(1.0f, 0.0f, 0.0f, 0.5f), 1.5f);   // near, red
+
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "bdex_tests_transparency.png";
+    test.renderer().requestScreenshot(path);
+    test.engine->tick();
+    const auto png = fs::readBinaryFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(png.has_value());
+    const auto image = assets::decodePng(*png);
+    ASSERT_TRUE(image.has_value()) << image.error().message;
+    const u8* center = image->pixels.data() + (image->height / 2 * image->width + image->width / 2) * 4;
+
+    // Back to front, red ends on top: half red over half blue over black.
+    EXPECT_GT(center[0], center[2]);
+    EXPECT_GT(center[2], 50);  // the far pane still shows through
+    EXPECT_EQ(test.device().lastFrameStats().pipelineBinds, 1u);  // transparent only
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+}

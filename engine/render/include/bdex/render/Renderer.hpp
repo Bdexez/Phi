@@ -53,6 +53,10 @@ struct MaterialDesc {
     TextureHandle albedo;  ///< Optional; multiplies baseColor.
     f32 specular = 0.3f;
     f32 shininess = 32.0f;
+    /// Blended over what is behind it by its alpha (baseColor.a times the
+    /// texture's): drawn after opaque geometry, back to front, without
+    /// writing depth.
+    bool transparent = false;
 };
 
 /// Everything a render feature needs to create its GPU objects.

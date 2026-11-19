@@ -12,8 +12,9 @@ struct GpuMesh;
 /// Built-in feature drawing every entity with a MeshRenderer and a
 /// WorldTransform, lit by the scene's directional light (Blinn-Phong).
 ///
-/// Visible meshes are gathered, culled against the view frustum, then drawn
-/// sorted by material and mesh so that each is bound once per frame.
+/// Visible meshes are gathered and culled against the view frustum. Opaque
+/// ones are drawn first, sorted by material and mesh so that each is bound
+/// once; transparent ones follow, blended, from the farthest to the nearest.
 class MeshFeature final : public render::IRenderFeature {
 public:
     explicit MeshFeature(const ForwardRenderer& renderer) : renderer_(&renderer) {}
@@ -36,11 +37,18 @@ private:
         rhi::BindGroupHandle material;
         const GpuMesh* mesh;
         ObjectConstants constants;
+        f32 distanceSquared;  ///< From the camera to the bounds' center.
     };
 
+    void drawAll(rhi::ICommandList& commands, const render::RenderFrameContext& context,
+                 rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws);
+
     const ForwardRenderer* renderer_;
-    rhi::PipelineHandle pipeline_;
-    std::vector<DrawItem> draws_;  ///< Reused across frames.
+    rhi::PipelineHandle opaquePipeline_;
+    rhi::PipelineHandle transparentPipeline_;
+    // Reused across frames.
+    std::vector<DrawItem> opaque_;
+    std::vector<DrawItem> transparent_;
 };
 
 }  // namespace bdex::forward
