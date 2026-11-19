@@ -2,7 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace bdex;
@@ -85,4 +87,30 @@ TEST(Scheduler, TasksAddedWhileRunningNeverRerunTheCurrentOne) {
     scheduler.run(Phase::Render, {});
     scheduler.run(Phase::Update, {});
     EXPECT_EQ(trace, (std::vector<std::string>{"spawner", "render", "early", "spawner"}));
+}
+
+TEST(Scheduler, TimesEveryTaskRun) {
+    Scheduler scheduler;
+    scheduler.add(Phase::Update, "slow", [](const FrameTime&) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    });
+    scheduler.add(Phase::FixedUpdate, "fixed", [](const FrameTime&) {});
+    scheduler.add(Phase::Render, "never", [](const FrameTime&) {});
+
+    scheduler.run(Phase::FixedUpdate, {});
+    scheduler.run(Phase::FixedUpdate, {});
+    scheduler.run(Phase::Update, {});
+
+    const std::vector<TaskStats> stats = scheduler.taskStats();
+    ASSERT_EQ(stats.size(), 2u);  // tasks that never ran are left out
+    EXPECT_EQ(stats[0].name, "fixed");
+    EXPECT_EQ(stats[0].phase, Phase::FixedUpdate);
+    EXPECT_EQ(stats[0].runs, 2u);
+    EXPECT_EQ(stats[1].name, "slow");
+    EXPECT_EQ(stats[1].runs, 1u);
+    EXPECT_GE(stats[1].lastMs, 3.0);
+    EXPECT_DOUBLE_EQ(stats[1].averageMs, stats[1].lastMs);
+
+    scheduler.resetStats();
+    EXPECT_TRUE(scheduler.taskStats().empty());
 }
