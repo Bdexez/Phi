@@ -211,6 +211,19 @@ modules = window_glfw, rhi_vulkan, renderer_forward, audio_null
 
 [`tests/plugins/TestPlugin.cpp`](../tests/plugins/TestPlugin.cpp) is a complete minimal module, and [`modules/rhi_null`](../modules/rhi_null/src/NullRhiModule.cpp) is the smallest real backend.
 
+## Assets
+
+`AssetManager` loads files through the virtual file system and caches them by type and virtual path. Loaders are registered per type and extension (case-insensitive), so a module or an application can add a format without touching the engine:
+
+```cpp
+auto mesh = assets.load<assets::MeshData>("app:/meshes/ship.obj");      // blocks
+auto sky = assets.loadAsync<assets::ImageData>("app:/textures/sky.png");  // returns at once
+// ... later, e.g. in a following frame:
+if (sky.ready()) { auto image = sky.get(); }
+```
+
+`loadAsync` reads and decodes on the `JobSystem` service. It is thread-safe: a request for an asset already being loaded joins that load, a failed load is retried on the next request, and the manager waits for loads still in flight when it is destroyed. Built-in loaders handle OBJ, PNG, TGA, and SPIR-V.
+
 ## Rendering
 
 ### RHI

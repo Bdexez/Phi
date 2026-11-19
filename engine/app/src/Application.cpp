@@ -213,10 +213,11 @@ int Application::run(int argc, char** argv) {
     vfs->mount("app", executableDir / "assets" / config.getString("app.name"));
     services.provide<VirtualFileSystem>(vfs);
 
-    services.provide<JobSystem>(std::make_shared<JobSystem>(
-        static_cast<u32>(std::max<i64>(config.getInt("jobs.threads", 0), 0))));
+    auto jobs = std::make_shared<JobSystem>(
+        static_cast<u32>(std::max<i64>(config.getInt("jobs.threads", 0), 0)));
+    services.provide<JobSystem>(jobs);
 
-    auto assetManager = std::make_shared<assets::AssetManager>(*vfs);
+    auto assetManager = std::make_shared<assets::AssetManager>(*vfs, jobs.get());
     state_->assets = assetManager.get();
     services.provide<assets::AssetManager>(assetManager);
 
