@@ -31,6 +31,16 @@ AssetManager::AssetManager(const VirtualFileSystem& vfs) : vfs_(&vfs) {
     });
 }
 
+std::string AssetManager::normalizeExtension(std::string_view extension) {
+    std::string result(extension);
+    for (char& c : result) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return result;
+}
+
 Result<std::shared_ptr<void>> AssetManager::loadErased(TypeId type, std::string_view typeName,
                                                        std::string_view virtualPath) {
     const Key cacheKey{type, std::string(virtualPath)};
@@ -38,7 +48,8 @@ Result<std::shared_ptr<void>> AssetManager::loadErased(TypeId type, std::string_
         return cached->second;
     }
 
-    const std::string extension = std::filesystem::path(virtualPath).extension().string();
+    const std::string extension =
+        normalizeExtension(std::filesystem::path(virtualPath).extension().string());
     const auto loader = loaders_.find(Key{type, extension});
     if (loader == loaders_.end()) {
         return fail("no loader registered for '{}' files as {}", extension, typeName);
