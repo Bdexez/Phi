@@ -4,5 +4,6 @@ bdex_add_library(assets
         src/Image.cpp
         src/Mesh.cpp
         src/ObjLoader.cpp
+        src/Zlib.cpp
     PUBLIC_DEPS
         bdex::core)
