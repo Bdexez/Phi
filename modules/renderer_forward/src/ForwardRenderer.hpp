@@ -9,6 +9,7 @@
 #include <bdex/render/Renderer.hpp>
 #include <bdex/rhi/Device.hpp>
 
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -46,9 +47,10 @@ struct GpuMaterial {
 ///   renderer.bloom_intensity    share of the glow in the image (default 0.04)
 ///   renderer.antialiasing       "fxaa" (default) or "none"
 ///   renderer.shadows            directional shadows (default true)
-///   renderer.shadow_map_size    texels per side (default 2048)
+///   renderer.shadow_map_size    texels per side of each of the 4 cascades
+///                               (default 1024; the atlas is twice that)
 ///   renderer.shadow_distance    shadows are drawn up to this distance from
-///                               the camera (default 40)
+///                               the camera (default 100)
 class ForwardRenderer final : public render::IRenderer {
 public:
     ForwardRenderer(Engine& engine, rhi::IDevice& device);
@@ -130,11 +132,12 @@ private:
     rhi::TextureHandle shadowMap_;
     rhi::SamplerHandle shadowSampler_;
     rhi::Format shadowFormat_ = rhi::Format::D32Float;
-    u32 shadowMapSize_ = 2048;
-    f32 shadowDistance_ = 40.0f;
+    u32 shadowMapSize_ = 1024;  ///< Per cascade; the atlas is 2 x 2 cascades.
+    f32 shadowDistance_ = 100.0f;
     bool shadowsEnabled_ = true;
     render::DirectionalLight sun_;    ///< This frame's.
-    render::CameraData shadowView_;   ///< The sun's view of this frame.
+    std::array<render::CameraData, render::FrameUniforms::kShadowCascades> cascades_{};  ///< This frame's.
+    std::vector<f32> cascadeSplits_;
     bool shadowsThisFrame_ = false;
 
     // Frame constants: one buffer + bind group per frame in flight, so the CPU

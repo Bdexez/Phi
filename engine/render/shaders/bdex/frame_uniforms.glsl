@@ -9,6 +9,7 @@
 #define BDEX_FRAME_UNIFORMS_GLSL
 
 #define BDEX_MAX_POINT_LIGHTS 16
+#define BDEX_SHADOW_CASCADES 4
 
 layout(set = 0, binding = 0) uniform FrameUniforms {
     mat4 view;
@@ -20,8 +21,10 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     vec4 lightColor;      // rgb, premultiplied by intensity
     vec4 ambientColor;    // rgb
     vec4 timeAndExtent;   // elapsed seconds, delta seconds, width, height
-    mat4 lightViewProjection;  // world to shadow-map clip space
-    vec4 shadowParams;  // x: shadows on, y: texel size (UV), z: depth bias, w: normal offset
+    mat4 shadowCascades[BDEX_SHADOW_CASCADES];  // world to each cascade's clip space
+    vec4 cascadeSplits;  // far view distance of each cascade
+    vec4 cascadeBiases[BDEX_SHADOW_CASCADES];  // x: depth bias, y: normal offset
+    vec4 shadowParams;  // x: shadows on, y: atlas texel size (UV)
     vec4 pointLightCount;  // x: number of valid entries below
     vec4 pointLightPositions[BDEX_MAX_POINT_LIGHTS];  // xyz: world position, w: range
     vec4 pointLightColors[BDEX_MAX_POINT_LIGHTS];     // rgb, premultiplied by intensity

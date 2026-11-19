@@ -277,7 +277,7 @@ The window backend, not the RHI, creates the presentation surface (`IWindow::cre
 | -100 | `sandbox.sky` | the sandbox application |
 | 0 | `forward.meshes` | `renderer_forward` |
 
-A feature implements `IRenderFeature` (`onAttach`, `render`, `onDetach`) and is added with `IRenderer::addFeature`. It draws into the color format given in `RenderSetupContext`: a 16-bit float HDR target by default, tone mapped afterwards, so shaders output linear light that may exceed 1. Every feature receives the per-frame constants and the sun's shadow map as bind group 0; shaders get the matching declarations with `#include "bdex/frame_uniforms.glsl"`, and `#include "bdex/shadows.glsl"` provides `bdexSunShadow()` to receive shadows. To cast them, a feature overrides `renderShadows`, called inside the depth-only shadow pass before `render`.
+A feature implements `IRenderFeature` (`onAttach`, `render`, `onDetach`) and is added with `IRenderer::addFeature`. It draws into the color format given in `RenderSetupContext`: a 16-bit float HDR target by default, tone mapped afterwards, so shaders output linear light that may exceed 1. Every feature receives the per-frame constants and the sun's shadow map as bind group 0; shaders get the matching declarations with `#include "bdex/frame_uniforms.glsl"`, and `#include "bdex/shadows.glsl"` provides `bdexSunShadow()` to receive shadows. To cast them, a feature overrides `renderShadows`, called inside the depth-only shadow pass before `render`, once per cascade with the cascade's index in the context.
 
 Without a presentable window the renderer draws into an offscreen target; screenshots read that target back.
 
@@ -299,7 +299,7 @@ Runtime layout, relative to the executable: plugins sit next to it, `assets/engi
 Known gaps, listed so they are not mistaken for design decisions:
 
 - One window; `IWindowSystem` exposes a primary window only.
-- The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from a single map (no cascades) covering `renderer.shadow_distance` around the camera. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
+- The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from four cascades covering `renderer.shadow_distance` in front of the camera, without blending between cascades. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
 - No audio, physics, or scripting modules yet.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.
