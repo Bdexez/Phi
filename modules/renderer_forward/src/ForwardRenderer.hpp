@@ -107,6 +107,13 @@ private:
 
     std::vector<std::unique_ptr<render::IRenderFeature>> features_;
     bool initialized_ = false;
+
+    struct PointLightCandidate {
+        Vec3 position;
+        const render::PointLight* light;
+        f32 distance;  ///< From the camera, minus the light's range.
+    };
+    std::vector<PointLightCandidate> pointLights_;  ///< Reused across frames.
 };
 
 }  // namespace bdex::forward

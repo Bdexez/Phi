@@ -350,6 +350,32 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
         Vec4(static_cast<f32>(time.elapsed), static_cast<f32>(time.delta),
              static_cast<f32>(extent.width), static_cast<f32>(extent.height));
 
+    // Point lights: all of them if they fit, otherwise the closest to the
+    // camera (the light's range counts as closeness).
+    pointLights_.clear();
+    if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
+        scenes != nullptr && scenes->active() != nullptr) {
+        scenes->active()->world().view<const render::PointLight, const scene::WorldTransform>().each(
+            [&](const render::PointLight& pointLight, const scene::WorldTransform& transform) {
+                const Vec3 position(transform.matrix[3]);
+                pointLights_.push_back({position, &pointLight,
+                                        glm::length(position - camera.position) - pointLight.range});
+            });
+    }
+    constexpr usize kMaxLights = render::FrameUniforms::kMaxPointLights;
+    if (pointLights_.size() > kMaxLights) {
+        std::ranges::nth_element(pointLights_, pointLights_.begin() + kMaxLights, {},
+                                 &PointLightCandidate::distance);
+        pointLights_.resize(kMaxLights);
+    }
+    for (usize i = 0; i < pointLights_.size(); ++i) {
+        const PointLightCandidate& candidate = pointLights_[i];
+        uniforms.pointLightPositions[i] =
+            Vec4(candidate.position, std::max(candidate.light->range, 1e-3f));
+        uniforms.pointLightColors[i] = Vec4(candidate.light->color * candidate.light->intensity, 1.0f);
+    }
+    uniforms.pointLightCount.x = static_cast<f32>(pointLights_.size());
+
     device_.writeBuffer(frameBuffers_[device_.frameSlot()], rhi::asBytes(uniforms));
 }
 

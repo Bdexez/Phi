@@ -8,6 +8,8 @@
 #ifndef BDEX_FRAME_UNIFORMS_GLSL
 #define BDEX_FRAME_UNIFORMS_GLSL
 
+#define BDEX_MAX_POINT_LIGHTS 16
+
 layout(set = 0, binding = 0) uniform FrameUniforms {
     mat4 view;
     mat4 projection;
@@ -18,6 +20,9 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     vec4 lightColor;      // rgb, premultiplied by intensity
     vec4 ambientColor;    // rgb
     vec4 timeAndExtent;   // elapsed seconds, delta seconds, width, height
+    vec4 pointLightCount;  // x: number of valid entries below
+    vec4 pointLightPositions[BDEX_MAX_POINT_LIGHTS];  // xyz: world position, w: range
+    vec4 pointLightColors[BDEX_MAX_POINT_LIGHTS];     // rgb, premultiplied by intensity
 } frame;
 
 #endif

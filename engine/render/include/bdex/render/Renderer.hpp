@@ -27,8 +27,13 @@ struct CameraData {
                                         f32 aspectRatio);
 
 /// Per-frame constants bound as set 0, binding 0 for every render feature
-/// (std140 compatible: only vec4 / mat4 members).
+/// (std140 compatible: only vec4 / mat4 members, and arrays of vec4).
+/// Mirrored by engine/render/shaders/bdex/frame_uniforms.glsl.
 struct FrameUniforms {
+    /// Point lights beyond this count are dropped, farthest from the camera
+    /// first.
+    static constexpr u32 kMaxPointLights = 16;
+
     Mat4 view{1.0f};
     Mat4 projection{1.0f};
     Mat4 viewProjection{1.0f};
@@ -38,6 +43,9 @@ struct FrameUniforms {
     Vec4 lightColor{1.0f};      ///< rgb premultiplied by intensity
     Vec4 ambientColor{0.0f};    ///< rgb
     Vec4 timeAndExtent{0.0f};   ///< elapsed seconds, delta seconds, width, height
+    Vec4 pointLightCount{0.0f};  ///< x: number of valid entries below
+    Vec4 pointLightPositions[kMaxPointLights]{};  ///< xyz: world position, w: range
+    Vec4 pointLightColors[kMaxPointLights]{};     ///< rgb, premultiplied by intensity
 };
 
 struct MaterialDesc {

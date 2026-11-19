@@ -31,6 +31,14 @@ struct MeshRenderer {
     bool visible = true;
 };
 
+/// Omnidirectional light at the entity's WorldTransform position. It fades
+/// with the inverse square of the distance and reaches zero at `range`.
+struct PointLight {
+    Vec3 color{1.0f};
+    f32 intensity = 1.0f;
+    f32 range = 10.0f;
+};
+
 /// Sun-like light. `direction` is the direction the light travels in.
 struct DirectionalLight {
     Vec3 direction{-0.4f, -1.0f, -0.3f};
