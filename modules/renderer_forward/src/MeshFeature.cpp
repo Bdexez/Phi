@@ -6,8 +6,8 @@
 #include <bdex/scene/Components.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
-#include <functional>
 
 namespace bdex::forward {
 
@@ -75,6 +75,8 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     // Gather what is visible...
     opaque_.clear();
     transparent_.clear();
+    opaqueOrder_.clear();
+    transparentOrder_.clear();
     const render::Frustum frustum(context.camera.viewProjection);
     context.world->view<const render::MeshRenderer, const scene::WorldTransform>().each(
         [&](const render::MeshRenderer& renderable, const scene::WorldTransform& transform) {
@@ -90,50 +92,57 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
                 return;  // outside the view
             }
             const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
-            const Vec3 offset = bounds.center - context.camera.position;
-            (material.desc.transparent ? transparent_ : opaque_)
-                .push_back({
-                    material.bindGroup,
-                    mesh,
-                    {transform.matrix, material.desc.baseColor,
-                     Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
-                    glm::dot(offset, offset),
-                });
+            const DrawItem item{
+                material.bindGroup,
+                mesh,
+                {transform.matrix, material.desc.baseColor,
+                 Vec4(material.desc.specular, material.desc.shininess, 0.0f, 0.0f)},
+            };
+            if (material.desc.transparent) {
+                // Back to front: larger distances first. A non-negative float
+                // orders like its bit pattern, so the complement sorts it
+                // descending.
+                const Vec3 offset = bounds.center - context.camera.position;
+                const f32 distanceSquared = glm::dot(offset, offset);
+                transparentOrder_.push_back(
+                    {~u64{std::bit_cast<u32>(distanceSquared)}, static_cast<u32>(transparent_.size())});
+                transparent_.push_back(item);
+            } else {
+                // Grouped by material, then mesh.
+                opaqueOrder_.push_back({(u64{material.bindGroup.index} << 32) | renderable.mesh.index,
+                                        static_cast<u32>(opaque_.size())});
+                opaque_.push_back(item);
+            }
         });
     if (opaque_.empty() && transparent_.empty()) {
         return;
     }
 
-    // ...opaque surfaces grouped by material, then mesh, so each is bound
-    // once; transparent ones from back to front so they blend correctly...
-    std::sort(opaque_.begin(), opaque_.end(), [](const DrawItem& a, const DrawItem& b) {
-        if (a.material.index != b.material.index) {
-            return a.material.index < b.material.index;
-        }
-        return std::less<const GpuMesh*>{}(a.mesh, b.mesh);
-    });
-    std::sort(transparent_.begin(), transparent_.end(), [](const DrawItem& a, const DrawItem& b) {
-        return a.distanceSquared > b.distanceSquared;
-    });
-
-    // ...and draw them.
+    // ...then draw opaque surfaces grouped by material and mesh, so each is
+    // bound once, and transparent ones from back to front so they blend
+    // correctly.
     rhi::ICommandList& commands = context.commands;
     commands.beginDebugGroup("forward.meshes");
-    drawAll(commands, context, opaquePipeline_, opaque_);
-    drawAll(commands, context, transparentPipeline_, transparent_);
+    drawAll(commands, context, opaquePipeline_, opaque_, opaqueOrder_);
+    drawAll(commands, context, transparentPipeline_, transparent_, transparentOrder_);
     commands.endDebugGroup();
 }
 
 void MeshFeature::drawAll(rhi::ICommandList& commands, const render::RenderFrameContext& context,
-                          rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws) {
+                          rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws,
+                          std::vector<SortKey>& order) {
     if (draws.empty()) {
         return;
     }
+    std::sort(order.begin(), order.end(),
+              [](const SortKey& a, const SortKey& b) { return a.key < b.key; });
+
     commands.bindPipeline(pipeline);
     commands.bindBindGroup(0, context.frameBindGroup);
     rhi::BindGroupHandle boundMaterial;
     const GpuMesh* boundMesh = nullptr;
-    for (const DrawItem& draw : draws) {
+    for (const SortKey& entry : order) {
+        const DrawItem& draw = draws[entry.draw];
         if (draw.material != boundMaterial) {
             commands.bindBindGroup(1, draw.material);
             boundMaterial = draw.material;

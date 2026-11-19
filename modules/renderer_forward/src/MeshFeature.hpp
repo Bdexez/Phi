@@ -37,11 +37,17 @@ private:
         rhi::BindGroupHandle material;
         const GpuMesh* mesh;
         ObjectConstants constants;
-        f32 distanceSquared;  ///< From the camera to the bounds' center.
+    };
+    /// Draws are ordered through these small keys rather than by moving the
+    /// draw items themselves.
+    struct SortKey {
+        u64 key;
+        u32 draw;  ///< Index into the draw items.
     };
 
     void drawAll(rhi::ICommandList& commands, const render::RenderFrameContext& context,
-                 rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws);
+                 rhi::PipelineHandle pipeline, const std::vector<DrawItem>& draws,
+                 std::vector<SortKey>& order);
 
     const ForwardRenderer* renderer_;
     rhi::PipelineHandle opaquePipeline_;
@@ -49,6 +55,8 @@ private:
     // Reused across frames.
     std::vector<DrawItem> opaque_;
     std::vector<DrawItem> transparent_;
+    std::vector<SortKey> opaqueOrder_;
+    std::vector<SortKey> transparentOrder_;
 };
 
 }  // namespace bdex::forward
