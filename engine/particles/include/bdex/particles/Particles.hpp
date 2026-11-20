@@ -21,11 +21,16 @@ struct Particle {
 /// Particles live in world space, so moving the emitter leaves a trail.
 /// updateParticles moves them; a renderer draws them as camera-facing
 /// quads, colored and sized by their age.
+/// No emitter holds more than this, whatever its maxParticles says (a scene
+/// file could ask for billions): drawing them already takes over 20 MB of
+/// vertices a frame.
+inline constexpr u32 kParticleLimit = 100000;
+
 struct ParticleEmitter {
     // --- Emission ------------------------------------------------------------
     f32 rate = 20.0f;          ///< Particles per second, continuously (0: bursts only).
     u32 burst = 0;             ///< Emitted all at once on the next update, then reset.
-    u32 maxParticles = 1000;   ///< Beyond this, new ones are not emitted.
+    u32 maxParticles = 1000;   ///< Beyond this (and kParticleLimit), new ones are not emitted.
     f32 lifetime = 1.5f;       ///< Seconds; each varies by +/- lifetimeVariance of it.
     f32 lifetimeVariance = 0.25f;
     Vec3 direction{0.0f, 1.0f, 0.0f};  ///< Center of the cone they leave in, in world space...
