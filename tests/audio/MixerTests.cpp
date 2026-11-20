@@ -230,3 +230,23 @@ TEST(Mixer, IsDrivenFromAnotherThreadWhileMixing) {
     mixer.stopAll(0.0f);  // at once: the next checks hear only the new voice
     EXPECT_EQ(mixer.voiceCount(), 0u);
 }
+
+TEST(Mixer, BusesScaleTheirVoices) {
+    Mixer mixer;
+    mixer.play(constant(0.5f, 1000), {.pan = -1.0f, .bus = Bus::Music});
+    mixer.play(constant(0.25f, 1000), {.pan = 1.0f});  // effects, by default
+    mixer.setBusVolume(Bus::Music, 0.5f);
+    std::vector<f32> out = render(mixer, 1);
+    EXPECT_FLOAT_EQ(out[0], 0.25f);  // music, halved
+    EXPECT_FLOAT_EQ(out[1], 0.25f);  // effects, untouched
+    EXPECT_FLOAT_EQ(mixer.busVolume(Bus::Music), 0.5f);
+    EXPECT_FLOAT_EQ(mixer.busVolume(Bus::Effects), 1.0f);
+
+    mixer.setBusVolume(Bus::Effects, 0.0f);  // muted
+    out = render(mixer, 1);
+    EXPECT_FLOAT_EQ(out[1], 0.0f);
+
+    EXPECT_EQ(busName(Bus::Ambience), "ambience");
+    EXPECT_EQ(busNamed("voice"), Bus::Voice);
+    EXPECT_FALSE(busNamed("drums").has_value());
+}

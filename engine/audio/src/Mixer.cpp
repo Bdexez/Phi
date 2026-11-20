@@ -6,6 +6,23 @@
 
 namespace bdex::audio {
 
+namespace {
+constexpr std::array<std::string_view, kBusCount> kBusNames = {"effects", "music", "voice", "ambience"};
+}  // namespace
+
+std::string_view busName(Bus bus) {
+    return kBusNames[static_cast<usize>(bus) % kBusCount];
+}
+
+std::optional<Bus> busNamed(std::string_view name) {
+    for (usize i = 0; i < kBusCount; ++i) {
+        if (kBusNames[i] == name) {
+            return static_cast<Bus>(i);
+        }
+    }
+    return std::nullopt;
+}
+
 Mixer::Mixer(u32 sampleRate) : sampleRate_(std::max(sampleRate, 1u)) {}
 
 VoiceId Mixer::play(std::shared_ptr<const assets::AudioData> clip, const PlayParams& params) {
@@ -115,9 +132,20 @@ void Mixer::setMasterVolume(f32 volume) {
     masterVolume_ = volume;
 }
 
+void Mixer::setBusVolume(Bus bus, f32 volume) {
+    const std::lock_guard lock(mutex_);
+    busVolumes_[static_cast<usize>(bus) % kBusCount] = volume;
+}
+
+f32 Mixer::busVolume(Bus bus) const {
+    const std::lock_guard lock(mutex_);
+    return busVolumes_[static_cast<usize>(bus) % kBusCount];
+}
+
 std::pair<f32, f32> Mixer::gains(const Voice& voice) const {
     const PlayParams& params = voice.params;
-    f32 volume = std::isfinite(params.volume) ? std::max(params.volume, 0.0f) : 0.0f;
+    const f32 bus = busVolumes_[static_cast<usize>(params.bus) % kBusCount];
+    f32 volume = std::isfinite(params.volume) && std::isfinite(bus) ? std::max(params.volume * bus, 0.0f) : 0.0f;
     f32 pan = params.pan;
     if (params.spatial) {
         const Vec3 offset = params.position - listenerPosition_;

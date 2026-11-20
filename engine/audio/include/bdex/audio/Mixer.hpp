@@ -4,15 +4,26 @@
 #include <bdex/core/Math.hpp>
 #include <bdex/core/Types.hpp>
 
+#include <array>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace bdex::audio {
 
 /// Identifies a playing sound; 0 is never used.
 using VoiceId = u64;
+
+/// Groups of voices sharing a volume, as a game's sound settings offer.
+enum class Bus : u8 { Effects, Music, Voice, Ambience };
+inline constexpr usize kBusCount = 4;
+
+/// "effects", "music", "voice", "ambience".
+[[nodiscard]] std::string_view busName(Bus bus);
+[[nodiscard]] std::optional<Bus> busNamed(std::string_view name);
 
 struct PlayParams {
     f32 volume = 1.0f;
@@ -29,6 +40,7 @@ struct PlayParams {
     f32 minDistance = 1.0f;
     /// ...and silence beyond this one.
     f32 maxDistance = 50.0f;
+    Bus bus = Bus::Effects;
 };
 
 /// Software mixer: sums any number of voices into one stereo stream, at
@@ -70,6 +82,10 @@ public:
     /// right, as for cameras).
     void setListener(const Vec3& position, const Quat& orientation);
     void setMasterVolume(f32 volume);
+    /// Scales every voice of a bus, on top of their own volume (1 by
+    /// default); changes glide like any other.
+    void setBusVolume(Bus bus, f32 volume);
+    [[nodiscard]] f32 busVolume(Bus bus) const;
 
     /// Mixes the next `out.size() / 2` frames into `out` as interleaved
     /// left / right samples in [-1, 1], replacing its contents, and advances
@@ -107,6 +123,7 @@ private:
     Vec3 listenerPosition_{0.0f};
     Quat listenerOrientation_{1.0f, 0.0f, 0.0f, 0.0f};
     f32 masterVolume_ = 1.0f;
+    std::array<f32, kBusCount> busVolumes_{1.0f, 1.0f, 1.0f, 1.0f};
     f64 advanceRemainder_ = 0.0;  ///< Fraction of a frame carried between advance() calls.
     std::vector<f32> scratch_;
 };

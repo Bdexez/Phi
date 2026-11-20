@@ -222,3 +222,32 @@ TEST(Application, PlaysAudioSourcesWithAnAudioModule) {
     EXPECT_EQ(player.voicesAtFirstFrame, 1u);  // started by itself
     EXPECT_EQ(player.voicesAtStop, 0u);        // and played out in 0.4 s
 }
+
+TEST(Application, ReadsSoundSettings) {
+    struct Settings final : app::Application {
+        f32 music = -1.0f;
+        f32 effects = -1.0f;
+        int run(std::vector<std::string> arguments) {
+            arguments.insert(arguments.begin(), "settings");
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null,audio_null"); }
+        Result<> onStart() override {
+            const auto& mixer = engine().services().get<audio::Mixer>();
+            music = mixer.busVolume(audio::Bus::Music);
+            effects = mixer.busVolume(audio::Bus::Effects);
+            return {};
+        }
+    };
+    Settings settings;
+    EXPECT_EQ(settings.run({"--frames", "1", "--set", "audio.volume.music=0.25"}), 0);
+    EXPECT_FLOAT_EQ(settings.music, 0.25f);
+    EXPECT_FLOAT_EQ(settings.effects, 1.0f);
+}
