@@ -72,6 +72,7 @@ void Scheduler::clear() {
 
 void Scheduler::run(Phase phase, const FrameTime& time) {
     auto& entries = phases_[static_cast<usize>(phase)];
+    const auto phaseStart = std::chrono::steady_clock::now();
     ++runDepth_;
     // Entries neither move nor grow while tasks run (additions are deferred,
     // removals are tombstones), so indices stay valid.
@@ -81,15 +82,21 @@ void Scheduler::run(Phase phase, const FrameTime& time) {
             const std::shared_ptr<const Task> task = entries[i].task;
             const auto start = std::chrono::steady_clock::now();
             (*task)(time);
-            const f64 seconds =
-                std::chrono::duration<f64>(std::chrono::steady_clock::now() - start).count();
+            const auto end = std::chrono::steady_clock::now();
+            const f64 seconds = std::chrono::duration<f64>(end - start).count();
             Entry& entry = entries[i];
+            if (trace_ != nullptr) {
+                trace_->record(entry.name, phaseName(phase), start, end);
+            }
             entry.lastSeconds = seconds;
             entry.totalSeconds += seconds;
             ++entry.runs;
         }
     }
     --runDepth_;
+    if (trace_ != nullptr && !entries.empty()) {
+        trace_->record(phaseName(phase), "phase", phaseStart, std::chrono::steady_clock::now());
+    }
     if (runDepth_ == 0) {
         settle();
     }

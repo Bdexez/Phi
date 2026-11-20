@@ -3,6 +3,7 @@
 #include <bdex/core/Log.hpp>
 
 #include <algorithm>
+#include <format>
 #include <thread>
 
 namespace bdex {
@@ -47,6 +48,7 @@ bool Engine::tick() {
         nextFrame_ = std::max(nextFrame_, start) + minFrameTime_;
     }
     const Clock::time_point now = Clock::now();
+    const Clock::time_point frameStart = now;
     if (firstTick_) {
         lastTick_ = now;
         firstTick_ = false;
@@ -88,6 +90,9 @@ bool Engine::tick() {
     scheduler_.run(Phase::PostRender, time_);
     scheduler_.run(Phase::EndFrame, time_);
 
+    if (trace_ != nullptr) {
+        trace_->record(std::format("frame {}", time_.frame), "frame", frameStart, Clock::now());
+    }
     ++time_.frame;
     if (maxFrames_ != 0 && time_.frame >= maxFrames_) {
         exitRequested_ = true;

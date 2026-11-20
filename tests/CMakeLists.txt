@@ -25,6 +25,7 @@ add_executable(bdex_tests
     core/ModuleManagerTests.cpp
     core/SchedulerTests.cpp
     core/ServiceRegistryTests.cpp
+    core/TraceTests.cpp
     core/TypeIdTests.cpp
     ecs/WorldTests.cpp
     physics/PhysicsTests.cpp

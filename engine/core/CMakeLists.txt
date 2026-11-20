@@ -11,6 +11,7 @@ bdex_add_library(core
         src/Log.cpp
         src/ModuleManager.cpp
         src/Scheduler.cpp
+        src/Trace.cpp
     PUBLIC_DEPS
         glm::glm
     PRIVATE_DEPS
