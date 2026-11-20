@@ -160,6 +160,19 @@ ComponentSerializers ComponentSerializers::withSceneComponents() {
             }
             return {};
         });
+    serializers.add<ModelNode>(
+        "ModelNode", [](const ModelNode& node, Fields& out, const EntityRefs&) { out["index"] = std::to_string(node.index); },
+        [](ModelNode& node, const Fields& in, const EntityRefs&) -> Result<> {
+            f32 index = 0.0f;
+            if (auto parsed = parseField(in, "index", index); !parsed) {
+                return parsed;
+            }
+            if (!(index >= 0.0f) || index > 1e9f || index != std::floor(index)) {
+                return fail("ModelNode.index must be a whole number");
+            }
+            node.index = static_cast<u32>(index);
+            return {};
+        });
     // Derived every frame from Transform and Parent: nothing to store, but
     // entities need one to be drawn.
     serializers.add<WorldTransform>(
