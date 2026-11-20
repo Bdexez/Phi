@@ -106,8 +106,6 @@ std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
     return found;
 }
 
-namespace {
-
 /// `root` and every entity below it through Parent links, breadth-first, so
 /// parents come before their children.
 std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
@@ -137,8 +135,6 @@ std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
     }
     return found;
 }
-
-}  // namespace
 
 ecs::Entity cloneHierarchy(ecs::World& world, ecs::Entity root) {
     if (!world.alive(root)) {

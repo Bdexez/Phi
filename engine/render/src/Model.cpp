@@ -134,6 +134,7 @@ ecs::Entity instantiateModel(scene::Scene& scene, const assets::ModelData& model
         transform.rotation = node.rotation;
         transform.scale = node.scale;
         world.emplace<scene::Parent>(entity, parent);
+        world.emplace<scene::ModelNode>(entity, index);
 
         if (node.mesh >= 0 && static_cast<usize>(node.mesh) < resources.meshes.size()) {
             const std::vector<MeshHandle>& parts = resources.meshes[static_cast<usize>(node.mesh)];

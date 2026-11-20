@@ -60,6 +60,10 @@ private:
 /// changing nothing, if `parent` is dead or below `child` (a cycle).
 Result<> setParent(ecs::World& world, ecs::Entity child, ecs::Entity parent, bool keepWorldTransform = false);
 
+/// `root` and every entity below it through Parent links, parents before
+/// their children.
+[[nodiscard]] std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root);
+
 /// Entities whose Parent is `parent`, by slot.
 [[nodiscard]] std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent);
 
