@@ -11,8 +11,8 @@
 // right mouse button to look around, WASD or the arrows to move, Space /
 // Left Ctrl to go up / down, Left Shift to move faster, F2 for a screenshot,
 // F3 to log a frame profile, F4 for debug gizmos, left click to select an
-// object, F5 / F9 to save / load the scene, F11 for fullscreen, Escape to
-// quit. A gamepad works too: sticks to
+// object, F5 / F9 to save / load the scene, F6 for a flashlight, F11 for
+// fullscreen, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "SkyFeature.hpp"
@@ -90,6 +90,7 @@ protected:
         config.setDefault("input.save_scene", "F5");
         config.setDefault("input.load_scene", "F9");
         config.setDefault("input.toggle_fullscreen", "F11");
+        config.setDefault("input.flashlight", "F6, GamepadX");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -136,6 +137,9 @@ protected:
             }
             if (controls->pressed("load_scene")) {
                 loadScene();
+            }
+            if (controls->pressed("flashlight")) {
+                toggleFlashlight();
             }
             if (platform::IWindow* target = window(); target != nullptr && controls->pressed("toggle_fullscreen")) {
                 target->setFullscreen(!target->fullscreen());
@@ -256,6 +260,24 @@ private:
             cameraPitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
         }
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
+    }
+
+    /// A spot light carried by the camera, switched on and off.
+    void toggleFlashlight() {
+        ecs::World& world = scene().world();
+        if (const ecs::Entity torch = scene().find("Flashlight"); torch.valid()) {
+            world.destroy(torch);
+            return;
+        }
+        const ecs::Entity torch = scene().createEntity("Flashlight");
+        world.emplace<scene::Parent>(torch, camera_);
+        world.get<scene::Transform>(torch).position = Vec3(0.3f, -0.2f, 0.0f);  // held low and right
+        world.emplace<render::SpotLight>(
+            torch, render::SpotLight{.color = Vec3(1.0f, 0.95f, 0.8f),
+                                     .intensity = 30.0f,
+                                     .range = 25.0f,
+                                     .innerAngle = glm::radians(12.0f),
+                                     .outerAngle = glm::radians(22.0f)});
     }
 
     /// Picks the nearest drawn object under the cursor (bounding spheres).
