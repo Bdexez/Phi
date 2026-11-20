@@ -46,6 +46,7 @@ cmake/          Helpers for building libraries, modules, and shaders
 | `rhi_vulkan` | Vulkan 1.3 graphics backend. |
 | `rhi_null` | Backend with no GPU execution, used for testing. |
 | `renderer_forward` | Scene rendering and support for custom render features. |
+| `audio_openal` | Sound output through OpenAL, streamed from the engine's mixer; silent if no device can be opened. Built when OpenAL is found. |
 | `audio_null` | Audio mixer without a device: sounds play and finish in real time, silently. |
 
 By default, modules are shared libraries loaded at runtime. Set the CMake option `BDEX_SHARED_MODULES=OFF` to link them statically and register their factories in the executable.
@@ -65,6 +66,7 @@ To build the default configuration:
 | GLFW ≥ 3.3 | Interactive window module. |
 | Vulkan headers and loader library | Building the Vulkan and GLFW modules. |
 | `glslc` | Compiling GLSL shaders to SPIR-V. |
+| OpenAL (OpenAL Soft), optional | Sound output (`audio_openal`); without it, sound plays silently through `audio_null`. |
 | GoogleTest, optional | Building the tests. |
 
 CMake first looks for a system installation of **Vulkan Memory Allocator**. If none is found, it downloads version `3.3.0`, so the initial configuration requires network access in that case.
@@ -155,11 +157,11 @@ To run the simulation alone, load only the virtual window module:
 
 Configuration is applied in the following order, from lowest to highest priority: engine defaults, application defaults, the INI file, then command-line arguments.
 
-The sandbox uses [sandbox.ini](samples/sandbox/sandbox.ini), which CMake copies next to the executable during configuration:
+The sandbox uses [sandbox.ini](samples/sandbox/sandbox.ini), which CMake copies next to the executable during configuration, with the audio module the build has:
 
 ```ini
 [engine]
-modules = window_glfw, rhi_vulkan, renderer_forward
+modules = window_glfw, rhi_vulkan, renderer_forward, audio_openal
 
 [window]
 title = bdex sandbox
@@ -221,7 +223,7 @@ Pass options to CMake as `-DOPTION=ON` or `-DOPTION=OFF`.
 | `BDEX_BUILD_TESTS` | `ON` | Build tests if GoogleTest is available. |
 | `BDEX_WARNINGS_AS_ERRORS` | `OFF` | Treat compiler warnings as errors. |
 
-Each module can also be disabled independently: `BDEX_MODULE_WINDOW_GLFW`, `BDEX_MODULE_WINDOW_NULL`, `BDEX_MODULE_RHI_VULKAN`, `BDEX_MODULE_RHI_NULL`, and `BDEX_MODULE_RENDERER_FORWARD`. All are enabled by default. The modules selected at runtime must be available in the build.
+Each module can also be disabled independently: `BDEX_MODULE_WINDOW_GLFW`, `BDEX_MODULE_WINDOW_NULL`, `BDEX_MODULE_RHI_VULKAN`, `BDEX_MODULE_RHI_NULL`, `BDEX_MODULE_RENDERER_FORWARD`, `BDEX_MODULE_AUDIO_NULL`, and `BDEX_MODULE_AUDIO_OPENAL`. All are enabled by default (`audio_openal` only if OpenAL is found; applications then load it by default, `audio_null` otherwise). The modules selected at runtime must be available in the build.
 
 ## Tests
 

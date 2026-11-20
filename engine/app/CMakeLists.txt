@@ -9,4 +9,7 @@ bdex_add_library(app
         bdex::assets
         bdex::scene
         bdex::render
-        bdex::physics)
+        bdex::physics
+        bdex::audio)
+# The audio module loaded by default: OpenAL when it was found, else silent.
+target_compile_definitions(bdex_app PRIVATE BDEX_DEFAULT_AUDIO_MODULE="${BDEX_AUDIO_MODULE}")

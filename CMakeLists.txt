@@ -21,6 +21,7 @@ option(BDEX_MODULE_RHI_VULKAN "Build the Vulkan RHI module" ON)
 option(BDEX_MODULE_RHI_NULL "Build the no-op RHI module" ON)
 option(BDEX_MODULE_RENDERER_FORWARD "Build the forward renderer module" ON)
 option(BDEX_MODULE_AUDIO_NULL "Build the silent audio module" ON)
+option(BDEX_MODULE_AUDIO_OPENAL "Build the OpenAL audio module (skipped if OpenAL is not found)" ON)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
@@ -45,6 +46,21 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(BdexEngine)
 
 find_package(glm REQUIRED)
+
+# Audio output is optional: without OpenAL the engine builds and runs with
+# silent audio. BDEX_AUDIO_MODULE is the module applications load by default.
+set(BDEX_AUDIO_MODULE "")
+if(BDEX_MODULE_AUDIO_NULL)
+    set(BDEX_AUDIO_MODULE audio_null)
+endif()
+if(BDEX_MODULE_AUDIO_OPENAL)
+    find_package(OpenAL QUIET)
+    if(OpenAL_FOUND)
+        set(BDEX_AUDIO_MODULE audio_openal)
+    else()
+        message(STATUS "bdex: OpenAL not found, the audio_openal module is not built (sound will be silent)")
+    endif()
+endif()
 
 add_subdirectory(engine)
 add_subdirectory(modules)

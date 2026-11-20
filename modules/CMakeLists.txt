@@ -25,3 +25,7 @@ endif()
 if(BDEX_MODULE_AUDIO_NULL)
     add_subdirectory(audio_null)
 endif()
+
+if(BDEX_MODULE_AUDIO_OPENAL AND OpenAL_FOUND)
+    add_subdirectory(audio_openal)
+endif()

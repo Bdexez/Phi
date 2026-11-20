@@ -22,6 +22,8 @@
 
 #include <array>
 #include <cmath>
+#include <thread>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -486,6 +488,29 @@ TEST(HeadlessEngine, SilentAudioPlaysSoundsInRealTime) {
         test.engine->tick();
     }
     EXPECT_FALSE(mixer->playing(voice));
+    test.engine->shutdown();
+    EXPECT_FALSE(test.engine->services().has<audio::Mixer>());
+}
+
+TEST(HeadlessEngine, OpenAlStreamsTheMixToTheDevice) {
+    log::setLevel(log::Level::Error);
+    TestEngine test({"audio_openal"});
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "audio_openal is not built here: " << test.loadError << test.initError;
+    }
+    auto& mixer = test.engine->services().get<audio::Mixer>();
+    // Silent (volume 0): tests make no noise. Without ticking the engine,
+    // only the streaming thread can move the voice to its end.
+    const audio::VoiceId voice = mixer.play(
+        std::make_shared<assets::AudioData>(assets::makeTone(440.0f, 0.1f, mixer.sampleRate())), {.volume = 0.0f});
+    for (int i = 0; i < 100 && mixer.playing(voice); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (mixer.playing(voice)) {
+        test.engine->shutdown();
+        GTEST_SKIP() << "no audio device here (sounds play silently)";
+    }
     test.engine->shutdown();
     EXPECT_FALSE(test.engine->services().has<audio::Mixer>());
 }

@@ -21,7 +21,8 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
                                         │ implement interfaces
                  ┌──────────────────────┴───────────────────────┐
   modules        │ window_glfw   rhi_vulkan   renderer_forward  │
-  (plugins)      │ window_null   rhi_null     audio_null        │
+  (plugins)      │ window_null   rhi_null     audio_openal      │
+                 │                            audio_null        │
                  └──────────────────────────────────────────────┘
 ```
 
@@ -235,7 +236,7 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 
 ## Audio
 
-The `audio::Mixer` service comes from an audio module (capability `"audio"`): `audio_null` runs it in real time and discards its output, so sounds still start, play for their length, and finish in headless runs and tests (`--headless` swaps any audio module for it). `audio::Mixer` sums voices into one stereo stream at its own sample rate. `play(clip, params)` starts an `assets::AudioData` (kept alive while it plays) and returns a `VoiceId` to change its volume, pitch, or position, or to stop it; finished voices drop out on their own. Clips at any rate are resampled (linear interpolation), mono ones are panned with equal power and stereo ones balanced, and `spatial` voices are attenuated as `minDistance / distance` (silent past `maxDistance`) and panned by their direction from the listener set with `setListener`. An audio backend calls `mix(buffer)` from its own thread to fill device buffers while the game drives voices from another; a mutex, held for one buffer at a time, keeps them apart. Mixing 64 voices costs about 0.6% of real time.
+The `audio::Mixer` service comes from an audio module (capability `"audio"`). `audio_openal` streams the mix to the device from its own thread through a queue of four OpenAL buffers (`audio.buffer_frames`, 512 by default, about 11 ms each at `audio.sample_rate` 48000), restarting the source if it runs dry; if no device opens, it logs a warning and plays silently. It is built when CMake finds OpenAL, and applications load it by default (else `audio_null`). `audio_null` runs it in real time and discards its output, so sounds still start, play for their length, and finish in headless runs and tests (`--headless` swaps any audio module for it). `audio::Mixer` sums voices into one stereo stream at its own sample rate. `play(clip, params)` starts an `assets::AudioData` (kept alive while it plays) and returns a `VoiceId` to change its volume, pitch, or position, or to stop it; finished voices drop out on their own. Clips at any rate are resampled (linear interpolation), mono ones are panned with equal power and stereo ones balanced, and `spatial` voices are attenuated as `minDistance / distance` (silent past `maxDistance`) and panned by their direction from the listener set with `setListener`. An audio backend calls `mix(buffer)` from its own thread to fill device buffers while the game drives voices from another; a mutex, held for one buffer at a time, keeps them apart. Mixing 64 voices costs about 0.6% of real time.
 
 ## Input
 
@@ -342,5 +343,5 @@ Known gaps, listed so they are not mistaken for design decisions:
 - One window; `IWindowSystem` exposes a primary window only.
 - The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from four cascades covering `renderer.shadow_distance` in front of the camera, without blending between cascades. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
-- No audio output backend yet (the mixer produces samples nothing plays) and no scripting; physics covers dynamic spheres against spheres and oriented static boxes; dynamic boxes are not simulated.
+- No scripting; physics covers dynamic spheres against spheres and oriented static boxes; dynamic boxes are not simulated.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.
