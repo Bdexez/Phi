@@ -30,6 +30,7 @@ add_executable(bdex_tests
     core/TraceTests.cpp
     core/TypeIdTests.cpp
     ecs/WorldTests.cpp
+    particles/ParticleTests.cpp
     physics/PhysicsTests.cpp
     platform/InputTests.cpp
     assets/AssetTests.cpp
@@ -52,6 +53,7 @@ target_link_libraries(bdex_tests PRIVATE
     bdex::assets
     bdex::audio
     bdex::animation
+    bdex::particles
     bdex::scene
     bdex::render
     bdex::app
