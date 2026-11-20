@@ -21,11 +21,13 @@
 #include "FlyCamera.hpp"
 #include "Hud.hpp"
 #include "Lamps.hpp"
+#include "Level.hpp"
 #include "Palette.hpp"
+#include "SettingsPanel.hpp"
 #include "SkyFeature.hpp"
 #include "Sounds.hpp"
-#include "SettingsPanel.hpp"
 #include "Sparks.hpp"
+#include "Spin.hpp"
 
 #include <bdex/animation/Animation.hpp>
 #include <bdex/app/Application.hpp>
@@ -34,47 +36,27 @@
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/FileWatcher.hpp>
 #include <bdex/core/JobSystem.hpp>
+#include <bdex/core/Log.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Model.hpp>
 #include <bdex/render/ResourceNames.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
-#include <bdex/core/Log.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <memory>
 #include <filesystem>
 #include <format>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
 
 using namespace bdex;
 
-namespace {
-
-/// Application-defined component: rotates the entity around an axis.
-struct Spin {
-    Vec3 axis{0.0f, 1.0f, 0.0f};
-    f32 speed = 1.0f;  // radians per second
-};
-
-/// Application-defined system. Systems are plain functions over ECS views;
-/// this one only touches each entity's own components, so it can run on the
-/// job system's threads (a handful of entities stay on the calling thread).
-void spinSystem(ecs::World& world, JobSystem& jobs, f32 deltaSeconds) {
-    world.view<scene::Transform, const Spin>().parallelEach(
-        jobs, [deltaSeconds](scene::Transform& transform, const Spin& spin) {
-            transform.rotation =
-                glm::normalize(glm::angleAxis(spin.speed * deltaSeconds, spin.axis) * transform.rotation);
-        });
-}
-
-}  // namespace
 
 class Sandbox final : public app::Application {
 protected:
@@ -133,7 +115,7 @@ protected:
         sparks_.start(engine());
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
-            spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
+            sandbox::spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
         });
         return {};
     }
@@ -237,13 +219,13 @@ private:
         render::addComponentSerializers(serializers_);
         physics::addComponentSerializers(serializers_);
         audio::addComponentSerializers(serializers_);
-        serializers_.add<Spin>(
+        serializers_.add<sandbox::Spin>(
             "Spin",
-            [](const Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
+            [](const sandbox::Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
                 out["axis"] = scene::formatField(spin.axis);
                 out["speed"] = scene::formatField(spin.speed);
             },
-            [](Spin& spin, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
+            [](sandbox::Spin& spin, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
                 if (auto parsed = scene::parseField(in, "axis", spin.axis); !parsed) {
                     return parsed;
                 }
@@ -538,98 +520,14 @@ private:
 
     void buildScene() {
         scene::Scene& level = scene();
-        ecs::World& world = level.world();
-        const f32 pi = std::numbers::pi_v<f32>;
-
-        // Sun
-        const ecs::Entity sun = level.createEntity("Sun");
-        world.emplace<render::DirectionalLight>(
-            sun, render::DirectionalLight{.direction = Vec3(-0.45f, -0.8f, -0.35f),
-                                          .color = Vec3(1.0f, 0.96f, 0.9f),
-                                          .intensity = 1.1f,
-                                          .ambient = Vec3(0.16f, 0.19f, 0.25f)});
-
-        // Camera
-        camera_ = level.createEntity("Camera");
-        world.emplace<render::Camera>(camera_);
-        world.emplace<audio::AudioListener>(camera_);  // the ears go where the eyes are
-        world.get<scene::Transform>(camera_).position = Vec3(0.0f, 3.2f, 9.5f);
-        flyCamera_.attach(world, camera_, 0.0f, -0.26f);
-
-        // Ground
-        const ecs::Entity ground = level.createEntity("Ground");
-        world.emplace<render::MeshRenderer>(ground, palette_.plane, palette_.ground);
-        world.emplace<physics::BoxCollider>(ground, Vec3(20.0f, 0.01f, 20.0f));
-
-        // A platform gliding back and forth beside the scene (moved in
-        // onFixedUpdate): throw things onto it, or walk onto it (G).
-        platform_ = level.createEntity("Platform");
-        scene::Transform& slab = world.get<scene::Transform>(platform_);
-        slab.position = kPlatformBase;
-        slab.scale = Vec3(2.4f, 0.3f, 2.4f);
-        world.emplace<render::MeshRenderer>(platform_, palette_.cube, palette_.ground);
-        world.emplace<physics::BoxCollider>(platform_, Vec3(0.5f));
-        world.emplace<physics::Kinematic>(platform_);
-
-        // Centerpiece
-        const ecs::Entity sphere = level.createEntity("Sphere");
-        world.get<scene::Transform>(sphere).position = Vec3(0.0f, 1.4f, 0.0f);
-        world.get<scene::Transform>(sphere).scale = Vec3(2.2f);
-        world.emplace<render::MeshRenderer>(sphere, palette_.sphere, palette_.polished);
-        world.emplace<physics::SphereCollider>(sphere, 0.5f);  // static: no RigidBody
-
-        // A slowly turning glass block in front of the sphere
-        const ecs::Entity glassBlock = level.createEntity("Glass block");
-        scene::Transform& glassTransform = world.get<scene::Transform>(glassBlock);
-        glassTransform.position = Vec3(0.0f, 1.6f, 2.4f);
-        glassTransform.scale = Vec3(1.6f, 1.6f, 0.4f);
-        world.emplace<render::MeshRenderer>(glassBlock, palette_.cube, palette_.glass);
-        world.emplace<Spin>(glassBlock, Vec3(0.0f, 1.0f, 0.0f), 0.35f);
-
-        // A ring of spinning cubes
-        for (u32 i = 0; i < kCubeCount; ++i) {
-            const f32 angle = 2.0f * pi * static_cast<f32>(i) / kCubeCount;
-            const ecs::Entity cube = level.createEntity(std::format("Cube {}", i));
-            scene::Transform& transform = world.get<scene::Transform>(cube);
-            transform.position = Vec3(std::cos(angle) * 4.5f, 0.75f, std::sin(angle) * 4.5f);
-            transform.rotation = glm::angleAxis(angle, Vec3(0.0f, 1.0f, 0.0f));
-            world.emplace<render::MeshRenderer>(cube, palette_.cube, palette_.cubes[i]);
-            world.emplace<physics::BoxCollider>(cube);  // axis-aligned, ignores the spin
-            world.emplace<Spin>(cube, glm::normalize(Vec3(0.3f, 1.0f, 0.2f * static_cast<f32>(i))),
-                                0.6f + 0.15f * static_cast<f32>(i));
-        }
-
-        // Hierarchy: an invisible pivot spins above the sphere and carries
-        // two moons. Only the pivot is animated; the moons follow through
-        // their Parent link.
-        const ecs::Entity pivot = level.createEntity("Moon pivot");
-        world.get<scene::Transform>(pivot).position = Vec3(0.0f, 3.4f, 0.0f);
-        world.emplace<Spin>(pivot, Vec3(0.0f, 1.0f, 0.0f), 0.9f);
-        for (u32 i = 0; i < 2; ++i) {
-            const ecs::Entity moon = level.createEntity(std::format("Moon {}", i));
-            scene::Transform& transform = world.get<scene::Transform>(moon);
-            transform.position = Vec3(i == 0 ? 2.0f : -2.0f, 0.0f, 0.0f);
-            transform.scale = Vec3(0.45f);
-            world.emplace<scene::Parent>(moon, pivot);
-            world.emplace<render::MeshRenderer>(moon, i == 0 ? palette_.sphere : palette_.cube,
-                                                palette_.moons[i]);
-            world.emplace<Spin>(moon, Vec3(1.0f, 0.0f, 0.0f), 2.0f);
-
-            // Each moon carries a colored lamp, slightly below it, that
-            // sweeps over the sphere and the cubes as the pivot turns.
-            const ecs::Entity lamp = level.createEntity(std::format("Moon lamp {}", i));
-            world.get<scene::Transform>(lamp).position = Vec3(i == 0 ? 2.0f : -2.0f, -1.0f, 0.0f);
-            world.emplace<scene::Parent>(lamp, pivot);
-            world.emplace<render::PointLight>(
-                lamp, render::PointLight{.color = i == 0 ? Vec3(1.0f, 0.55f, 0.2f) : Vec3(0.2f, 0.6f, 1.0f),
-                                         .intensity = 6.0f,
-                                         .range = 7.0f});
-        }
-
+        const sandbox::LevelEntities built = sandbox::buildLevel(level, palette_);
+        camera_ = built.camera;
+        platform_ = built.platform;
+        flyCamera_.attach(level.world(), camera_, 0.0f, -0.26f);
         if (engine().services().has<render::IRenderer>()) {
             lamps_.placeDefault(engine().services().get<VirtualFileSystem>(), renderer(), level, palette_.names);
         }
-        log::info("sandbox", "scene ready: {} entities", world.entityCount());
+        log::info("sandbox", "scene ready: {} entities", level.world().entityCount());
     }
 
     /// Hot reloading: the lamp model when its file changes, shaders when
@@ -677,7 +575,7 @@ private:
         if (auto* slab = scene().world().tryGet<scene::Transform>(platform_)) {
             platformTime_ += time.delta;
             const f32 phase = static_cast<f32>(platformTime_) * 2.0f * std::numbers::pi_v<f32> / 10.0f;
-            slab->position = kPlatformBase + Vec3(0.0f, 0.0f, 3.0f * std::sin(phase));
+            slab->position = sandbox::kPlatformBase + Vec3(0.0f, 0.0f, 3.0f * std::sin(phase));
         }
     }
 
@@ -698,7 +596,6 @@ private:
     ecs::Entity platform_;
     f64 platformTime_ = 0.0;  ///< Paused with the platform.
     bool platformMoving_ = true;
-    static constexpr Vec3 kPlatformBase{-7.5f, 0.16f, 1.0f};
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;
