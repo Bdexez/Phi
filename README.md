@@ -88,7 +88,7 @@ cmake --build build --parallel
 ./build/bin/sandbox
 ```
 
-The same steps are available as CMake presets (`debug`, `release`, `static`, `asan`), each building into its own `build-<preset>/` directory:
+The same steps are available as CMake presets (`debug`, `release`, `static`, `asan`, `tsan`), each building into its own `build-<preset>/` directory:
 
 ```sh
 cmake --preset debug
@@ -252,13 +252,13 @@ With GoogleTest installed and `BDEX_BUILD_TESTS=ON`:
 ctest --test-dir build --output-on-failure
 ```
 
-Tests cover the core, plugin loading, ECS, assets, scenes, physics, audio, animation, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, glTF, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run). Leaks fail it too; [`tests/sanitizers/lsan.supp`](tests/sanitizers/lsan.supp) only silences leaks inside system libraries, such as PipeWire's when the OpenAL test opens a desktop's audio device.
+Tests cover the core, plugin loading, ECS, assets, scenes, physics, audio, animation, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, glTF, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run). Leaks fail it too; [`tests/sanitizers/lsan.supp`](tests/sanitizers/lsan.supp) only silences leaks inside system libraries, such as PipeWire's when the OpenAL test opens a desktop's audio device. The `tsan` preset runs the same tests under ThreadSanitizer, for races between the job system's threads, the audio thread and the game; [`tests/sanitizers/tsan.supp`](tests/sanitizers/tsan.supp) likewise silences only OpenAL's and PipeWire's own threads.
 
 If GoogleTest is missing, CMake prints a warning and continues configuration without building the tests.
 
 [`.clang-tidy`](.clang-tidy) selects clang-tidy's bug-finding checks (bugprone, performance, concurrency, and the Clang static analyzer). Run them over the engine and modules with the compile commands of a build: `run-clang-tidy -p build -quiet '/(engine|modules)/.*\.cpp$'`.
 
-[Continuous integration](.github/workflows/ci.yml) builds the `release`, `static`, and `asan` presets on Ubuntu 24.04 with GCC 14, and `release` with Clang 19, warnings treated as errors, then runs the tests. Vulkan tests run there too, on lavapipe, Mesa's CPU implementation of Vulkan (the `asan` preset leaves them out).
+[Continuous integration](.github/workflows/ci.yml) builds the `release`, `static`, `asan` and `tsan` presets on Ubuntu 24.04 with GCC 14, and `release` with Clang 19, warnings treated as errors, then runs the tests. Vulkan tests run there too, on lavapipe, Mesa's CPU implementation of Vulkan (the `asan` preset leaves them out).
 
 ## Extending the engine
 

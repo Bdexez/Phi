@@ -1,0 +1,13 @@
+# ThreadSanitizer suppressions for the tsan test preset.
+#
+# Only races inside system libraries belong here, never bdex code: each
+# entry names a library the engine does not control and says why.
+
+# OpenAL Soft and the PipeWire backend it uses on Linux desktops sync their
+# mixing threads with atomics and lock-free ring buffers in code TSan does
+# not instrument, so it reports their hand-offs as races. The engine only
+# calls OpenAL from its streaming thread, which OpenAL Soft allows (the
+# context is current process-wide). CI machines have no audio device.
+race:libopenal.so
+race:libpipewire
+race:libspa
