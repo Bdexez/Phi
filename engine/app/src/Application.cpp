@@ -368,6 +368,13 @@ int Application::run(int argc, char** argv) {
         scheduler.add(
             Phase::PostUpdate, "audio.update",
             [this](const FrameTime&) {
+                // The game's sounds follow its time scale, slowing down and
+                // pausing with it; music plays on, as it would under a menu.
+                Engine& running = *state_->engine;
+                auto& sound = running.services().get<audio::Mixer>();
+                for (const audio::Bus bus : {audio::Bus::Effects, audio::Bus::Voice, audio::Bus::Ambience}) {
+                    sound.setBusSpeed(bus, static_cast<f32>(running.timeScale()));
+                }
                 if (scene::Scene* active = state_->scenes->active()) {
                     state_->audio->update(active->world());
                 }
