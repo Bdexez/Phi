@@ -221,6 +221,7 @@ private:
         physics::addComponentSerializers(serializers_);
         audio::addComponentSerializers(serializers_);
         particles::addComponentSerializers(serializers_);
+        animation::addComponentSerializers(serializers_, clips_);  // the lanterns sway on after a load
         serializers_.add<sandbox::Spin>(
             "Spin",
             [](const sandbox::Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
@@ -272,7 +273,6 @@ private:
         flyCamera_.adoptFacing(world, camera_);
         platform_ = scene().find("Platform");
         // Players are not saved; the lamps' nodes are, so they sway again.
-        lamps_.restartSway(world);
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
     }
 
@@ -523,7 +523,7 @@ private:
         platform_ = built.platform;
         flyCamera_.attach(level.world(), camera_, 0.0f, -0.26f);
         if (engine().services().has<render::IRenderer>()) {
-            lamps_.placeDefault(engine().services().get<VirtualFileSystem>(), renderer(), level, palette_.names);
+            lamps_.placeDefault(engine().services().get<VirtualFileSystem>(), renderer(), level, palette_.names, clips_);
         }
         log::info("sandbox", "scene ready: {} entities", level.world().entityCount());
     }
@@ -552,7 +552,7 @@ private:
         for (const std::filesystem::path& changed : watcher_.poll()) {
             if (changed == lampFile_) {
                 log::info("sandbox", "{} changed: reloading the lamps", changed.filename().string());
-                lamps_.reload(engine().services().get<VirtualFileSystem>(), renderer(), scene(), palette_.names);
+                lamps_.reload(engine().services().get<VirtualFileSystem>(), renderer(), scene(), palette_.names, clips_);
             } else if (changed.extension() == ".spv") {
                 shaders = true;
             }
@@ -587,6 +587,7 @@ private:
 
     sandbox::Palette palette_;
     sandbox::Lamps lamps_;
+    animation::ClipNames clips_;  ///< Before the serializers that refer to it.
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
