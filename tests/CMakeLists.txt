@@ -32,6 +32,7 @@ add_executable(bdex_tests
     assets/AudioTests.cpp
     assets/PngTests.cpp
     assets/ZlibTests.cpp
+    audio/MixerTests.cpp
     rhi/RhiTests.cpp
     scene/SceneTests.cpp
     robustness/MutationTests.cpp
@@ -43,6 +44,7 @@ target_link_libraries(bdex_tests PRIVATE
     bdex::platform
     bdex::rhi
     bdex::assets
+    bdex::audio
     bdex::scene
     bdex::render
     bdex::app

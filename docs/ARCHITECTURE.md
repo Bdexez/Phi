@@ -35,9 +35,11 @@ Each library is one CMake target (`bdex::<name>`) with its public headers under 
 | `ecs` | `World`, sparse-set component pools, views | `core` |
 | `platform` | `IWindowSystem`, `IWindow`, input events, `InputState` | `core` |
 | `rhi` | `IDevice`, `ICommandList`, resource descriptions | `core`, `platform` |
-| `assets` | `MeshData`, `ImageData`, loaders, `AssetManager`, procedural primitives | `core` |
+| `assets` | `MeshData`, `ImageData`, `AudioData`, loaders, `AssetManager`, procedural primitives | `core` |
+| `audio` | `Mixer`: voices, resampling, panning, 3D attenuation | `core`, `assets` |
 | `scene` | `Scene`, `SceneManager`, `Transform`, hierarchy | `core`, `ecs` |
 | `render` | `IRenderer`, `IRenderFeature`, render components, shared GLSL headers | `core`, `ecs`, `rhi`, `assets`, `scene` |
+| `physics` | Rigid bodies, colliders, triggers, `step`, `raycast` | `core`, `ecs`, `scene` |
 | `app` | `Application`: configuration, services, module loading, main loop | all of the above |
 
 ## The kernel
@@ -231,6 +233,10 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 
 `physics::step(world, dt)` advances every `RigidBody` (velocity, mass, restitution, friction): gravity with semi-implicit Euler, then collisions of dynamic spheres (`SphereCollider`) with static boxes oriented by their `Transform` (`BoxCollider` without a `RigidBody`) and with each other, found by sort and sweep and resolved with impulses. Spheres moving more than half their radius in a step are swept against boxes first, so fast ones cannot pass through thin walls between steps. Bodies use their entity's `Transform` as a world pose, so they have no `Parent`. Friction at a contact also spins spheres (`angularVelocity`, solid-sphere inertia), so a sliding ball ends up rolling; `linearDamping` and `angularDamping` act as drag, the latter slowing rolling balls to rest; bodies that stay slower than `Settings::sleepSpeed` (config `physics.sleep_speed`, 0 disables) for half a second fall asleep, skipping integration and box tests and acting as static to others until hit faster than resting contact, given a velocity, or `physics::wake`d; `physics::interpolate` blends rotations as well as positions. `Application` runs it in `FixedUpdate`, after `onFixedUpdate`, and draws bodies between their last two steps with `physics::interpolate(world, fixedAlpha)`, so motion is smooth at any frame rate; `physics.gravity` sets the gravity. A step is deterministic for a given world. `physics::raycast` returns the first collider a ray touches, with the hit point and surface normal, for shooting, line of sight, or ground checks. Each resolved collision harder than `physics.collision_impulse` (0.5 N·s by default, which leaves resting contacts out) is published as a `physics::Collision` event, for impact sounds or damage. A `physics::Trigger` turns a static collider into a zone that bodies pass through; entering and leaving it are published as `physics::TriggerEvent`.
 
+## Audio
+
+`audio::Mixer` sums voices into one stereo stream at its own sample rate. `play(clip, params)` starts an `assets::AudioData` (kept alive while it plays) and returns a `VoiceId` to change its volume, pitch, or position, or to stop it; finished voices drop out on their own. Clips at any rate are resampled (linear interpolation), mono ones are panned with equal power and stereo ones balanced, and `spatial` voices are attenuated as `minDistance / distance` (silent past `maxDistance`) and panned by their direction from the listener set with `setListener`. An audio backend calls `mix(buffer)` from its own thread to fill device buffers while the game drives voices from another; a mutex, held for one buffer at a time, keeps them apart. Mixing 64 voices costs about 0.6% of real time.
+
 ## Input
 
 Window modules publish keyboard, mouse, and gamepad events; `platform::InputState` turns them into polled state with per-frame transitions, and releases everything when the window loses focus. `platform::InputActions` maps named actions to keys, mouse buttons, gamepad buttons, and stick directions loaded from the `[input]` configuration section, with `value()` for analog strength past a dead zone. `Application` provides it as a service.
@@ -336,5 +342,5 @@ Known gaps, listed so they are not mistaken for design decisions:
 - One window; `IWindowSystem` exposes a primary window only.
 - The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from four cascades covering `renderer.shadow_distance` in front of the camera, without blending between cascades. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
-- No audio or scripting modules yet; physics covers dynamic spheres against spheres and oriented static boxes; dynamic boxes are not simulated.
+- No audio output backend yet (the mixer produces samples nothing plays) and no scripting; physics covers dynamic spheres against spheres and oriented static boxes; dynamic boxes are not simulated.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.
