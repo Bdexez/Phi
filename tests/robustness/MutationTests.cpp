@@ -127,12 +127,22 @@ TEST(Robustness, WavDecoderSurvivesCorruptFiles) {
 }
 
 TEST(Robustness, GltfDecoderSurvivesCorruptFiles) {
-    // A triangle with indices, a material and two nodes, its buffer inline.
-    const std::string gltf = R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"tri","mesh":0,"translation":[1,2,3],"children":[1]},{"rotation":[0,0,0,1],"scale":[2,2,2]}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1,"material":0}]}],"materials":[{"pbrMetallicRoughness":{"baseColorFactor":[1,0.5,0,1]}}],"buffers":[{"byteLength":44,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAAA="}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}]})";
+    // A triangle with indices, a material, two nodes and a rotation
+    // animation, its buffer inline.
+    const std::string gltf = R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"tri","mesh":0,"translation":[1,2,3],"children":[1]},{"rotation":[0,0,0,1],"scale":[2,2,2]}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1,"material":0}]}],"materials":[{"pbrMetallicRoughness":{"baseColorFactor":[1,0.5,0,1]}}],"buffers":[{"byteLength":84,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAAAAAAAAAADAPwAAAAAAAAAAAAAAAAAAgD8AAAAA9AQ1PwAAAAD0BDU/"}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6},{"buffer":0,"byteOffset":44,"byteLength":8},{"buffer":0,"byteOffset":52,"byteLength":32}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"},{"bufferView":2,"componentType":5126,"count":2,"type":"SCALAR"},{"bufferView":3,"componentType":5126,"count":2,"type":"VEC4"}],"animations":[{"name":"turn","samplers":[{"input":2,"output":3,"interpolation":"LINEAR"}],"channels":[{"sampler":0,"target":{"node":1,"path":"rotation"}}]}]})";
     const auto seed = assets::decodeGltf(bytesOf(gltf));
     ASSERT_TRUE(seed.has_value()) << seed.error().message;
     ASSERT_EQ(seed->meshes.size(), 1u);
-    fuzz(bytesOf(gltf), true, 8, [](const std::vector<u8>& input) { (void)assets::decodeGltf(input); });
+    ASSERT_EQ(seed->animations.size(), 1u);
+    fuzz(bytesOf(gltf), true, 8, [](const std::vector<u8>& input) {
+        if (const auto model = assets::decodeGltf(input)) {
+            for (const assets::ModelAnimation& animation : model->animations) {
+                for (const assets::AnimationChannel& channel : animation.channels) {
+                    (void)assets::sampleChannel(channel, animation.duration * 0.5f);
+                }
+            }
+        }
+    });
 }
 
 TEST(Robustness, ObjAndConfigParsersSurviveCorruptText) {
