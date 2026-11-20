@@ -70,6 +70,19 @@ struct BoxCollider {
 struct Trigger {
     /// Bodies inside after the last step (maintained by step()).
     std::vector<ecs::Entity> inside;
+
+    Trigger() = default;
+    // Who is inside belongs to this zone: a copy (World::clone, say) starts
+    // empty, so it reports what enters it rather than what left the
+    // original. Moves keep it.
+    Trigger(const Trigger&) {}
+    Trigger& operator=(const Trigger&) {
+        inside.clear();
+        return *this;
+    }
+    Trigger(Trigger&&) noexcept = default;
+    Trigger& operator=(Trigger&&) noexcept = default;
+    ~Trigger() = default;
 };
 
 /// A body entering or leaving a Trigger.
