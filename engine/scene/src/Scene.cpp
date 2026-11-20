@@ -95,12 +95,12 @@ Result<> setParent(ecs::World& world, ecs::Entity child, ecs::Entity parent, boo
 
 std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
     std::vector<ecs::Entity> found;
-    if (const auto* parents = world.storage<Parent>(); parents != nullptr && world.alive(parent)) {
-        for (const u32 index : parents->entities()) {
-            if (parents->get(index).entity == parent) {
-                found.push_back(world.entityAt(index));
+    if (world.alive(parent)) {
+        world.view<const Parent>().each([&](ecs::Entity child, const Parent& link) {
+            if (link.entity == parent) {
+                found.push_back(child);
             }
-        }
+        });
     }
     std::sort(found.begin(), found.end(), [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
     return found;
@@ -110,26 +110,28 @@ std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
 /// parents come before their children.
 std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
     std::vector<ecs::Entity> found = {root};
-    if (const auto* parents = world.storage<Parent>(); parents != nullptr) {
-        // Children of each entity, gathered in one pass over the Parent links.
-        std::unordered_map<u32, std::vector<ecs::Entity>> children;
-        for (const u32 index : parents->entities()) {
-            const ecs::Entity parent = parents->get(index).entity;
-            if (world.alive(parent)) {
-                children[parent.index].push_back(world.entityAt(index));
-            }
+    // Children of each entity, gathered in one pass over the Parent links,
+    // then put in index order: siblings come out the same however the
+    // components are stored.
+    std::unordered_map<u32, std::vector<ecs::Entity>> children;
+    world.view<const Parent>().each([&](ecs::Entity child, const Parent& link) {
+        if (world.alive(link.entity)) {
+            children[link.entity.index].push_back(child);
         }
-        // The set guards against cycles.
-        std::unordered_set<u32> seen = {root.index};
-        for (usize i = 0; i < found.size(); ++i) {
-            const auto it = children.find(found[i].index);
-            if (it == children.end()) {
-                continue;
-            }
-            for (const ecs::Entity child : it->second) {
-                if (seen.insert(child.index).second) {
-                    found.push_back(child);
-                }
+    });
+    for (auto& [parent, siblings] : children) {
+        std::sort(siblings.begin(), siblings.end(), [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
+    }
+    // The set guards against cycles.
+    std::unordered_set<u32> seen = {root.index};
+    for (usize i = 0; i < found.size(); ++i) {
+        const auto it = children.find(found[i].index);
+        if (it == children.end()) {
+            continue;
+        }
+        for (const ecs::Entity child : it->second) {
+            if (seen.insert(child.index).second) {
+                found.push_back(child);
             }
         }
     }
