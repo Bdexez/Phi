@@ -1,5 +1,6 @@
 #include <bdex/assets/AssetManager.hpp>
 
+#include <bdex/assets/Audio.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/JobSystem.hpp>
@@ -18,6 +19,7 @@ AssetManager::AssetManager(const VirtualFileSystem& vfs, JobSystem* jobs)
 
     registerLoader<ImageData>(".tga", [](std::span<const u8> bytes) { return decodeTga(bytes); });
     registerLoader<ImageData>(".png", [](std::span<const u8> bytes) { return decodePng(bytes); });
+    registerLoader<AudioData>(".wav", [](std::span<const u8> bytes) { return decodeWav(bytes); });
 
     registerLoader<ShaderBinary>(".spv", [](std::span<const u8> bytes) -> Result<ShaderBinary> {
         constexpr u32 kSpirvMagic = 0x07230203;

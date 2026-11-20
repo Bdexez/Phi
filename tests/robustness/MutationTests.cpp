@@ -1,9 +1,10 @@
 // Feeds corrupted versions of valid inputs to every decoder of files that
-// come from outside: image and mesh loaders, config files, scene files (then
+// come from outside: image, sound and mesh loaders, config files, scene files (then
 // steps physics over what was loaded). Decoders may reject or accept them,
 // but must never crash, throw, or touch memory they do not own; the ASan
 // preset turns any slip into a failure. The mutations are deterministic, so
 // a failure reproduces.
+#include <bdex/assets/Audio.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/Config.hpp>
@@ -112,6 +113,15 @@ TEST(Robustness, ImageDecodersSurviveCorruptFiles) {
     }
     ASSERT_TRUE(assets::decodeTga(tga).has_value());
     fuzz(tga, false, 2, [](const std::vector<u8>& input) { (void)assets::decodeTga(input); });
+}
+
+TEST(Robustness, WavDecoderSurvivesCorruptFiles) {
+    assets::AudioData stereo = assets::makeTone(440.0f, 0.01f);
+    stereo.channels = 2;  // the mono samples read as half as many stereo frames
+    stereo.samples.resize(stereo.samples.size() / 2 * 2);
+    const std::vector<u8> wav = assets::encodeWav(stereo);
+    ASSERT_TRUE(assets::decodeWav(wav).has_value());
+    fuzz(wav, false, 6, [](const std::vector<u8>& input) { (void)assets::decodeWav(input); });
 }
 
 TEST(Robustness, ObjAndConfigParsersSurviveCorruptText) {

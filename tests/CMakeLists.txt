@@ -29,6 +29,7 @@ add_executable(bdex_tests
     physics/PhysicsTests.cpp
     platform/InputTests.cpp
     assets/AssetTests.cpp
+    assets/AudioTests.cpp
     assets/PngTests.cpp
     assets/ZlibTests.cpp
     rhi/RhiTests.cpp
