@@ -107,6 +107,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F6` | Toggle a flashlight (a spot light carried by the camera). |
 | `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
 | `F8` | Throw a bouncing ball (rigid-body physics). |
+| `F10` / `Delete` | Duplicate the selected object, with everything attached to it / delete it. |
 | `F11` | Toggle fullscreen (or start with `window.fullscreen = true`). |
 | `Escape` | Quit. |
 
