@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <thread>
 #include <vector>
@@ -249,4 +250,54 @@ TEST(Mixer, BusesScaleTheirVoices) {
     EXPECT_EQ(busName(Bus::Ambience), "ambience");
     EXPECT_EQ(busNamed("voice"), Bus::Voice);
     EXPECT_FALSE(busNamed("drums").has_value());
+}
+
+TEST(Mixer, BusSpeedsFollowSlowMotionAndPauseWithoutClicks) {
+    Mixer mixer(48000);
+    const auto tone = std::make_shared<assets::AudioData>(assets::makeTone(440.0f, 2.0f, 48000));
+    const VoiceId effect = mixer.play(tone, {.pan = -1.0f, .loop = true});
+    const VoiceId music = mixer.play(tone, {.pan = 1.0f, .loop = true, .bus = Bus::Music});
+
+    // Half speed: an octave down, on the effects bus only.
+    mixer.setBusSpeed(Bus::Effects, 0.5f);
+    EXPECT_FLOAT_EQ(mixer.busSpeed(Bus::Effects), 0.5f);
+    std::vector<f32> out = render(mixer, 48000);
+    EXPECT_NEAR(frequencyOf(out, 0, 48000), 220.0, 3.0);
+    EXPECT_NEAR(frequencyOf(out, 1, 48000), 440.0, 3.0);
+
+    // Paused: it fades out across one buffer, never jumping, then is silent
+    // and keeps its voice; the music plays on.
+    mixer.setBusSpeed(Bus::Effects, 0.0f);
+    out = render(mixer, 256);
+    for (usize frame = 1; frame < 256; ++frame) {
+        EXPECT_LT(std::abs(out[frame * 2] - out[(frame - 1) * 2]), 0.05f) << frame;
+    }
+    EXPECT_NEAR(out[2 * 255], 0.0f, 0.01f);
+    out = render(mixer, 1000);
+    for (usize frame = 0; frame < 1000; ++frame) {
+        ASSERT_NEAR(out[frame * 2], 0.0f, 1e-6f) << frame;  // the music, panned right, leaks ~1e-8
+    }
+    EXPECT_NE(out[2 * 500 + 1], 0.0f);
+    EXPECT_TRUE(mixer.playing(effect));
+
+    // Resumed: it fades back in from silence, at full speed.
+    mixer.setBusSpeed(Bus::Effects, 1.0f);
+    out = render(mixer, 256);
+    EXPECT_NEAR(out[0], 0.0f, 0.01f);
+    for (usize frame = 1; frame < 256; ++frame) {
+        EXPECT_LT(std::abs(out[frame * 2] - out[(frame - 1) * 2]), 0.07f) << frame;
+    }
+    out = render(mixer, 48000);
+    EXPECT_NEAR(frequencyOf(out, 0, 48000), 440.0, 3.0);
+
+    // Stopped while paused and silent: gone at once.
+    mixer.setBusSpeed(Bus::Effects, 0.0f);
+    render(mixer, 512);
+    mixer.stop(effect);
+    render(mixer, 1);
+    EXPECT_EQ(mixer.voiceCount(), 1u);
+    EXPECT_TRUE(mixer.playing(music));
+
+    mixer.setBusSpeed(Bus::Music, std::numeric_limits<f32>::quiet_NaN());
+    EXPECT_FLOAT_EQ(mixer.busSpeed(Bus::Music), 1.0f);
 }

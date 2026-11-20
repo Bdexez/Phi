@@ -86,6 +86,12 @@ public:
     /// default); changes glide like any other.
     void setBusVolume(Bus bus, f32 volume);
     [[nodiscard]] f32 busVolume(Bus bus) const;
+    /// Plays every voice of a bus this many times faster, on top of their
+    /// own pitch (1 by default), so it can follow slow motion: 0.5 is half
+    /// speed and an octave down. 0 pauses the bus: its voices fade out over
+    /// a buffer and hold their place, then fade back in when it resumes.
+    void setBusSpeed(Bus bus, f32 speed);
+    [[nodiscard]] f32 busSpeed(Bus bus) const;
 
     /// Mixes the next `out.size() / 2` frames into `out` as interleaved
     /// left / right samples in [-1, 1], replacing its contents, and advances
@@ -124,6 +130,7 @@ private:
     Quat listenerOrientation_{1.0f, 0.0f, 0.0f, 0.0f};
     f32 masterVolume_ = 1.0f;
     std::array<f32, kBusCount> busVolumes_{1.0f, 1.0f, 1.0f, 1.0f};
+    std::array<f32, kBusCount> busSpeeds_{1.0f, 1.0f, 1.0f, 1.0f};
     f64 advanceRemainder_ = 0.0;  ///< Fraction of a frame carried between advance() calls.
     std::vector<f32> scratch_;
 };
