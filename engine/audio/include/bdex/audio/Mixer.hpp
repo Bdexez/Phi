@@ -46,11 +46,17 @@ public:
     /// Starts playing `clip` (shared, so the mixer keeps it alive while it
     /// plays). Returns 0, playing nothing, for an invalid or empty clip.
     VoiceId play(std::shared_ptr<const assets::AudioData> clip, const PlayParams& params = {});
-    /// Stops a voice; unknown or finished ones are ignored.
-    void stop(VoiceId voice);
-    void stopAll();
-    /// Whether the voice is still playing (a finished one is not).
+    /// Cutting a sound mid-wave clicks: stopping fades it out over this.
+    static constexpr f32 kStopFade = 0.005f;
+
+    /// Stops a voice, fading it out over `fade` seconds (0 cuts it at
+    /// once); unknown or finished ones are ignored.
+    void stop(VoiceId voice, f32 fade = kStopFade);
+    void stopAll(f32 fade = kStopFade);
+    /// Whether the voice is still playing: not finished, not stopped (even
+    /// while it fades out).
     [[nodiscard]] bool playing(VoiceId voice) const;
+    /// Voices playing, those fading out after stop() excluded.
     [[nodiscard]] usize voiceCount() const;
 
     void setVolume(VoiceId voice, f32 volume);
@@ -67,7 +73,9 @@ public:
 
     /// Mixes the next `out.size() / 2` frames into `out` as interleaved
     /// left / right samples in [-1, 1], replacing its contents, and advances
-    /// every voice; finished voices are dropped.
+    /// every voice; finished voices are dropped. A voice whose gains changed
+    /// (volume, position, listener) glides to them across the buffer rather
+    /// than jumping, which would crackle.
     void mix(std::span<f32> out);
     /// Plays `seconds` of audio into the void: voices advance and finish as
     /// if heard. For when no device consumes the mix (headless runs); call
@@ -80,6 +88,12 @@ private:
         std::shared_ptr<const assets::AudioData> clip;
         PlayParams params;
         f64 cursor = 0.0;  ///< Position in the clip, in its frames.
+        f32 gainLeft = 0.0f;  ///< Gains at the end of the last buffer...
+        f32 gainRight = 0.0f;
+        bool mixed = false;   ///< ...once there was one.
+        usize fadeFrames = 0;  ///< Stopping: frames the fade lasts, and
+        usize fadeLeft = 0;    ///< frames left before silence.
+        [[nodiscard]] bool stopping() const { return fadeFrames != 0; }
     };
 
     /// Left and right gains of a voice for the current listener.
