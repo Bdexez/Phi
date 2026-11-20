@@ -370,6 +370,14 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     stepBoxes(world, dt, settings, boxes, shapes, contacts);
 
     // Triggers: which bodies overlap each zone now, compared with before.
+    std::vector<Box> crates;
+    world.view<const Transform, const BoxCollider, const RigidBody>().exclude<Trigger>().each(
+        [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider, const RigidBody&) {
+            const Box crate = makeBox(entity, transform, collider);
+            if (finite(crate.boundsMin) && finite(crate.boundsMax)) {
+                crates.push_back(crate);
+            }
+        });
     world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
         const auto* box = world.tryGet<BoxCollider>(zone);
         const auto* ball = world.tryGet<SphereCollider>(zone);
@@ -389,6 +397,13 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             }
             if (overlaps) {
                 inside.push_back(sphere.entity);
+            }
+        }
+        for (const Box& crate : crates) {
+            const bool overlaps = zoneBox ? boxesOverlap(*zoneBox, crate)
+                                          : ball != nullptr && sphereBoxContact(crate, transform.position, zoneRadius);
+            if (overlaps) {
+                inside.push_back(crate.entity);
             }
         }
         if (triggers != nullptr) {
@@ -511,10 +526,10 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
     const f32 radius = body->radius * largestScale(*transform);
     const f32 walkable = std::cos(settings.maxSlope);
 
-    // What the character can bump into: static boxes, and every other
-    // sphere, triggers aside.
+    // What the character can bump into: boxes, crates as they stand now,
+    // and every other sphere, triggers aside.
     std::vector<Box> boxes;
-    world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
+    world.view<const Transform, const BoxCollider>().exclude<Trigger>().each(
         [&](ecs::Entity other, const Transform& pose, const BoxCollider& collider) {
             Box box = makeBox(other, pose, collider);
             if (finite(box.boundsMin) && finite(box.boundsMax)) {

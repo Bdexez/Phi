@@ -171,8 +171,8 @@ struct MoveResult {
 };
 
 /// Moves a kinematic sphere (an entity with a SphereCollider and no
-/// RigidBody: a player character) by `displacement`, colliding with static
-/// boxes and with other spheres and sliding along what it meets: along a
+/// RigidBody: a player character) by `displacement`, colliding with boxes
+/// (crates too) and with other spheres and sliding along what it meets: along a
 /// wall, up a gentle slope, but not up a steep one. Falling onto a
 /// surface reports it as ground. Dynamic bodies are obstacles too, and the
 /// step pushes them away from the character as from any static sphere.
