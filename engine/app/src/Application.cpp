@@ -1,3 +1,4 @@
+#include <bdex/animation/Animation.hpp>
 #include <bdex/app/Application.hpp>
 #include <bdex/audio/Components.hpp>
 
@@ -325,6 +326,15 @@ int Application::run(int argc, char** argv) {
             }
         },
         100);
+    // Animations pose their nodes before world transforms are derived.
+    scheduler.add(
+        Phase::PostUpdate, "animation.update",
+        [this](const FrameTime& time) {
+            if (scene::Scene* active = state_->scenes->active()) {
+                animation::updateAnimations(active->world(), static_cast<f32>(time.delta));
+            }
+        },
+        900);
     scheduler.add(
         Phase::PostUpdate, "scene.world_transforms",
         [this](const FrameTime& time) {

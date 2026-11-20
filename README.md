@@ -15,6 +15,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Physics:** rigid bodies with gravity, sphere and oriented box colliders, tumbling dynamic boxes, triggers, raycasts, a collide-and-slide character controller, restitution, and friction that sets balls rolling, stepped deterministically in the fixed update.
 - **Audio:** a software mixer with any number of voices, resampling, pitch, looping, and 3D panning and attenuation around a listener.
+- **Animation:** glTF keyframe animations (linear, step, cubic spline) played on model instances, copies included.
 - **Assets:** a virtual file system, asset caching, glTF 2.0 (`.gltf`, `.glb`), OBJ, PNG, TGA, WAV, and SPIR-V loaders, plus procedural cubes, planes, spheres, textures, and tones.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
 
