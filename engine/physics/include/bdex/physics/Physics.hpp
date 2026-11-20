@@ -4,6 +4,8 @@
 #include <bdex/ecs/World.hpp>
 #include <bdex/scene/Serialization.hpp>
 
+#include <optional>
+
 namespace bdex::physics {
 
 // --- Components -----------------------------------------------------------------
@@ -55,6 +57,20 @@ void step(ecs::World& world, f32 dt, const Settings& settings = {});
 /// it after scene::updateWorldTransforms. Transform, the simulated pose, is
 /// left alone, so motion looks smooth at any frame rate.
 void interpolate(ecs::World& world, f32 alpha);
+
+struct RayHit {
+    ecs::Entity entity;
+    f32 distance = 0.0f;  ///< Along the ray's direction.
+    Vec3 point{0.0f};
+    Vec3 normal{0.0f};    ///< Of the surface hit, facing the ray.
+};
+
+/// First collider (sphere or box, dynamic or static) the ray from `origin`
+/// along the unit `direction` touches within `maxDistance`: shooting, line
+/// of sight, ground checks. A ray starting inside a collider hits it at
+/// distance 0.
+[[nodiscard]] std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin,
+                                            const Vec3& direction, f32 maxDistance = 1e30f);
 
 /// Registers RigidBody, SphereCollider and BoxCollider with scene files.
 void addComponentSerializers(scene::ComponentSerializers& serializers);

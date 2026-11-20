@@ -228,7 +228,7 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 
 ## Physics
 
-`physics::step(world, dt)` advances every `RigidBody` (velocity, mass, restitution, friction): gravity with semi-implicit Euler, then collisions of dynamic spheres (`SphereCollider`) with static axis-aligned boxes (`BoxCollider` without a `RigidBody`) and with each other, found by sort and sweep and resolved with impulses. Bodies use their entity's `Transform` as a world pose, so they have no `Parent`, and rotation is not simulated. `Application` runs it in `FixedUpdate`, after `onFixedUpdate`, and draws bodies between their last two steps with `physics::interpolate(world, fixedAlpha)`, so motion is smooth at any frame rate; `physics.gravity` sets the gravity. A step is deterministic for a given world.
+`physics::step(world, dt)` advances every `RigidBody` (velocity, mass, restitution, friction): gravity with semi-implicit Euler, then collisions of dynamic spheres (`SphereCollider`) with static axis-aligned boxes (`BoxCollider` without a `RigidBody`) and with each other, found by sort and sweep and resolved with impulses. Bodies use their entity's `Transform` as a world pose, so they have no `Parent`, and rotation is not simulated. `Application` runs it in `FixedUpdate`, after `onFixedUpdate`, and draws bodies between their last two steps with `physics::interpolate(world, fixedAlpha)`, so motion is smooth at any frame rate; `physics.gravity` sets the gravity. A step is deterministic for a given world. `physics::raycast` returns the first collider a ray touches, with the hit point and surface normal, for shooting, line of sight, or ground checks.
 
 ## Input
 
