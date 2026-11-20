@@ -165,6 +165,13 @@ private:
         f32 distance;  ///< From the camera, minus the light's range.
     };
     std::vector<PointLightCandidate> pointLights_;  ///< Reused across frames.
+    struct SpotLightCandidate {
+        Vec3 position;
+        Vec3 direction;
+        const render::SpotLight* light;
+        f32 distance;  ///< From the camera, minus the light's range.
+    };
+    std::vector<SpotLightCandidate> spotLights_;  ///< Reused across frames.
 };
 
 }  // namespace bdex::forward

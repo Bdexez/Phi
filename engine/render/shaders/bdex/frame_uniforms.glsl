@@ -10,6 +10,7 @@
 
 #define BDEX_MAX_POINT_LIGHTS 16
 #define BDEX_SHADOW_CASCADES 4
+#define BDEX_MAX_SPOT_LIGHTS 8
 
 layout(set = 0, binding = 0) uniform FrameUniforms {
     mat4 view;
@@ -25,9 +26,12 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     vec4 cascadeSplits;  // far view distance of each cascade
     vec4 cascadeBiases[BDEX_SHADOW_CASCADES];  // x: depth bias, y: normal offset
     vec4 shadowParams;  // x: shadows on, y: atlas texel size (UV)
-    vec4 pointLightCount;  // x: number of valid entries below
+    vec4 pointLightCount;  // x: point lights below, y: spot lights
     vec4 pointLightPositions[BDEX_MAX_POINT_LIGHTS];  // xyz: world position, w: range
     vec4 pointLightColors[BDEX_MAX_POINT_LIGHTS];     // rgb, premultiplied by intensity
+    vec4 spotLightPositions[BDEX_MAX_SPOT_LIGHTS];    // xyz: world position, w: range
+    vec4 spotLightDirections[BDEX_MAX_SPOT_LIGHTS];   // xyz: unit axis, w: cos(outer angle)
+    vec4 spotLightColors[BDEX_MAX_SPOT_LIGHTS];       // rgb premultiplied, w: cos(inner angle)
 } frame;
 
 // Depth of the directional light's shadow casters, read with comparison

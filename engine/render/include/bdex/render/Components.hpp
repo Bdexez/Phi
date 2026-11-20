@@ -39,6 +39,18 @@ struct PointLight {
     f32 range = 10.0f;
 };
 
+/// Cone of light from the entity's WorldTransform position, shining down
+/// its local -Z axis (like a camera). Full strength inside `innerAngle` of
+/// the axis, fading to nothing at `outerAngle` (half-angles, radians); it
+/// fades with distance like a PointLight.
+struct SpotLight {
+    Vec3 color{1.0f};
+    f32 intensity = 1.0f;
+    f32 range = 15.0f;
+    f32 innerAngle = glm::radians(20.0f);
+    f32 outerAngle = glm::radians(30.0f);
+};
+
 /// Sun-like light. `direction` is the direction the light travels in.
 struct DirectionalLight {
     Vec3 direction{-0.4f, -1.0f, -0.3f};
