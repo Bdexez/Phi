@@ -95,6 +95,9 @@ protected:
         config.setDefault("input.walk", "G, GamepadB");
         config.setDefault("input.throw_crate", "C");
         config.setDefault("input.quit", "Escape, GamepadBack");
+        // Throws balls and crates on its own (sandbox.demo=true): for
+        // headless smoke runs, which have no one at the controls.
+        config.setDefault("sandbox.demo", "false");
     }
 
     Result<> onStart() override {
@@ -114,6 +117,7 @@ protected:
         setUpHotReload();
         sounds_.start(engine());
         sparks_.start(engine());
+        demo_ = engine().config().getBool("sandbox.demo", false);
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
             sandbox::spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
@@ -128,6 +132,9 @@ protected:
         }
         hud_.update(engine(), time, scene().world().entityCount(), actions(), window());
         sparks_.update(scene().world());
+        if (demo_) {
+            runDemo(time);
+        }
         const sandbox::PanelRequests requests = panel_.draw(engine(), scene().world(), input(),
                                                             {platformMoving_, sparks_.enabled, debugView_});
         if (requests.throwCrate) {
@@ -301,6 +308,30 @@ private:
             world.destroy(balls_.front());
             balls_.erase(balls_.begin());
         }
+    }
+
+    /// Demo mode: a throw every 0.4 s of game time, balls and crates in turn,
+    /// sweeping from left to right, as someone at the controls would.
+    void runDemo(const FrameTime& time) {
+        demoClock_ += time.delta;
+        if (demoClock_ < 0.4) {
+            return;
+        }
+        demoClock_ = 0.0;
+        scene::Transform* eye = scene().world().tryGet<scene::Transform>(camera_);
+        if (eye == nullptr) {
+            return;
+        }
+        const Quat facing = eye->rotation;
+        const f32 sweep = 0.4f * std::sin(static_cast<f32>(demoThrows_) * 0.7f);
+        eye->rotation = glm::angleAxis(sweep, Vec3(0.0f, 1.0f, 0.0f)) * facing;
+        if (demoThrows_ % 2 == 0) {
+            throwBall();
+        } else {
+            throwCrate();
+        }
+        eye->rotation = facing;
+        ++demoThrows_;
     }
 
     /// Removes every thrown ball and crate.
@@ -580,6 +611,10 @@ private:
     }
 
     void onStop() override {
+        if (demo_) {
+            // What the smoke test checks for: the demo did run.
+            log::info("sandbox", "demo: {} throws, {} entities at the end", demoThrows_, scene().world().entityCount());
+        }
         if (engine().services().has<render::IRenderer>()) {
             lamps_.release(renderer());
         }
@@ -597,6 +632,9 @@ private:
     ecs::Entity platform_;
     f64 platformTime_ = 0.0;  ///< Paused with the platform.
     bool platformMoving_ = true;
+    bool demo_ = false;
+    f64 demoClock_ = 0.0;
+    u32 demoThrows_ = 0;
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;
