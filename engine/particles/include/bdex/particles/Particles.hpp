@@ -2,6 +2,7 @@
 
 #include <bdex/core/Math.hpp>
 #include <bdex/ecs/World.hpp>
+#include <bdex/scene/Serialization.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -76,5 +77,10 @@ struct ParticleEmitter {
 /// it stands, its rate spread over the frame, each particle born where the
 /// emitter was at that instant and already aged since.
 void updateParticles(ecs::World& world, f32 dt);
+
+/// Registers ParticleEmitter with scene files: its settings and seed, not
+/// its live particles (a loaded emitter starts empty, and bursts again if
+/// it was saved with one pending).
+void addComponentSerializers(scene::ComponentSerializers& serializers);
 
 }  // namespace bdex::particles

@@ -121,4 +121,56 @@ void updateParticles(ecs::World& world, f32 dt) {
     });
 }
 
+void addComponentSerializers(scene::ComponentSerializers& serializers) {
+    serializers.add<ParticleEmitter>(
+        "ParticleEmitter",
+        [](const ParticleEmitter& emitter, scene::Fields& out, const scene::EntityRefs&) {
+            using scene::formatField;
+            out["rate"] = formatField(emitter.rate);
+            out["burst"] = formatField(emitter.burst);
+            out["max_particles"] = formatField(emitter.maxParticles);
+            out["lifetime"] = formatField(emitter.lifetime);
+            out["lifetime_variance"] = formatField(emitter.lifetimeVariance);
+            out["direction"] = formatField(emitter.direction);
+            out["spread"] = formatField(emitter.spread);
+            out["speed"] = formatField(emitter.speed);
+            out["speed_variance"] = formatField(emitter.speedVariance);
+            out["emit_radius"] = formatField(emitter.emitRadius);
+            out["inherit_velocity"] = formatField(emitter.inheritVelocity);
+            out["gravity"] = formatField(emitter.gravity);
+            out["drag"] = formatField(emitter.drag);
+            out["start_color"] = formatField(emitter.startColor);
+            out["end_color"] = formatField(emitter.endColor);
+            out["start_size"] = formatField(emitter.startSize);
+            out["end_size"] = formatField(emitter.endSize);
+            out["additive"] = formatField(emitter.additive);
+            out["emitting"] = formatField(emitter.emitting);
+            out["seed"] = formatField(emitter.seed);
+        },
+        [](ParticleEmitter& emitter, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
+            using scene::parseField;
+            for (auto parsed : {parseField(in, "rate", emitter.rate), parseField(in, "burst", emitter.burst),
+                                parseField(in, "max_particles", emitter.maxParticles),
+                                parseField(in, "lifetime", emitter.lifetime),
+                                parseField(in, "lifetime_variance", emitter.lifetimeVariance),
+                                parseField(in, "direction", emitter.direction), parseField(in, "spread", emitter.spread),
+                                parseField(in, "speed", emitter.speed),
+                                parseField(in, "speed_variance", emitter.speedVariance),
+                                parseField(in, "emit_radius", emitter.emitRadius),
+                                parseField(in, "inherit_velocity", emitter.inheritVelocity),
+                                parseField(in, "gravity", emitter.gravity), parseField(in, "drag", emitter.drag),
+                                parseField(in, "start_color", emitter.startColor),
+                                parseField(in, "end_color", emitter.endColor),
+                                parseField(in, "start_size", emitter.startSize),
+                                parseField(in, "end_size", emitter.endSize),
+                                parseField(in, "additive", emitter.additive),
+                                parseField(in, "emitting", emitter.emitting), parseField(in, "seed", emitter.seed)}) {
+                if (!parsed) {
+                    return parsed;
+                }
+            }
+            return {};
+        });
+}
+
 }  // namespace bdex::particles
