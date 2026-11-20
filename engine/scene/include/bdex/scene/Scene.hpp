@@ -19,6 +19,7 @@ public:
 
     [[nodiscard]] const std::string& name() const { return name_; }
     [[nodiscard]] ecs::World& world() { return world_; }
+    [[nodiscard]] const ecs::World& world() const { return world_; }
 
     /// Creates an entity with Name, Transform and WorldTransform components.
     ecs::Entity createEntity(std::string_view name = "Entity");
@@ -44,6 +45,7 @@ public:
     void destroy(Scene& scene);
 
     [[nodiscard]] Scene* active() { return active_; }
+    [[nodiscard]] const Scene* active() const { return active_; }
     void setActive(Scene* scene) { active_ = scene; }
 
     [[nodiscard]] usize sceneCount() const { return scenes_.size(); }

@@ -266,7 +266,7 @@ private:
     }
 
     /// The scene as a scene file's text.
-    [[nodiscard]] std::string sceneText() { return serializers_.save(scene().world()); }
+    [[nodiscard]] std::string sceneText() const { return serializers_.save(scene().world()); }
 
     /// Replaces the scene with the one in `text` (read from `origin`), if it
     /// loads: a broken file must not leave the sandbox empty.

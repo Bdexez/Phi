@@ -64,8 +64,10 @@ protected:
     virtual void onStop() {}
 
     [[nodiscard]] Engine& engine();
+    [[nodiscard]] const Engine& engine() const;
     /// The active scene (a default one is created at startup).
     [[nodiscard]] scene::Scene& scene();
+    [[nodiscard]] const scene::Scene& scene() const;
     [[nodiscard]] assets::AssetManager& assets();
     /// Aborts with a clear message if no renderer module is loaded.
     [[nodiscard]] render::IRenderer& renderer();

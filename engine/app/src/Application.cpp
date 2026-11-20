@@ -16,6 +16,7 @@
 #include <optional>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace bdex::app {
@@ -138,8 +139,19 @@ Engine& Application::engine() {
     return *state_->engine;
 }
 
+const Engine& Application::engine() const {
+    BDEX_ASSERT(state_->engine != nullptr, "the engine only exists while run() is executing");
+    return *state_->engine;
+}
+
 scene::Scene& Application::scene() {
     scene::Scene* active = state_->scenes != nullptr ? state_->scenes->active() : nullptr;
+    BDEX_ASSERT(active != nullptr, "no active scene");
+    return *active;
+}
+
+const scene::Scene& Application::scene() const {
+    const scene::Scene* active = state_->scenes != nullptr ? std::as_const(*state_->scenes).active() : nullptr;
     BDEX_ASSERT(active != nullptr, "no active scene");
     return *active;
 }
