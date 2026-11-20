@@ -20,6 +20,8 @@
 #include <bdex/scene/Scene.hpp>
 #include <bdex/scene/Serialization.hpp>
 
+#include "HostileValues.hpp"
+
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -98,26 +100,6 @@ void fuzz(const std::vector<u8>& seed, bool text, u32 salt, Decode decode, int c
         EXPECT_NO_THROW(decode(input)) << "mutation " << i;
     }
     log::setLevel(previous);
-}
-
-/// Calls `run` with `text` (a scene file) once for every value in it
-/// replaced by each hostile number, one value at a time: random mutations
-/// rarely land exactly on these, in exactly the field that minds.
-template <class Run>
-void everyValueMadeHostile(const std::string& text, Run&& run) {
-    usize lineStart = 0;
-    while (lineStart < text.size()) {
-        const usize lineEnd = std::min(text.find('\n', lineStart), text.size());
-        const usize equals = text.find(" = ", lineStart);
-        if (equals != std::string::npos && equals < lineEnd) {
-            for (const char* hostile : {"nan", "inf", "-inf", "1e38", "-1e38", "0", "-1", "4000000000"}) {
-                std::string file = text;
-                file.replace(equals + 3, lineEnd - (equals + 3), hostile);
-                run(std::string_view(file));
-            }
-        }
-        lineStart = lineEnd + 1;
-    }
 }
 
 }  // namespace
@@ -239,7 +221,7 @@ TEST(Robustness, SceneFilesSurviveCorruptionAndSimulation) {
             (void)physics::moveAndSlide(loaded.world(), loaded.find("Walker"), Vec3(0.5f, -0.2f, 0.0f));
         }
     };
-    everyValueMadeHostile(text, run);
+    test_support::everyValueMadeHostile(text, run);
     fuzz(bytesOf(text), true, 5, [&](const std::vector<u8>& input) { run(textOf(input)); },
          kMutations / 4);  // loading and simulating costs more
 }
@@ -301,6 +283,6 @@ TEST(Robustness, EffectsInSceneFilesSurviveCorruption) {
         sound.update(loaded.world());
     };
 
-    everyValueMadeHostile(text, run);
+    test_support::everyValueMadeHostile(text, run);
     fuzz(bytesOf(text), true, 11, [&](const std::vector<u8>& input) { run(textOf(input)); }, kMutations / 4);
 }
