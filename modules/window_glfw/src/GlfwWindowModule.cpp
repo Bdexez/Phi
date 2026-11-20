@@ -134,8 +134,15 @@ public:
                 return;
             }
             // Remembered to come back to the same place. Wayland does not
-            // expose window positions (the compositor places windows).
-            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND) {
+            // expose window positions (the compositor places windows); GLFW
+            // before 3.4 (Ubuntu 24.04 ships 3.3) cannot tell us we are on
+            // it, and merely reports an error there.
+#if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
+            const bool positioned = glfwGetPlatform() != GLFW_PLATFORM_WAYLAND;
+#else
+            const bool positioned = true;
+#endif
+            if (positioned) {
                 glfwGetWindowPos(handle_, &windowed_[0], &windowed_[1]);
             }
             glfwGetWindowSize(handle_, &windowed_[2], &windowed_[3]);
