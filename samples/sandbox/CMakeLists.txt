@@ -3,7 +3,8 @@ add_executable(sandbox
     src/Hud.cpp
     src/Sandbox.cpp
     src/SkyFeature.cpp
-    src/Sounds.cpp)
+    src/Sounds.cpp
+    src/Sparks.cpp)
 target_link_libraries(sandbox PRIVATE bdex::app)
 bdex_configure_target(sandbox)
 
