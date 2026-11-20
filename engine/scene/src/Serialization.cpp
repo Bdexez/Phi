@@ -43,12 +43,20 @@ std::string formatField(const Vec3& value) {
     return std::format("{} {} {}", value.x, value.y, value.z);
 }
 
+std::string formatField(const Vec4& value) {
+    return std::format("{} {} {} {}", value.x, value.y, value.z, value.w);
+}
+
 std::string formatField(const Quat& value) {
     return std::format("{} {} {} {}", value.w, value.x, value.y, value.z);
 }
 
 std::string formatField(bool value) {
     return value ? "true" : "false";
+}
+
+std::string formatField(u32 value) {
+    return std::format("{}", value);
 }
 
 Result<> parseField(const Fields& fields, std::string_view key, f32& out) {
@@ -67,6 +75,19 @@ Result<> parseField(const Fields& fields, std::string_view key, Vec3& out) {
         return parsed;
     }
     out = Vec3(values[0], values[1], values[2]);
+    return {};
+}
+
+Result<> parseField(const Fields& fields, std::string_view key, Vec4& out) {
+    const auto it = fields.find(key);
+    if (it == fields.end()) {
+        return {};
+    }
+    f32 values[4];
+    if (auto parsed = parseFloats(key, it->second, values, 4); !parsed) {
+        return parsed;
+    }
+    out = Vec4(values[0], values[1], values[2], values[3]);
     return {};
 }
 
@@ -98,6 +119,23 @@ Result<> parseField(const Fields& fields, std::string_view key, bool& out) {
         return {};
     }
     return fail("'{}': '{}' is not true or false", key, it->second);
+}
+
+Result<> parseField(const Fields& fields, std::string_view key, u32& out) {
+    const auto it = fields.find(key);
+    if (it == fields.end()) {
+        return {};
+    }
+    const std::string& text = it->second;
+    u32 value = 0;
+    // from_chars takes no sign and reports overflow: "-1" and "5e9" fail
+    // rather than wrapping around.
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc{} || end != text.data() + text.size()) {
+        return fail("'{}': '{}' is not a whole number from 0 to 4294967295", key, text);
+    }
+    out = value;
+    return {};
 }
 
 Result<> parseField(const Fields& fields, std::string_view key, std::string& out) {

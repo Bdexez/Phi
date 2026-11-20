@@ -103,15 +103,20 @@ private:
 
 [[nodiscard]] std::string formatField(f32 value);
 [[nodiscard]] std::string formatField(const Vec3& value);
+[[nodiscard]] std::string formatField(const Vec4& value);  ///< "x y z w", colors included
 [[nodiscard]] std::string formatField(const Quat& value);  ///< "w x y z"
 [[nodiscard]] std::string formatField(bool value);
+[[nodiscard]] std::string formatField(u32 value);
 
 /// Reads `fields[key]` into `out`, leaving it untouched when the key is
 /// absent; fails on a malformed value.
 Result<> parseField(const Fields& fields, std::string_view key, f32& out);
 Result<> parseField(const Fields& fields, std::string_view key, Vec3& out);
+Result<> parseField(const Fields& fields, std::string_view key, Vec4& out);
 Result<> parseField(const Fields& fields, std::string_view key, Quat& out);
 Result<> parseField(const Fields& fields, std::string_view key, bool& out);
+/// A whole number from 0 to 4294967295; signs, fractions and overflow fail.
+Result<> parseField(const Fields& fields, std::string_view key, u32& out);
 Result<> parseField(const Fields& fields, std::string_view key, std::string& out);
 
 }  // namespace bdex::scene
