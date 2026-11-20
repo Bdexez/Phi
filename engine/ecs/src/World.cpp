@@ -21,6 +21,27 @@ Entity World::create() {
     return Entity{index, generations_[index]};
 }
 
+Entity World::clone(Entity source) {
+    if (!alive(source)) {
+        return {};
+    }
+    const Entity copy = create();
+    // Types collected first: hooks may add pools while they run.
+    std::vector<TypeId> copied;
+    for (auto& [type, pool] : pools_) {
+        if (pool->copy(source.index, copy.index)) {
+            copied.push_back(type);
+        }
+    }
+    for (const TypeId type : copied) {
+        if (!alive(copy)) {
+            break;  // a hook destroyed it
+        }
+        notify(type, HookKind::Add, copy);
+    }
+    return copy;
+}
+
 void World::destroy(Entity entity) {
     if (!alive(entity)) {
         return;

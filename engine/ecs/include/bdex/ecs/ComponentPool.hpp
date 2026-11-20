@@ -4,13 +4,22 @@
 #include <bdex/core/Types.hpp>
 
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace bdex::ecs {
 
-/// Type-erased view of a component pool, used by World to destroy entities
-/// without knowing the component types.
+/// Whether World::clone copies a component type. A type whose copy
+/// constructor is declared but cannot compile, such as one holding a
+/// std::vector<std::unique_ptr<...>>, must opt out:
+///
+///   template <> struct bdex::ecs::Cloneable<Inventory> : std::false_type {};
+template <class T>
+struct Cloneable : std::bool_constant<std::is_copy_constructible_v<T>> {};
+
+/// Type-erased view of a component pool, used by World to destroy and clone
+/// entities without knowing the component types.
 class IComponentPool {
 public:
     virtual ~IComponentPool() = default;
@@ -21,6 +30,9 @@ public:
     /// Indices of the entities owning a component, in dense storage order.
     [[nodiscard]] virtual std::span<const u32> entities() const = 0;
     virtual void clear() = 0;
+    /// Gives entity `to` a copy of entity `from`'s component. Returns false,
+    /// doing nothing, if `from` has none or the type cannot be copied.
+    virtual bool copy(u32 from, u32 to) = 0;
 };
 
 /// Sparse-set storage: components are packed in a contiguous array (fast
@@ -88,6 +100,19 @@ public:
         sparse_.clear();
         dense_.clear();
         denseEntities_.clear();
+    }
+
+    bool copy(u32 from, u32 to) override {
+        if constexpr (Cloneable<T>::value) {
+            if (!contains(from)) {
+                return false;
+            }
+            T value = dense_[sparse_[from]];  // emplace may reallocate the source
+            emplace(to, std::move(value));
+            return true;
+        } else {
+            return false;
+        }
     }
 
 private:
