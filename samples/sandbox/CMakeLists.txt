@@ -1,7 +1,9 @@
 add_executable(sandbox
     src/FlyCamera.cpp
+    src/Hud.cpp
     src/Sandbox.cpp
-    src/SkyFeature.cpp)
+    src/SkyFeature.cpp
+    src/Sounds.cpp)
 target_link_libraries(sandbox PRIVATE bdex::app)
 bdex_configure_target(sandbox)
 

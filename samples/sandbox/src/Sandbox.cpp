@@ -19,7 +19,9 @@
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "FlyCamera.hpp"
+#include "Hud.hpp"
 #include "SkyFeature.hpp"
+#include "Sounds.hpp"
 
 #include <bdex/app/Application.hpp>
 #include <bdex/assets/Audio.hpp>
@@ -126,7 +128,7 @@ protected:
         buildScene();
         registerSerializers();
         setUpHotReload();
-        setUpSounds();
+        sounds_.start(engine());
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
             spinSystem(scene().world(), engine().services().get<JobSystem>(), static_cast<f32>(time.delta));
@@ -138,8 +140,7 @@ protected:
         if (const auto* controls = actions(); controls != nullptr && input() != nullptr) {
             flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
         }
-        updateTitle(time);
-        drawStats();
+        hud_.update(engine(), time, scene().world().entityCount(), actions(), window());
         pollHotReload(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
@@ -156,10 +157,10 @@ protected:
                 debugView_ = !debugView_;
             }
             if (controls->pressed("stats")) {
-                showStats_ = !showStats_;
+                hud_.toggleStats();
             }
             if (controls->pressed("help")) {
-                showHelp_ = !showHelp_;
+                hud_.toggleHelp();
             }
             if (controls->pressed("walk")) {
                 flyCamera_.setWalking(scene().world(), !flyCamera_.walking());
@@ -308,61 +309,12 @@ private:
             ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
                                      .restitution = 0.7f,
                                      .angularDamping = 1.5f});  // rolls to a stop in a few seconds
-        if (auto* mixer = engine().services().tryGet<audio::Mixer>(); mixer != nullptr && throwSound_) {
-            mixer->play(throwSound_, {.volume = 0.4f});
-        }
+        sounds_.playThrow(engine());
         balls_.push_back(ball);
         if (balls_.size() > kMaxBalls) {
             world.destroy(balls_.front());
             balls_.erase(balls_.begin());
         }
-    }
-
-    /// Sounds are made here rather than loaded, like the textures: a whoosh
-    /// for throws, and a knock for impacts, played where they happen and as
-    /// loud as they are hard.
-    void setUpSounds() {
-        if (!engine().services().has<audio::Mixer>()) {
-            return;
-        }
-        constexpr u32 kRate = 48000;
-        const auto shaped = [&](f32 seconds, auto&& sample) {
-            auto sound = std::make_shared<assets::AudioData>();
-            sound->sampleRate = kRate;
-            sound->channels = 1;
-            sound->samples.resize(static_cast<usize>(seconds * kRate));
-            for (usize i = 0; i < sound->samples.size(); ++i) {
-                sound->samples[i] = sample(static_cast<f32>(i) / kRate);
-            }
-            return sound;
-        };
-        const f32 tau = 2.0f * std::numbers::pi_v<f32>;
-        // A rising chirp, faded in and out.
-        throwSound_ = shaped(0.16f, [&](f32 t) {
-            const f32 envelope = std::sin(std::numbers::pi_v<f32> * t / 0.16f);
-            return 0.3f * envelope * std::sin(tau * (250.0f * t + 1400.0f * t * t));
-        });
-        // A low tone with a click of noise, dying away quickly.
-        u32 noise = 12345;
-        impactSound_ = shaped(0.3f, [&](f32 t) {
-            noise = noise * 1664525u + 1013904223u;
-            const f32 grain = static_cast<f32>(noise >> 8) / static_cast<f32>(1u << 24) * 2.0f - 1.0f;
-            return std::exp(-t * 16.0f) * (0.7f * std::sin(tau * 150.0f * t) + 0.3f * grain * std::exp(-t * 60.0f));
-        });
-        collisions_ = engine().events().subscribe<physics::Collision>([this](const physics::Collision& event) {
-            auto* mixer = engine().services().tryGet<audio::Mixer>();
-            if (mixer == nullptr || mixer->voiceCount() >= 24) {
-                return;  // a pile of balls settling would make a racket
-            }
-            const physics::Contact& contact = event.contact;
-            mixer->play(impactSound_, {.volume = std::clamp(contact.impulse / 6.0f, 0.05f, 1.0f),
-                                       // Heavier hits sound a little lower.
-                                       .pitch = std::clamp(1.3f - contact.impulse / 30.0f, 0.7f, 1.3f),
-                                       .spatial = true,
-                                       .position = contact.point,
-                                       .minDistance = 3.0f,
-                                       .maxDistance = 60.0f});
-        });
     }
 
     /// Throws a tumbling crate from the camera; the oldest goes once there
@@ -843,80 +795,6 @@ private:
         }
     }
 
-    void updateTitle(const FrameTime& time) {
-        ++framesSinceTitle_;
-        secondsSinceTitle_ += time.delta;
-        if (secondsSinceTitle_ < 0.5) {
-            return;
-        }
-        const f64 fps = framesSinceTitle_ / secondsSinceTitle_;
-        if (platform::IWindow* target = window()) {
-            target->setTitle(std::format("bdex sandbox - {:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps));
-        }
-        // The stats panel refreshes at the same pace, so it stays readable.
-        f64 gpu = 0.0;
-        if (const auto* device = engine().services().tryGet<rhi::IDevice>()) {
-            for (const rhi::GpuTiming& timing : device->lastGpuTimings()) {
-                if (timing.depth == 0) {
-                    gpu = timing.milliseconds;
-                }
-            }
-        }
-        const auto* mixer = engine().services().tryGet<audio::Mixer>();
-        stats_ = std::format("{:.0f} FPS  {:.2f} MS\nGPU {:.2f} MS\n{} ENTITIES  {} VOICES", fps, 1000.0 / fps, gpu,
-                             scene().world().entityCount(), mixer != nullptr ? mixer->voiceCount() : 0);
-        framesSinceTitle_ = 0;
-        secondsSinceTitle_ = 0.0;
-    }
-
-    /// Frame rate, GPU time and counts, in the top-left corner (F12), and
-    /// the controls under it (F1).
-    void drawStats() {
-        auto* debug = engine().services().tryGet<render::DebugDraw>();
-        if (debug == nullptr) {
-            return;
-        }
-        // A shadow one pixel off keeps the text readable on any background.
-        const auto write = [&](const Vec2& at, std::string_view text, const Vec4& color) {
-            debug->screenText(at + Vec2(1.0f), text, 12.0f, Vec4(0.0f, 0.0f, 0.0f, 0.8f));
-            debug->screenText(at, text, 12.0f, color);
-        };
-        if (showStats_ && !stats_.empty()) {
-            write(Vec2(12.0f), stats_ + (showHelp_ ? "" : "\nF1 HELP"), Vec4(1.0f, 1.0f, 0.6f, 1.0f));
-        }
-        if (showHelp_) {
-            write(Vec2(12.0f, 100.0f), helpText(), Vec4(0.75f, 0.95f, 1.0f, 1.0f));
-        }
-    }
-
-    /// Every action and what drives it now, from the [input] bindings: a
-    /// rebound key shows as rebound.
-    [[nodiscard]] std::string helpText() {
-        static constexpr std::pair<const char*, const char*> kActions[] = {
-            {"move_forward", "forward"},  {"move_back", "back"},         {"move_left", "left"},
-            {"move_right", "right"},      {"move_up", "up / jump"},      {"move_down", "down"},
-            {"move_fast", "faster"},      {"look", "look around"},       {"select", "select"},
-            {"throw_ball", "throw a ball"}, {"throw_crate", "throw a crate"}, {"walk", "walk / fly"},
-            {"flashlight", "flashlight"}, {"duplicate", "duplicate"},    {"delete", "delete"},
-            {"debug_view", "gizmos"},     {"save_scene", "save scene"},  {"load_scene", "load scene"},
-            {"screenshot", "screenshot"}, {"profile", "log profile"},    {"reload_shaders", "reload shaders"},
-            {"stats", "stats"},           {"toggle_fullscreen", "fullscreen"}, {"help", "this help"},
-            {"quit", "quit"},
-        };
-        const platform::InputActions* controls = actions();
-        std::string text;
-        for (const auto& [action, description] : kActions) {
-            std::string keys;
-            if (controls != nullptr) {
-                for (const std::string& binding : controls->bindings(action)) {
-                    keys += (keys.empty() ? "" : ", ") + binding;
-                }
-            }
-            text += std::format("{:<16}{}\n", description, keys.empty() ? "-" : keys);
-        }
-        return text;
-    }
-
     static constexpr u32 kCubeCount = 8;
 
     render::MeshHandle cubeMesh_;
@@ -934,9 +812,6 @@ private:
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;
-    std::shared_ptr<const assets::AudioData> throwSound_;
-    std::shared_ptr<const assets::AudioData> impactSound_;
-    Subscription collisions_;
     render::MaterialHandle ballMaterial_;
     scene::ComponentSerializers serializers_;
     render::ResourceNames names_;
@@ -947,11 +822,8 @@ private:
     ecs::Entity camera_;
     sandbox::FlyCamera flyCamera_;
 
-    u32 framesSinceTitle_ = 0;
-    std::string stats_;
-    bool showStats_ = true;
-    bool showHelp_ = false;
-    f64 secondsSinceTitle_ = 0.0;
+    sandbox::Hud hud_;
+    sandbox::Sounds sounds_;
 };
 
 BDEX_MAIN(Sandbox)
