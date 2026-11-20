@@ -485,7 +485,8 @@ TEST(SceneFiles, LeaveTransientEntitiesAndTheirChildrenOut) {
     ASSERT_TRUE(setParent(world, lamp, floor).has_value());
 
     const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
-    const std::string text = serializers.save(world);
+    const ecs::World& readOnly = world;  // saving only reads
+    const std::string text = serializers.save(readOnly);
     EXPECT_NE(text.find("Floor"), std::string::npos);
     EXPECT_NE(text.find("Lamp"), std::string::npos);
     EXPECT_EQ(text.find("Player"), std::string::npos);
@@ -497,6 +498,9 @@ TEST(SceneFiles, LeaveTransientEntitiesAndTheirChildrenOut) {
     const ecs::Entity loadedLamp = loaded.find("Lamp");
     ASSERT_TRUE(loaded.world().alive(loadedLamp));
     EXPECT_EQ(loaded.world().get<Parent>(loadedLamp).entity, loaded.find("Floor"));
+    const Scene& lookup = loaded;  // finding only reads
+    EXPECT_EQ(lookup.find("Lamp"), loadedLamp);
+    EXPECT_EQ(lookup.findAll("Player").size(), 0u);
 }
 
 TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {

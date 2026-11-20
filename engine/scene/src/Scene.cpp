@@ -19,7 +19,7 @@ ecs::Entity Scene::createEntity(std::string_view name) {
     return entity;
 }
 
-std::vector<ecs::Entity> Scene::findAll(std::string_view name) {
+std::vector<ecs::Entity> Scene::findAll(std::string_view name) const {
     std::vector<ecs::Entity> found;
     world_.view<const Name>().each([&](ecs::Entity entity, const Name& candidate) {
         if (candidate.value == name) {
@@ -32,7 +32,7 @@ std::vector<ecs::Entity> Scene::findAll(std::string_view name) {
     return found;
 }
 
-ecs::Entity Scene::find(std::string_view name) {
+ecs::Entity Scene::find(std::string_view name) const {
     ecs::Entity first;
     world_.view<const Name>().each([&](ecs::Entity entity, const Name& candidate) {
         if (candidate.value == name && entity.index < first.index) {
