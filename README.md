@@ -103,6 +103,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `W` / `A` / `S` / `D` | Move the camera. |
 | `Space` / `Left Ctrl` | Move up / down. |
 | `Left Shift` | Move faster. |
+| `F1` | Show every control on screen, with the keys actually bound (rebinding in `sandbox.ini` shows there). |
 | `F2` | Save a screenshot as `screenshot_<frame>.png`. |
 | `F3` | Log the CPU time of every engine task, the last frame's draw statistics, and the GPU time of each render pass. |
 | `F4` | Toggle debug gizmos: the sun's direction, point light ranges, object axes and names, and physics colliders. |
