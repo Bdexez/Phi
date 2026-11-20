@@ -26,6 +26,9 @@ bdex_compile_shaders(sandbox_shaders
         shaders/sky.frag)
 add_dependencies(sandbox sandbox_shaders)
 
+# Models, loaded from "app:/models/...".
+configure_file(models/lamp.gltf ${BDEX_ASSET_OUTPUT_DIR}/sandbox/models/lamp.gltf COPYONLY)
+
 # Default configuration, picked up next to the executable.
 # (with the audio module this build has).
 configure_file(sandbox.ini ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sandbox.ini @ONLY)

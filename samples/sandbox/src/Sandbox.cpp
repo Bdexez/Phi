@@ -27,6 +27,7 @@
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
+#include <bdex/render/Model.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
 #include <bdex/core/Log.hpp>
@@ -709,7 +710,53 @@ private:
                                          .range = 7.0f});
         }
 
+        placeLamps();
         log::info("sandbox", "scene ready: {} entities", world.entityCount());
+    }
+
+    /// Two lamp posts from a glTF file, each with a warm light in its
+    /// lantern. The model is uploaded once and placed twice.
+    void placeLamps() {
+        if (!engine().services().has<render::IRenderer>()) {
+            return;
+        }
+        const auto model = assets::loadGltf(engine().services().get<VirtualFileSystem>(), "app:/models/lamp.gltf");
+        if (!model) {
+            log::warn("sandbox", "{}", model.error().message);
+            return;
+        }
+        for (const std::string& warning : model->warnings) {
+            log::warn("sandbox", "{}", warning);
+        }
+        lampResources_ = render::uploadModel(renderer(), *model);
+        // Named, so scene files can save and load the lamps' parts.
+        for (usize mesh = 0; mesh < model->meshes.size(); ++mesh) {
+            for (usize part = 0; part < model->meshes[mesh].primitives.size(); ++part) {
+                const i32 material = model->meshes[mesh].primitives[part].material;
+                models_.push_back({std::format("lamp {}.{}", mesh, part), lampResources_.meshes[mesh][part],
+                                   material >= 0 ? lampResources_.materials[static_cast<usize>(material)]
+                                                 : lampResources_.defaultMaterial});
+            }
+        }
+        ecs::World& world = scene().world();
+        for (const f32 side : {-1.0f, 1.0f}) {
+            const ecs::Entity lamp = render::instantiateModel(scene(), *model, lampResources_, "Lamp");
+            scene::Transform& transform = world.get<scene::Transform>(lamp);
+            transform.position = Vec3(side * 4.5f, 0.0f, -2.5f);
+            // The arm reaches toward the middle of the scene.
+            transform.rotation = glm::angleAxis(side < 0.0f ? 0.0f : std::numbers::pi_v<f32>, Vec3(0.0f, 1.0f, 0.0f));
+            const ecs::Entity glow = scene().createEntity("Lamp light");
+            world.get<scene::Transform>(glow).position = Vec3(0.65f, 2.55f, 0.0f);  // in the lantern
+            world.emplace<scene::Parent>(glow, lamp);
+            world.emplace<render::PointLight>(
+                glow, render::PointLight{.color = Vec3(1.0f, 0.75f, 0.4f), .intensity = 4.0f, .range = 6.0f});
+        }
+    }
+
+    void onStop() override {
+        if (engine().services().has<render::IRenderer>()) {
+            render::releaseModel(renderer(), lampResources_);
+        }
     }
 
     void updateTitle(const FrameTime& time) {
@@ -760,6 +807,7 @@ private:
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
+    render::ModelResources lampResources_;
     std::shared_ptr<const assets::AudioData> throwSound_;
     std::shared_ptr<const assets::AudioData> impactSound_;
     Subscription collisions_;
