@@ -14,7 +14,7 @@
 // object, F5 / F9 to save / load the scene, F6 for a flashlight, F7 to reload
 // shaders, F8 to throw a ball, F10 / Delete to duplicate / delete the
 // selected object, F11 for fullscreen, F12 for the stats panel, G to walk
-// (Space jumps) or fly, Escape to quit. A gamepad works too: sticks to
+// (Space jumps) or fly, C to throw a crate, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
 #include "FlyCamera.hpp"
@@ -106,6 +106,7 @@ protected:
         config.setDefault("input.delete", "Delete");
         config.setDefault("input.stats", "F12");
         config.setDefault("input.walk", "G, GamepadB");
+        config.setDefault("input.throw_crate", "C");
         config.setDefault("input.quit", "Escape, GamepadBack");
     }
 
@@ -169,6 +170,9 @@ protected:
             }
             if (controls->pressed("throw_ball")) {
                 throwBall();
+            }
+            if (controls->pressed("throw_crate")) {
+                throwCrate();
             }
             if (controls->pressed("duplicate")) {
                 duplicateSelection();
@@ -350,6 +354,33 @@ private:
                                        .minDistance = 3.0f,
                                        .maxDistance = 60.0f});
         });
+    }
+
+    /// Throws a tumbling crate from the camera; the oldest goes once there
+    /// are too many.
+    void throwCrate() {
+        if (!cubeMesh_.valid()) {
+            return;
+        }
+        ecs::World& world = scene().world();
+        const scene::Transform& eye = world.get<scene::Transform>(camera_);
+        const ecs::Entity crate = scene().createEntity("Crate");
+        scene::Transform& transform = world.get<scene::Transform>(crate);
+        transform.position = eye.position + eye.forward() * 1.2f;
+        transform.rotation = eye.rotation;
+        transform.scale = Vec3(0.7f);
+        world.emplace<render::MeshRenderer>(crate, cubeMesh_, cubeMaterials_[crates_.size() % kCubeCount]);
+        world.emplace<physics::BoxCollider>(crate, Vec3(0.5f));
+        world.emplace<physics::RigidBody>(
+            crate, physics::RigidBody{.velocity = eye.forward() * 8.0f + Vec3(0.0f, 2.0f, 0.0f),
+                                      .angularVelocity = eye.right() * -4.0f,  // end over end
+                                      .restitution = 0.2f,
+                                      .friction = 0.7f});
+        crates_.push_back(crate);
+        if (crates_.size() > kMaxBalls) {
+            world.destroy(crates_.front());
+            crates_.erase(crates_.begin());
+        }
     }
 
     /// A spot light carried by the camera, switched on and off.
@@ -778,6 +809,7 @@ private:
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
+    std::vector<ecs::Entity> crates_;
     render::ModelResources lampResources_;
     std::shared_ptr<const assets::AudioData> throwSound_;
     std::shared_ptr<const assets::AudioData> impactSound_;
