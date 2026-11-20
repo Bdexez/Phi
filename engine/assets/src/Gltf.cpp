@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <format>
 #include <optional>
@@ -537,6 +538,33 @@ Result<ModelData> decodeGltf(std::span<const u8> bytes, const UriReader& readUri
         }
     }
     return model;
+}
+
+Result<ModelData> loadGltf(const VirtualFileSystem& vfs, std::string_view virtualPath) {
+    const auto bytes = vfs.readBinary(virtualPath);
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const usize slash = virtualPath.rfind('/');
+    const std::string directory(slash == std::string_view::npos ? std::string_view{} : virtualPath.substr(0, slash + 1));
+    return decodeGltf(*bytes, [&](std::string_view uri) -> Result<std::vector<u8>> {
+        // URIs are percent-encoded ("my%20ship.bin").
+        std::string path = directory;
+        for (usize i = 0; i < uri.size(); ++i) {
+            if (uri[i] == '%' && i + 2 < uri.size()) {
+                const std::string hex(uri.substr(i + 1, 2));
+                char* end = nullptr;
+                const long value = std::strtol(hex.c_str(), &end, 16);
+                if (end == hex.c_str() + 2) {
+                    path += static_cast<char>(value);
+                    i += 2;
+                    continue;
+                }
+            }
+            path += uri[i];
+        }
+        return vfs.readBinary(path);
+    });
 }
 
 }  // namespace bdex::assets
