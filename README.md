@@ -195,6 +195,7 @@ The scene is rendered in HDR and tone mapped for display: `renderer.exposure` sc
 | `--headless` | Use the virtual window module. |
 | `--frames <n>` | Stop after the given number of frames. |
 | `--screenshot <file>` | Save a PNG screenshot; limits the run to three frames if no frame limit is set. |
+| `--trace <file>` | Record every frame, phase and task as a timeline, in Chrome trace JSON: open it in [ui.perfetto.dev](https://ui.perfetto.dev) to find what made a frame slow. |
 | `--log-level <level>` | Choose from `trace`, `debug`, `info`, `warn`, `error`, and `off`. |
 | `--log-file <file>` | Also write the log to a file (`log.file`), flushed line by line. |
 | `--strict` | Return exit code `3` if the graphics backend reports validation errors. |
