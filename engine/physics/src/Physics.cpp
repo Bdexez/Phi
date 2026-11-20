@@ -21,6 +21,10 @@ struct Sphere {
     Transform* transform;  ///< Stable during a step: nothing is added to the world.
 };
 
+bool finite(const Vec3& v) {
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
 /// Oriented box: the collider's extents in the entity's rotated frame.
 struct Box {
     ecs::Entity entity;
@@ -277,6 +281,16 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         }
     }
 
+    // Colliders that stopped being finite (a NaN from a bad scene file or a
+    // blown-up simulation) are left out: they would poison the grid and
+    // break the sort below. Such bodies stay where they were.
+    std::erase_if(spheres, [&](const Sphere& sphere) {
+        return !finite(sphere.center) || !std::isfinite(sphere.radius) || sphere.radius < 0.0f;
+    });
+    std::erase_if(boxes, [&](const Box& box) {
+        return !finite(box.boundsMin) || !finite(box.boundsMax) || !finite(box.half);
+    });
+
     // Spheres against static boxes. Boxes go into a grid over the XZ plane
     // (most worlds are wide rather than tall), except very large ones (a
     // floor) that every sphere checks; each sphere only visits the boxes
@@ -294,7 +308,11 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             cell = std::max(sizes[sizes.size() / 2] * 2.0f, 0.5f);
         }
     }
-    const auto cellOf = [cell](f32 coordinate) { return static_cast<i64>(std::floor(coordinate / cell)); };
+    // Clamped: converting a float beyond i64's range is undefined behavior,
+    // and coordinates this far out are nonsense anyway.
+    const auto cellOf = [cell](f32 coordinate) {
+        return static_cast<i64>(std::clamp(std::floor(static_cast<f64>(coordinate) / cell), -1e15, 1e15));
+    };
     const auto key = [](i64 x, i64 z) { return (static_cast<u64>(x) << 32) ^ static_cast<u64>(z & 0xffffffff); };
     std::vector<u32> large;
     std::unordered_map<u64, std::vector<u32>> grid;
@@ -542,6 +560,9 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
                 continue;
             }
             const f32 radius = spheres->get(index).radius * largestScale(*transform);
+            if (!finite(transform->position) || !std::isfinite(radius)) {
+                continue;  // as in step(): broken colliders are left out
+            }
             const Vec3 toCenter = transform->position - origin;
             const f32 along = glm::dot(toCenter, direction);
             const f32 missSquared = glm::dot(toCenter, toCenter) - along * along;
@@ -566,6 +587,9 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
                 continue;
             }
             const Box box = makeBox(world.entityAt(index), *transform, boxes->get(index));
+            if (!finite(box.boundsMin) || !finite(box.boundsMax)) {
+                continue;  // NaN fails every slab comparison: it would be hit at distance 0
+            }
             if (const auto hit = rayBox(box, origin, direction, maxDistance)) {
                 consider(world.entityAt(index), hit->distance, hit->normal);
             }
