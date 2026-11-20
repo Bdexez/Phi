@@ -49,6 +49,17 @@ public:
                                   : static_cast<Interface*>(entries_[it->second].service.get());
     }
 
+    /// Shares ownership of the service, for code that must keep it alive
+    /// (null if nobody provides it). Release it before the engine shuts
+    /// down: a service made by a plugin module has its code, and its
+    /// shared_ptr control block, unloaded with the module.
+    template <class Interface>
+    [[nodiscard]] std::shared_ptr<Interface> tryGetShared() const {
+        const auto it = index_.find(typeId<Interface>());
+        return it == index_.end() ? nullptr
+                                  : std::static_pointer_cast<Interface>(entries_[it->second].service);
+    }
+
     /// Returns the service, aborting with a clear message if nobody provides it.
     template <class Interface>
     [[nodiscard]] Interface& get() const {
