@@ -1,5 +1,5 @@
 // Feeds corrupted versions of valid inputs to every decoder of files that
-// come from outside: image, sound and mesh loaders, config files, scene files (then
+// come from outside: image, sound and mesh loaders, JSON and config files, scene files (then
 // steps physics over what was loaded). Decoders may reject or accept them,
 // but must never crash, throw, or touch memory they do not own; the ASan
 // preset turns any slip into a failure. The mutations are deterministic, so
@@ -8,6 +8,7 @@
 #include <bdex/assets/Image.hpp>
 #include <bdex/assets/Mesh.hpp>
 #include <bdex/core/Config.hpp>
+#include <bdex/core/Json.hpp>
 #include <bdex/core/Log.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/Components.hpp>
@@ -134,6 +135,17 @@ TEST(Robustness, ObjAndConfigParsersSurviveCorruptText) {
     const std::string config =
         "# settings\n[window]\nwidth = 1280\ntitle = \"bdex\"  # comment\n[physics]\ngravity = 0, -9.81, 0\n";
     ASSERT_TRUE(Config::parse(config).has_value());
+
+    const std::string gltfLike = R"({"asset":{"version":"2.0"},"nodes":[{"name":"n\u00e9","mesh":0,)"
+                                 R"("translation":[1,-2.5e1,3E-2]}],"meshes":[{"primitives":[{"attributes":)"
+                                 R"({"POSITION":0},"indices":1}]}],"extras":[true,false,null,"😀"]})";
+    ASSERT_TRUE(json::parse(gltfLike).has_value());
+    fuzz(bytesOf(gltfLike), true, 7, [](const std::vector<u8>& input) {
+        if (const auto parsed = json::parse(textOf(input))) {
+            (void)json::write(*parsed);
+            (void)(*parsed)["nodes"][0]["translation"][1].asNumber();
+        }
+    });
     fuzz(bytesOf(config), true, 4, [](const std::vector<u8>& input) {
         if (const auto parsed = Config::parse(textOf(input))) {
             (void)parsed->getFloat("physics.gravity", 0.0);

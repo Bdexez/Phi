@@ -32,7 +32,7 @@ Each library is one CMake target (`bdex::<name>`) with its public headers under 
 
 | Library | Contents | Depends on |
 | --- | --- | --- |
-| `core` | `Engine`, `ModuleManager`, `ServiceRegistry`, `EventBus`, `Scheduler`, `Config`, `JobSystem`, `VirtualFileSystem`, handles, logging, math aliases | GLM |
+| `core` | `Engine`, `ModuleManager`, `ServiceRegistry`, `EventBus`, `Scheduler`, `Config`, `JobSystem`, `VirtualFileSystem`, a JSON parser, handles, logging, math aliases | GLM |
 | `ecs` | `World`, sparse-set component pools, views | `core` |
 | `platform` | `IWindowSystem`, `IWindow`, input events, `InputState` | `core` |
 | `rhi` | `IDevice`, `ICommandList`, resource descriptions | `core`, `platform` |
