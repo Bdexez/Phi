@@ -291,6 +291,8 @@ int Application::run(int argc, char** argv) {
     }
     physicsSettings.minimumContactImpulse = static_cast<f32>(
         std::max(config.getFloat("physics.collision_impulse", physicsSettings.minimumContactImpulse), 0.0));
+    physicsSettings.sleepSpeed =
+        static_cast<f32>(std::max(config.getFloat("physics.sleep_speed", physicsSettings.sleepSpeed), 0.0));
     scheduler.add(
         Phase::FixedUpdate, "physics.step",
         [this, physicsSettings, contacts = std::vector<physics::Contact>(),

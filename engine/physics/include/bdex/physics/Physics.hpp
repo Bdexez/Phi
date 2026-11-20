@@ -39,7 +39,19 @@ struct RigidBody {
     Vec3 previousPosition{0.0f};
     Quat previousRotation{1.0f, 0.0f, 0.0f, 0.0f};
     bool hasPrevious = false;
+
+    /// Set by step(): the body has rested long enough to sleep (see
+    /// Settings::sleepSpeed). Giving it a velocity wakes it, as does wake().
+    bool asleep = false;
+    f32 restingTime = 0.0f;
 };
+
+/// Wakes a sleeping body, for when its surroundings change in a way step()
+/// cannot see (the floor under it was removed, gravity changed...).
+inline void wake(RigidBody& body) {
+    body.asleep = false;
+    body.restingTime = 0.0f;
+}
 
 /// Sphere centered on the entity, scaled by the largest Transform scale.
 struct SphereCollider {
@@ -72,6 +84,12 @@ struct Settings {
     /// Contacts below this impulse (N.s) are not reported. Resting bodies
     /// collide gently every step: the default keeps them out.
     f32 minimumContactImpulse = 0.5f;
+    /// A body moving (and spinning, at its surface) slower than this, in
+    /// m/s, for `sleepDelay` seconds falls asleep: it is no longer moved or
+    /// tested against boxes, and acts as static to other bodies until one
+    /// hits it faster than resting contact would. 0 disables sleeping.
+    f32 sleepSpeed = 0.1f;
+    f32 sleepDelay = 0.5f;
 };
 
 /// A collision resolved during a step.
