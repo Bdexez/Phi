@@ -205,11 +205,6 @@ FaceContact faceContact(const Box& a, const Box& b, f32 margin) {
     return result;
 }
 
-bool overlaps(const Box& a, const Box& b, f32 margin) {
-    return glm::all(glm::lessThanEqual(a.boundsMin - Vec3(margin), b.boundsMax)) &&
-           glm::all(glm::lessThanEqual(b.boundsMin, a.boundsMax + Vec3(margin)));
-}
-
 }  // namespace
 
 void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::vector<Box>& staticBoxes,
@@ -270,28 +265,25 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
                                                          glm::length(body.angularVelocity) * solver.reach));
     }
 
-    // Dynamic spheres join as bodies (solid-sphere inertia), when near a box.
+    // Dynamic spheres join as bodies (solid-sphere inertia) when a box
+    // comes near them.
     std::vector<std::optional<usize>> sphereBody(spheres.size());
-    for (usize s = 0; s < spheres.size(); ++s) {
+    const auto sphereSolver = [&](usize s) -> std::optional<usize> {
         const SphereShape& sphere = spheres[s];
         if (sphere.body == nullptr || !(sphere.body->mass > 0.0f)) {
-            continue;
+            return std::nullopt;  // static
         }
-        for (const BoxShape& box : boxes) {
-            const f32 margin = box.margin + sphere.radius;
-            if (glm::all(glm::lessThanEqual(box.shape.boundsMin - Vec3(margin), sphere.center)) &&
-                glm::all(glm::lessThanEqual(sphere.center, box.shape.boundsMax + Vec3(margin)))) {
-                SolverBody solver{sphere.entity, sphere.body, sphere.center, 0.0f, Mat3(0.0f), sphere.radius};
-                if (!sphere.body->asleep) {
-                    activate(solver, Vec3(1.0f / (0.4f * sphere.body->mass * sphere.radius * sphere.radius)),
-                             Quat(1.0f, 0.0f, 0.0f, 0.0f));
-                }
-                sphereBody[s] = bodies.size();
-                bodies.push_back(solver);
-                break;
+        if (!sphereBody[s]) {
+            SolverBody solver{sphere.entity, sphere.body, sphere.center, 0.0f, Mat3(0.0f), sphere.radius};
+            if (!sphere.body->asleep) {
+                activate(solver, Vec3(1.0f / (0.4f * sphere.body->mass * sphere.radius * sphere.radius)),
+                         Quat(1.0f, 0.0f, 0.0f, 0.0f));
             }
+            sphereBody[s] = bodies.size();
+            bodies.push_back(solver);
         }
-    }
+        return sphereBody[s];
+    };
 
     // Contacts. Corners near enough to reach a surface during this step
     // count too, as speculative contacts with a negative depth (the gap):
@@ -315,54 +307,96 @@ void stepBoxes(ecs::World& world, f32 dt, const Settings& settings, const std::v
             }
         }
     };
+    // A dynamic box against another box: faces where they can be found,
+    // corners otherwise (edge to edge).
+    const auto meet = [&](const BoxShape& box, const Box& other, std::optional<usize> otherBody, f32 margin) {
+        const FaceContact face = faceContact(box.shape, other, margin);
+        if (face.found) {
+            // Contacts push `box` (the A side) away from `other`.
+            const Vec3 normal = face.incidentIsB ? -face.normal : face.normal;
+            for (const FacePoint& point : face.points) {
+                found.push_back({box.body, otherBody, other.entity, point.point, normal, point.depth});
+            }
+        } else if (otherBody) {
+            cornersInto(box.shape, box.body, otherBody, other, margin, false);
+            cornersInto(other, *otherBody, box.body, box.shape, margin, false);
+        } else {
+            cornersInto(box.shape, box.body, std::nullopt, other, margin, false);
+            cornersInto(other, 0, box.body, box.shape, 0.0f, true);
+        }
+    };
+
+    // Broad phase: every box and sphere as a world-space box (grown by its
+    // reach this step), sorted along X and swept; only pairs overlapping on
+    // all three axes and involving a dynamic box go on.
+    enum class Kind : u8 { Crate, StaticBox, Sphere };
+    struct Proxy {
+        Vec3 low;
+        Vec3 high;
+        Kind kind;
+        usize index;
+    };
+    std::vector<Proxy> proxies;
+    proxies.reserve(boxes.size() + staticBoxes.size() + spheres.size());
     for (usize i = 0; i < boxes.size(); ++i) {
-        const BoxShape& box = boxes[i];
-        const bool awake = !bodies[box.body].body->asleep;
-        // Faces where they can be found, corners otherwise (edge to edge).
-        const auto meet = [&](const Box& other, std::optional<usize> otherBody, f32 margin) {
-            const FaceContact face = faceContact(box.shape, other, margin);
-            if (face.found) {
-                // Contacts push `box` (the A side) away from `other`.
-                const Vec3 normal = face.incidentIsB ? -face.normal : face.normal;
-                for (const FacePoint& point : face.points) {
-                    found.push_back({box.body, otherBody, other.entity, point.point, normal, point.depth});
+        proxies.push_back({boxes[i].shape.boundsMin - Vec3(boxes[i].margin), boxes[i].shape.boundsMax + Vec3(boxes[i].margin),
+                           Kind::Crate, i});
+    }
+    for (usize i = 0; i < staticBoxes.size(); ++i) {
+        proxies.push_back({staticBoxes[i].boundsMin, staticBoxes[i].boundsMax, Kind::StaticBox, i});
+    }
+    for (usize i = 0; i < spheres.size(); ++i) {
+        const SphereShape& sphere = spheres[i];
+        const f32 reach = sphere.radius + (sphere.body != nullptr ? 1.5f * dt * glm::length(sphere.body->velocity) : 0.0f);
+        proxies.push_back({sphere.center - Vec3(reach), sphere.center + Vec3(reach), Kind::Sphere, i});
+    }
+    std::sort(proxies.begin(), proxies.end(), [](const Proxy& a, const Proxy& b) {
+        return a.low.x != b.low.x ? a.low.x < b.low.x
+                                  : (a.kind != b.kind ? a.kind < b.kind : a.index < b.index);  // deterministic
+    });
+    const auto asleep = [&](const BoxShape& box) { return bodies[box.body].body->asleep; };
+    const auto handle = [&](const Proxy& first, const Proxy& second) {
+        // Order the pair: a crate first.
+        const Proxy& p = first.kind == Kind::Crate ? first : second;
+        const Proxy& q = first.kind == Kind::Crate ? second : first;
+        if (p.kind != Kind::Crate) {
+            return;  // no dynamic box: handled elsewhere, or static
+        }
+        const BoxShape& box = boxes[p.index];
+        switch (q.kind) {
+            case Kind::Crate: {
+                const BoxShape& other = boxes[q.index];
+                if (!asleep(box) || !asleep(other)) {
+                    meet(box, other.shape, other.body, std::max(box.margin, other.margin));
                 }
-            } else if (otherBody) {
-                cornersInto(box.shape, box.body, otherBody, other, margin, false);
-                cornersInto(other, *otherBody, box.body, box.shape, margin, false);
-            } else {
-                cornersInto(box.shape, box.body, std::nullopt, other, margin, false);
-                cornersInto(other, 0, box.body, box.shape, 0.0f, true);
+                break;
             }
-        };
-        if (awake) {
-            for (const Box& other : staticBoxes) {
-                if (overlaps(box.shape, other, box.margin)) {
-                    meet(other, std::nullopt, box.margin);
+            case Kind::StaticBox:
+                if (!asleep(box)) {
+                    meet(box, staticBoxes[q.index], std::nullopt, box.margin);
                 }
+                break;
+            case Kind::Sphere: {
+                const SphereShape& sphere = spheres[q.index];
+                const bool sphereMoves = sphere.body != nullptr && !sphere.body->asleep;
+                if (asleep(box) && !sphereMoves) {
+                    break;
+                }
+                const f32 margin = box.margin + (sphere.body != nullptr ? 1.5f * dt * glm::length(sphere.body->velocity) : 0.0f);
+                if (const auto touch = sphereBoxContact(box.shape, sphere.center, sphere.radius + margin)) {
+                    found.push_back({box.body, sphereSolver(q.index), sphere.entity,
+                                     sphere.center + touch->normal * sphere.radius, touch->normal, touch->depth - margin});
+                }
+                break;
             }
         }
-        // Other dynamic boxes, each pair once, unless both sleep.
-        for (usize j = i + 1; j < boxes.size(); ++j) {
-            const BoxShape& other = boxes[j];
-            if (!awake && bodies[other.body].body->asleep) {
-                continue;
-            }
-            const f32 margin = std::max(box.margin, other.margin);
-            if (overlaps(box.shape, other.shape, margin)) {
-                meet(other.shape, other.body, margin);
-            }
-        }
-        // Spheres: the box's point nearest each center.
-        for (usize s = 0; s < spheres.size(); ++s) {
-            const SphereShape& sphere = spheres[s];
-            if (!awake && (!sphereBody[s] || sphere.body->asleep)) {
-                continue;
-            }
-            const f32 margin = box.margin + (sphereBody[s] ? 1.5f * dt * glm::length(sphere.body->velocity) : 0.0f);
-            if (const auto touch = sphereBoxContact(box.shape, sphere.center, sphere.radius + margin)) {
-                found.push_back({box.body, sphereBody[s], sphere.entity, sphere.center + touch->normal * sphere.radius,
-                                 touch->normal, touch->depth - margin});
+    };
+    for (usize i = 0; i < proxies.size(); ++i) {
+        for (usize j = i + 1; j < proxies.size() && proxies[j].low.x <= proxies[i].high.x; ++j) {
+            const Proxy& a = proxies[i];
+            const Proxy& b = proxies[j];
+            if (a.low.y <= b.high.y && b.low.y <= a.high.y && a.low.z <= b.high.z && b.low.z <= a.high.z) {
+                handle(a, b);
             }
         }
     }
