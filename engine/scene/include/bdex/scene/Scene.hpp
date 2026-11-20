@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bdex/core/JobSystem.hpp>
+#include <bdex/core/Result.hpp>
 #include <bdex/ecs/World.hpp>
 #include <bdex/scene/Components.hpp>
 
@@ -51,6 +52,16 @@ private:
     std::vector<std::unique_ptr<Scene>> scenes_;
     Scene* active_ = nullptr;
 };
+
+/// Attaches `child` under `parent`, or detaches it when `parent` is an
+/// invalid handle. With `keepWorldTransform`, the child's Transform is
+/// recomputed so it stays where it is in the world (from WorldTransforms
+/// as of the last update); otherwise its local Transform is kept. Fails,
+/// changing nothing, if `parent` is dead or below `child` (a cycle).
+Result<> setParent(ecs::World& world, ecs::Entity child, ecs::Entity parent, bool keepWorldTransform = false);
+
+/// Entities whose Parent is `parent`, by slot.
+[[nodiscard]] std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent);
 
 /// Destroys `root` and every entity attached below it through Parent links.
 /// (World::destroy alone leaves children behind, as roots placed at their
