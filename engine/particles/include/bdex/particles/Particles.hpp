@@ -28,7 +28,10 @@ struct ParticleEmitter {
     u32 maxParticles = 1000;   ///< Beyond this, new ones are not emitted.
     f32 lifetime = 1.5f;       ///< Seconds; each varies by +/- lifetimeVariance of it.
     f32 lifetimeVariance = 0.25f;
-    Vec3 direction{0.0f, 1.0f, 0.0f};  ///< Center of the cone they leave in, in world space.
+    Vec3 direction{0.0f, 1.0f, 0.0f};  ///< Center of the cone they leave in, in world space...
+    /// ...or in the emitter's own frame, turning with it: an exhaust, a
+    /// hose, a gun's muzzle.
+    bool localDirection = false;
     f32 spread = glm::radians(25.0f);  ///< Half-angle of that cone.
     f32 speed = 2.0f;                  ///< Meters per second; varies by +/- speedVariance of it.
     f32 speedVariance = 0.3f;

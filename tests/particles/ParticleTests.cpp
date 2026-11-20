@@ -196,6 +196,7 @@ TEST(Particles, EmittersRoundTripThroughSceneFilesWithoutTheirParticles) {
     fire.lifetime = 0.75f;
     fire.lifetimeVariance = 0.1f;
     fire.direction = Vec3(0.0f, 0.0f, 1.0f);
+    fire.localDirection = true;
     fire.spread = 0.4f;
     fire.speed = 6.0f;
     fire.speedVariance = 0.05f;
@@ -227,6 +228,7 @@ TEST(Particles, EmittersRoundTripThroughSceneFilesWithoutTheirParticles) {
     EXPECT_EQ(copy->lifetime, fire.lifetime);
     EXPECT_EQ(copy->lifetimeVariance, fire.lifetimeVariance);
     EXPECT_EQ(copy->direction, fire.direction);
+    EXPECT_EQ(copy->localDirection, fire.localDirection);
     EXPECT_EQ(copy->spread, fire.spread);
     EXPECT_EQ(copy->speed, fire.speed);
     EXPECT_EQ(copy->speedVariance, fire.speedVariance);
@@ -243,4 +245,44 @@ TEST(Particles, EmittersRoundTripThroughSceneFilesWithoutTheirParticles) {
     EXPECT_EQ(copy->seed, fire.seed);
     EXPECT_TRUE(copy->particles.empty());
 
+}
+
+TEST(Particles, LocalDirectionsTurnWithTheEmitter) {
+    ParticleEmitter nozzle;
+    nozzle.rate = 0.0f;
+    nozzle.burst = 20;
+    nozzle.direction = Vec3(1.0f, 0.0f, -1.0f);  // ahead and to the right, in its own frame
+    nozzle.spread = 0.0f;
+    nozzle.speed = 3.0f;
+    nozzle.speedVariance = 0.0f;
+    nozzle.gravity = Vec3(0.0f);
+
+    for (const bool local : {false, true}) {
+        ecs::World world;
+        nozzle.localDirection = local;
+        const ecs::Entity entity = addEmitter(world, Vec3(0.0f), nozzle);
+        // Turned a quarter to the left (ahead becomes -X, right becomes -Z),
+        // and squashed unevenly, which must not bend the cone: through a
+        // WorldTransform, as a child's would be.
+        const Quat turn = glm::angleAxis(glm::radians(90.0f), Vec3(0.0f, 1.0f, 0.0f));
+        world.emplace<scene::WorldTransform>(entity).matrix =
+            glm::translate(Mat4(1.0f), Vec3(2.0f, 0.0f, 0.0f)) * glm::mat4_cast(turn) *
+            glm::scale(Mat4(1.0f), Vec3(5.0f, 1.0f, 0.2f));
+        updateParticles(world, 0.0f);
+        const Vec3 expected = (local ? Vec3(-1.0f, 0.0f, -1.0f) : Vec3(1.0f, 0.0f, -1.0f)) * (3.0f / std::sqrt(2.0f));
+        for (const Particle& particle : world.get<ParticleEmitter>(entity).particles) {
+            EXPECT_NEAR(glm::length(particle.velocity - expected), 0.0f, 1e-4f) << local;
+            EXPECT_EQ(particle.position, Vec3(2.0f, 0.0f, 0.0f));
+        }
+    }
+
+    // Without a WorldTransform, the Transform's rotation turns it.
+    ecs::World world;
+    nozzle.direction = Vec3(0.0f, 0.0f, -1.0f);
+    nozzle.localDirection = true;
+    const ecs::Entity entity = addEmitter(world, Vec3(0.0f), nozzle);
+    world.get<scene::Transform>(entity).rotation = glm::angleAxis(glm::radians(-90.0f), Vec3(1.0f, 0.0f, 0.0f));
+    updateParticles(world, 0.0f);
+    EXPECT_NEAR(glm::length(world.get<ParticleEmitter>(entity).particles[0].velocity - Vec3(0.0f, -3.0f, 0.0f)), 0.0f,
+                1e-4f);
 }
