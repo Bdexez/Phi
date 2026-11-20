@@ -23,6 +23,7 @@
 #include "SkyFeature.hpp"
 #include "Sounds.hpp"
 
+#include <bdex/animation/Animation.hpp>
 #include <bdex/app/Application.hpp>
 #include <bdex/assets/Audio.hpp>
 #include <bdex/audio/Components.hpp>
@@ -284,6 +285,12 @@ private:
         camera_ = scene().find("Camera");
         selected_ = {};
         flyCamera_.adoptFacing(world, camera_);
+        // Players are not saved; the lamps' nodes are, so they sway again.
+        if (lampSway_ != nullptr) {
+            for (const ecs::Entity lamp : lampRoots()) {
+                world.emplace<animation::AnimationPlayer>(lamp, lampSway_);
+            }
+        }
         // A body saved while walking would stand there, invisible.
         if (const ecs::Entity player = scene().find("Player"); world.alive(player)) {
             world.destroy(player);
@@ -723,15 +730,33 @@ private:
         render::releaseModel(renderer(), lampResources_);
         // Named "lamp/..." for scene files.
         lampResources_ = render::uploadModel(renderer(), *model, &names_, "lamp");
+        // Its lantern sways, if the file says so.
+        lampSway_ = model->animations.empty() ? nullptr
+                                              : std::make_shared<assets::ModelAnimation>(model->animations.front());
+        u32 lanternNode = 0;
+        for (u32 node = 0; node < model->nodes.size(); ++node) {
+            if (model->nodes[node].name == "Lantern") {
+                lanternNode = node;
+            }
+        }
         for (const scene::Transform& pose : poses) {
             const ecs::Entity lamp = render::instantiateModel(scene(), *model, lampResources_, "Lamp");
             scene::Transform& transform = world.get<scene::Transform>(lamp);
             transform.position = pose.position;
             transform.rotation = pose.rotation;
             transform.scale = pose.scale;
+            if (lampSway_ != nullptr) {
+                world.emplace<animation::AnimationPlayer>(lamp, lampSway_);
+            }
+            // The light hangs in the lantern, swaying with it.
+            ecs::Entity lantern = lamp;
+            for (const ecs::Entity part : scene::branch(world, lamp)) {
+                if (const auto* node = world.tryGet<scene::ModelNode>(part); node != nullptr && node->index == lanternNode) {
+                    lantern = part;
+                }
+            }
             const ecs::Entity glow = scene().createEntity("Lamp light");
-            world.get<scene::Transform>(glow).position = Vec3(0.65f, 2.55f, 0.0f);  // in the lantern
-            world.emplace<scene::Parent>(glow, lamp);
+            world.emplace<scene::Parent>(glow, lantern);
             world.emplace<render::PointLight>(
                 glow, render::PointLight{.color = Vec3(1.0f, 0.75f, 0.4f), .intensity = 4.0f, .range = 6.0f});
         }
@@ -808,6 +833,7 @@ private:
     std::vector<ecs::Entity> balls_;
     std::vector<ecs::Entity> crates_;
     render::ModelResources lampResources_;
+    std::shared_ptr<const assets::ModelAnimation> lampSway_;
     static constexpr const char* kLampModel = "app:/models/lamp.gltf";
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
