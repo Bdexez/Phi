@@ -148,9 +148,9 @@ TEST(Animation, PlayersRoundTripThroughSceneFilesByClipName) {
     // Renaming: a name means one clip, a clip has one name.
     const auto other = std::make_shared<assets::ModelAnimation>();
     clips.name(door.swing, "door/open");
-    EXPECT_EQ(clips.clip("door/swing"), nullptr);
+    EXPECT_EQ(clips.find("door/swing"), nullptr);
     EXPECT_EQ(clips.nameOf(door.swing.get()), "door/open");
     clips.name(other, "door/open");
-    EXPECT_EQ(clips.clip("door/open"), other);
+    EXPECT_EQ(clips.find("door/open"), other);
     EXPECT_EQ(clips.nameOf(door.swing.get()), "");
 }

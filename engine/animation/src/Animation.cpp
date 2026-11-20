@@ -84,33 +84,6 @@ void updateAnimations(ecs::World& world, f32 dt) {
     }
 }
 
-void ClipNames::name(std::shared_ptr<const assets::ModelAnimation> clip, std::string_view name) {
-    if (clip == nullptr) {
-        return;
-    }
-    // Free the name and the clip of what they meant before.
-    if (const auto named = byName_.find(std::string(name)); named != byName_.end()) {
-        byClip_.erase(named->second.get());
-        byName_.erase(named);
-    }
-    if (const auto previous = byClip_.find(clip.get()); previous != byClip_.end()) {
-        byName_.erase(previous->second);
-        byClip_.erase(previous);
-    }
-    byClip_.emplace(clip.get(), std::string(name));
-    byName_.emplace(std::string(name), std::move(clip));
-}
-
-std::shared_ptr<const assets::ModelAnimation> ClipNames::clip(std::string_view name) const {
-    const auto it = byName_.find(std::string(name));
-    return it == byName_.end() ? nullptr : it->second;
-}
-
-std::string_view ClipNames::nameOf(const assets::ModelAnimation* clip) const {
-    const auto it = byClip_.find(clip);
-    return it == byClip_.end() ? std::string_view{} : std::string_view(it->second);
-}
-
 void addComponentSerializers(scene::ComponentSerializers& serializers, const ClipNames& clips) {
     // Saving cannot fail: a clip without a name is written as an empty name
     // with `unnamed` set, which loading refuses.
@@ -144,7 +117,7 @@ void addComponentSerializers(scene::ComponentSerializers& serializers, const Cli
                             "animation::ClipNames)");
             }
             if (!name.empty()) {
-                player.clip = clips.clip(name);
+                player.clip = clips.find(name);
                 if (player.clip == nullptr) {
                     return fail("unknown animation clip '{}' (name it with animation::ClipNames)", name);
                 }

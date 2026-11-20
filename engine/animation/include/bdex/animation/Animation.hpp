@@ -2,12 +2,10 @@
 
 #include <bdex/assets/Gltf.hpp>
 #include <bdex/ecs/World.hpp>
+#include <bdex/scene/AssetNames.hpp>
 #include <bdex/scene/Serialization.hpp>
 
 #include <memory>
-#include <string>
-#include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace bdex::animation {
@@ -58,22 +56,8 @@ void updateAnimations(ecs::World& world, f32 dt);
 /// player (for tools, or to set a starting pose).
 void applyAnimation(ecs::World& world, ecs::Entity root, const assets::ModelAnimation& clip, f32 time);
 
-/// Names for animation clips, so scene files can refer to them ("lamp/sway"):
-/// a pointer means nothing once the program exits. Keeps the clips it names
-/// alive.
-class ClipNames {
-public:
-    /// Names a clip; the name now means this clip, and a clip has one name.
-    void name(std::shared_ptr<const assets::ModelAnimation> clip, std::string_view name);
-    /// Null for an unknown name.
-    [[nodiscard]] std::shared_ptr<const assets::ModelAnimation> clip(std::string_view name) const;
-    /// Empty for a clip without a name.
-    [[nodiscard]] std::string_view nameOf(const assets::ModelAnimation* clip) const;
-
-private:
-    std::unordered_map<std::string, std::shared_ptr<const assets::ModelAnimation>> byName_;
-    std::unordered_map<const assets::ModelAnimation*, std::string> byClip_;
-};
+/// Names for animation clips, so scene files can refer to them ("lamp/sway").
+using ClipNames = scene::AssetNames<assets::ModelAnimation>;
 
 /// Registers AnimationPlayer with scene files: its clip by name, its time,
 /// speed, looping and whether it plays. Saving a player whose clip has no
