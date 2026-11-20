@@ -246,3 +246,57 @@ TEST(World, ParallelEachVisitsEveryMatchOnce) {
     world.view<Position>().exclude<Velocity>().parallelEach(jobs, [&](Entity, Position&) { ++visited; });
     EXPECT_EQ(visited.load(), 10000u - movers.size());
 }
+
+TEST(World, HooksObserveComponentsComingAndGoing) {
+    World world;
+    std::vector<std::string> events;
+    const auto added = world.onAdd<Position>([&](World& w, Entity e) {
+        events.push_back("add " + std::to_string(static_cast<int>(w.get<Position>(e).x)));
+    });
+    world.onRemove<Position>([&](World& w, Entity e) {
+        events.push_back("remove " + std::to_string(static_cast<int>(w.get<Position>(e).x)));  // still readable
+    });
+
+    const Entity a = world.create();
+    const Entity b = world.create();
+    world.emplace<Position>(a, 1.0f, 0.0f);
+    world.emplace<Position>(a, 2.0f, 0.0f);  // replaced: not a new addition
+    world.emplace<Position>(b, 3.0f, 0.0f);
+    world.emplace<Velocity>(b);              // other types are not observed
+    world.remove<Position>(a);
+    world.remove<Position>(a);               // nothing left to remove
+    world.destroy(b);
+    EXPECT_EQ(events, (std::vector<std::string>{"add 1", "add 3", "remove 2", "remove 3"}));
+
+    events.clear();
+    world.removeHook(added);
+    const Entity c = world.create();
+    world.emplace<Position>(c, 4.0f, 0.0f);
+    world.clear();
+    EXPECT_EQ(events, (std::vector<std::string>{"remove 4"}));
+}
+
+TEST(World, HooksMayChangeTheWorld) {
+    World world;
+    // Every Position gets a Velocity; removing the Position takes it away.
+    world.onAdd<Position>([](World& w, Entity e) { w.emplace<Velocity>(e, 5.0f, 0.0f); });
+    world.onRemove<Position>([](World& w, Entity e) { w.remove<Velocity>(e); });
+
+    const Entity e = world.create();
+    Position& position = world.emplace<Position>(e, 1.0f, 2.0f);
+    EXPECT_FLOAT_EQ(position.y, 2.0f);  // the returned reference survives the hook
+    ASSERT_TRUE(world.has<Velocity>(e));
+    EXPECT_FLOAT_EQ(world.get<Velocity>(e).x, 5.0f);
+
+    world.remove<Position>(e);
+    EXPECT_FALSE(world.has<Velocity>(e));
+
+    // A hook destroying the entity during destroy() is fine.
+    world.onRemove<Tag>([](World& w, Entity entity) { w.destroy(entity); });
+    const Entity tagged = world.create();
+    world.emplace<Tag>(tagged);
+    world.emplace<Position>(tagged);
+    world.destroy(tagged);
+    EXPECT_FALSE(world.alive(tagged));
+    EXPECT_EQ(world.entityCount(), 1u);
+}
