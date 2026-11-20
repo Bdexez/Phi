@@ -15,6 +15,8 @@ public:
     void start(bdex::Engine& engine);
     /// Removes the bursts whose sparks have all died.
     void update(bdex::ecs::World& world);
+    /// Whether hits make sparks (bursts already flying finish).
+    bool enabled = true;
 
 private:
     static constexpr bdex::usize kMaxBursts = 32;  ///< A settling pile does not fill the screen.

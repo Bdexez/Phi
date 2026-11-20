@@ -62,7 +62,7 @@ std::string Hud::helpText(const platform::InputActions* actions) {
         {"flashlight", "flashlight"},   {"duplicate", "duplicate"},         {"delete", "delete"},
         {"debug_view", "gizmos"},       {"save_scene", "save scene"},       {"load_scene", "load scene"},
         {"screenshot", "screenshot"},   {"profile", "log profile"},         {"reload_shaders", "reload shaders"},
-        {"stats", "stats"},             {"toggle_fullscreen", "fullscreen"}, {"help", "this help"},
+        {"stats", "stats"},             {"toggle_fullscreen", "fullscreen"}, {"help", "this help"},       {"panel", "settings panel"},
         {"quit", "quit"},
     };
     std::string text;

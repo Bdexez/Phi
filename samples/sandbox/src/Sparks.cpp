@@ -14,7 +14,7 @@ void Sparks::start(Engine& engine) {
     collisions_ = engine.events().subscribe<physics::Collision>([this, &engine](const physics::Collision& event) {
         const physics::Contact& contact = event.contact;
         auto* scenes = engine.services().tryGet<scene::SceneManager>();
-        if (contact.impulse < 3.0f || bursts_.size() >= kMaxBursts || scenes == nullptr || scenes->active() == nullptr) {
+        if (!enabled || contact.impulse < 3.0f || bursts_.size() >= kMaxBursts || scenes == nullptr || scenes->active() == nullptr) {
             return;
         }
         scene::Scene& level = *scenes->active();
