@@ -286,3 +286,31 @@ TEST(Physics, RaysHitTheNearestCollider) {
     EXPECT_FALSE(raycast(world, Vec3(1.5f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f), 9.0f).has_value());
     EXPECT_FALSE(raycast(world, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)).has_value());
 }
+
+TEST(Physics, StepsReportHardContactsOnly) {
+    ecs::World world;
+    const ecs::Entity floor = addFloor(world);
+    RigidBody body;
+    body.restitution = 0.0f;
+    const ecs::Entity ball = addBall(world, Vec3(0.0f, 5.5f, 0.0f), body);  // 5 m above the floor
+
+    std::vector<Contact> contacts;
+    for (int i = 0; i < 360; ++i) {  // 3 s: falls, hits, rests
+        step(world, kStep, {}, &contacts);
+    }
+    ASSERT_EQ(contacts.size(), 1u);  // resting contacts stay below the threshold
+    const Contact& hit = contacts.front();
+    EXPECT_EQ(hit.a, ball);
+    EXPECT_EQ(hit.b, floor);
+    EXPECT_EQ(hit.normal, Vec3(0.0f, -1.0f, 0.0f));  // from the ball toward the floor
+    EXPECT_NEAR(hit.point.y, 0.0f, 0.05f);
+    // m (1 + e) v with v = sqrt(2 g h) = 9.9 m/s.
+    EXPECT_NEAR(hit.impulse, std::sqrt(2.0f * 9.81f * 5.0f), 0.3f);
+
+    // With no threshold, resting contacts are reported every step.
+    contacts.clear();
+    Settings everything;
+    everything.minimumContactImpulse = 0.0f;
+    step(world, kStep, everything, &contacts);
+    EXPECT_EQ(contacts.size(), 1u);
+}

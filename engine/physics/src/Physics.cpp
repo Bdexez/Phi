@@ -20,6 +20,7 @@ struct Sphere {
 };
 
 struct Box {
+    ecs::Entity entity;
     Vec3 min;
     Vec3 max;
 };
@@ -29,20 +30,21 @@ f32 largestScale(const Transform& transform) {
 }
 
 /// Applies the impulse separating two bodies along `normal` (from a to b),
-/// with restitution and friction. Static sides have no RigidBody.
-void resolve(RigidBody* a, RigidBody* b, const Vec3& normal) {
+/// with restitution and friction, and returns it (0 when they were already
+/// separating). Static sides have no RigidBody.
+f32 resolve(RigidBody* a, RigidBody* b, const Vec3& normal) {
     const f32 inverseA = a != nullptr && a->mass > 0.0f ? 1.0f / a->mass : 0.0f;
     const f32 inverseB = b != nullptr && b->mass > 0.0f ? 1.0f / b->mass : 0.0f;
     const f32 inverseSum = inverseA + inverseB;
     if (inverseSum <= 0.0f) {
-        return;
+        return 0.0f;
     }
     const Vec3 velocityA = a != nullptr ? a->velocity : Vec3(0.0f);
     const Vec3 velocityB = b != nullptr ? b->velocity : Vec3(0.0f);
     const Vec3 relative = velocityB - velocityA;
     const f32 approaching = glm::dot(relative, normal);
     if (approaching >= 0.0f) {
-        return;  // already separating
+        return 0.0f;  // already separating
     }
     const f32 restitution = std::min(a != nullptr ? a->restitution : 1.0f, b != nullptr ? b->restitution : 1.0f);
     const f32 impulse = -(1.0f + restitution) * approaching / inverseSum;
@@ -59,6 +61,7 @@ void resolve(RigidBody* a, RigidBody* b, const Vec3& normal) {
         if (a != nullptr) a->velocity += tangent * (tangential * inverseA);
         if (b != nullptr) b->velocity -= tangent * (tangential * inverseB);
     }
+    return impulse;
 }
 
 /// Moves spheres out of overlap: only most of the depth, which keeps
@@ -81,10 +84,15 @@ void separate(Sphere& a, Sphere* b, const Vec3& normal, f32 depth) {
 
 }  // namespace
 
-void step(ecs::World& world, f32 dt, const Settings& settings) {
+void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Contact>* contacts) {
     if (dt <= 0.0f) {
         return;
     }
+    const auto report = [&](ecs::Entity a, ecs::Entity b, const Vec3& point, const Vec3& normal, f32 impulse) {
+        if (contacts != nullptr && impulse >= settings.minimumContactImpulse && impulse > 0.0f) {
+            contacts->push_back({a, b, point, normal, impulse});
+        }
+    };
 
     // Gather: dynamic and static spheres, static boxes.
     std::vector<Sphere> spheres;
@@ -95,9 +103,9 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
         });
     std::vector<Box> boxes;
     world.view<const Transform, const BoxCollider>().exclude<RigidBody>().each(
-        [&](const Transform& transform, const BoxCollider& collider) {
+        [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
             const Vec3 half = collider.halfExtents * glm::abs(transform.scale);
-            boxes.push_back({transform.position - half, transform.position + half});
+            boxes.push_back({entity, transform.position - half, transform.position + half});
         });
 
     // Integrate (semi-implicit Euler).
@@ -200,7 +208,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
                 depth = nearest + sphere.radius;
             }
             separate(sphere, nullptr, normal, depth);
-            resolve(sphere.body, nullptr, normal);
+            report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
+                   resolve(sphere.body, nullptr, normal));
         }
     }
 
@@ -232,7 +241,13 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
             }
             const Vec3 normal = distance > 1e-6f ? offset / distance : Vec3(0.0f, 1.0f, 0.0f);
             separate(a, &b, normal, reach - distance);
-            resolve(a.body, b.body, normal);
+            const f32 impulse = resolve(a.body, b.body, normal);
+            // Reported from the dynamic body's side.
+            if (a.body != nullptr) {
+                report(a.entity, b.entity, a.center + normal * a.radius, normal, impulse);
+            } else {
+                report(b.entity, a.entity, b.center - normal * b.radius, -normal, impulse);
+            }
         }
     }
 

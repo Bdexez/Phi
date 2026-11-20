@@ -147,3 +147,39 @@ TEST(Application, StepsPhysicsInTheFixedUpdate) {
     // Semi-implicit Euler: y = -g dt^2 (1 + 2 + ... + 10) = -2 * 0.01 * 55.
     EXPECT_NEAR(dropper.height, -1.1f, 1e-4f);
 }
+
+TEST(Application, PublishesCollisions) {
+    struct Bouncer final : app::Application {
+        int collisions = 0;
+        Subscription subscription;
+        int run(std::vector<std::string> arguments) {
+            arguments.insert(arguments.begin(), "bouncer");
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null"); }
+        Result<> onStart() override {
+            ecs::World& world = scene().world();
+            const ecs::Entity floor = scene().createEntity("floor");
+            world.get<scene::Transform>(floor).position = Vec3(0.0f, -0.5f, 0.0f);
+            world.emplace<physics::BoxCollider>(floor, Vec3(10.0f, 0.5f, 10.0f));
+            const ecs::Entity ball = scene().createEntity("ball");
+            world.get<scene::Transform>(ball).position = Vec3(0.0f, 3.0f, 0.0f);
+            world.emplace<physics::SphereCollider>(ball);
+            world.emplace<physics::RigidBody>(ball).restitution = 0.0f;
+            subscription = engine().events().subscribe<physics::Collision>(
+                [this](const physics::Collision&) { ++collisions; });
+            return {};
+        }
+        void onStop() override { subscription.reset(); }
+    };
+    Bouncer bouncer;
+    EXPECT_EQ(bouncer.run({"--frames", "120", "--set", "engine.forced_delta=0.016"}), 0);
+    EXPECT_EQ(bouncer.collisions, 1);
+}

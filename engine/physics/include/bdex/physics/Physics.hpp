@@ -5,6 +5,7 @@
 #include <bdex/scene/Serialization.hpp>
 
 #include <optional>
+#include <vector>
 
 namespace bdex::physics {
 
@@ -41,6 +42,23 @@ struct BoxCollider {
 
 struct Settings {
     Vec3 gravity{0.0f, -9.81f, 0.0f};
+    /// Contacts below this impulse (N.s) are not reported. Resting bodies
+    /// collide gently every step: the default keeps them out.
+    f32 minimumContactImpulse = 0.5f;
+};
+
+/// A collision resolved during a step.
+struct Contact {
+    ecs::Entity a;  ///< A dynamic body.
+    ecs::Entity b;  ///< The other body or collider.
+    Vec3 point{0.0f};
+    Vec3 normal{0.0f};  ///< From a toward b.
+    f32 impulse = 0.0f;  ///< Exchanged along the normal (N.s): how hard it hit.
+};
+
+/// Event published by the application for each reported contact.
+struct Collision {
+    Contact contact;
 };
 
 /// Advances every RigidBody of `world` by `dt` seconds (call it from
@@ -49,7 +67,9 @@ struct Settings {
 /// with restitution and friction. Deterministic for a given world.
 ///
 /// Dynamic bodies need a SphereCollider; boxes are static.
-void step(ecs::World& world, f32 dt, const Settings& settings = {});
+/// When `contacts` is given, the collisions resolved during the step are
+/// appended to it (see Settings::minimumContactImpulse).
+void step(ecs::World& world, f32 dt, const Settings& settings = {}, std::vector<Contact>* contacts = nullptr);
 
 /// Draws bodies between their last two steps: sets the translation of each
 /// body's WorldTransform to mix(previous, current position, `alpha`), the
