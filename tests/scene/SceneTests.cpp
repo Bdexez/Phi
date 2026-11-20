@@ -468,6 +468,28 @@ TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {
     EXPECT_EQ(world.get<Name>(unknown->front()).value, "a");
 }
 
+TEST(SceneFiles, EntityIdsAreNamesNotSizes) {
+    // Hand-edited or hostile files may number entities however they like:
+    // memory must follow the entity count, not the largest id (these once
+    // asked for gigabytes, or overflowed).
+    const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    ecs::World world;
+    const auto loaded = serializers.load(world,
+                                         "[entity.4000000000]\nName.value = far\nParent.entity = 18446744073709551615\n"
+                                         "[entity.18446744073709551615]\nName.value = farther\n"
+                                         "[entity.7]\nName.value = near\nParent.entity = 4000000000\n");
+    ASSERT_TRUE(loaded.has_value()) << loaded.error().message;
+    ASSERT_EQ(loaded->size(), 3u);  // in id order
+    const ecs::Entity near = loaded->at(0);
+    const ecs::Entity far = loaded->at(1);
+    const ecs::Entity farther = loaded->at(2);
+    EXPECT_EQ(world.get<Name>(near).value, "near");
+    EXPECT_EQ(world.get<Parent>(near).entity, far);
+    EXPECT_EQ(world.get<Parent>(far).entity, farther);
+    // References to ids the file does not define are still errors.
+    EXPECT_FALSE(serializers.load(world, "[entity.3000000000]\nParent.entity = 3000000001\n").has_value());
+}
+
 TEST(SceneFiles, ApplicationsRegisterTheirComponents) {
     struct Health {
         f32 points = 100.0f;

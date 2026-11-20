@@ -28,7 +28,10 @@ public:
 private:
     friend class ComponentSerializers;
     std::map<u32, u32> fileIdOfSlot_;      ///< When saving: entity slot -> file id.
-    std::vector<ecs::Entity> entityOfId_;  ///< When loading: file id -> entity.
+    /// When loading: file id -> entity. A map, since ids are whatever the
+    /// file says: sizing an array by the largest one would let a file claim
+    /// any amount of memory.
+    std::map<usize, ecs::Entity> entityOfId_;
     const ecs::World* world_ = nullptr;
 };
 
