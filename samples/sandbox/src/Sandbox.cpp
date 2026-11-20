@@ -449,8 +449,8 @@ private:
         }
     }
 
-    /// Gizmos: the sun's direction, point light ranges, the axes of
-    /// everything drawn, and physics colliders.
+    /// Gizmos: the sun's direction, point light ranges, the axes and names
+    /// of everything drawn, and physics colliders.
     void drawDebugView() {
         auto* debug = engine().services().tryGet<render::DebugDraw>();
         if (debug == nullptr) {
@@ -469,6 +469,28 @@ private:
             [&](const render::MeshRenderer&, const scene::WorldTransform& transform) {
                 debug->axes(transform.matrix, 0.75f);
             });
+        // Names above what is drawn, facing the camera.
+        if (world.has<scene::Transform>(camera_)) {
+            const scene::Transform& eye = world.get<scene::Transform>(camera_);
+            const Vec3 right = eye.right();
+            const Vec3 up = eye.rotation * Vec3(0.0f, 1.0f, 0.0f);
+            world.view<const scene::Name, const render::MeshRenderer, const scene::WorldTransform>().each(
+                [&](ecs::Entity, const scene::Name& name, const render::MeshRenderer& mesh,
+                    const scene::WorldTransform& transform) {
+                    f32 top = 0.6f;
+                    Vec3 center(transform.matrix[3]);
+                    if (const auto bounds = renderer().meshBounds(mesh.mesh)) {
+                        const render::BoundingSphere around = render::transformSphere(*bounds, transform.matrix);
+                        center = around.center;
+                        top = around.radius + 0.15f;
+                    }
+                    constexpr f32 kHeight = 0.22f;
+                    const f32 width = render::DebugDraw::textWidth(name.value, kHeight);
+                    // Dark ink reads on both the pale sky and the checkered floor.
+                    debug->text(center + Vec3(0.0f, top, 0.0f) - right * (width * 0.5f), name.value, kHeight,
+                                Vec4(0.08f, 0.08f, 0.16f, 1.0f), right, up);
+                });
+        }
         // Colliders as physics sees them (spheres scaled by the largest
         // axis); triggers in purple.
         const auto colorOf = [&](ecs::Entity entity) {
