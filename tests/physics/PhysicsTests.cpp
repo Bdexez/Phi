@@ -232,3 +232,23 @@ TEST(Physics, InterpolationSmoothsMotionBetweenFixedSteps) {
     EXPECT_GT(frameSteps(false), 0.1f);
     EXPECT_LT(frameSteps(true), 0.01f);
 }
+
+TEST(Physics, BallsFindTheirBoxAmongMany) {
+    ecs::World world;
+    addFloor(world);
+    // A 20 x 20 field of 1 m crates, 2 m apart (top faces at y = 1).
+    for (int x = 0; x < 20; ++x) {
+        for (int z = 0; z < 20; ++z) {
+            const ecs::Entity crate = world.create();
+            world.emplace<Transform>(crate).position = Vec3(static_cast<f32>(x) * 2.0f, 0.5f, static_cast<f32>(z) * 2.0f);
+            world.emplace<BoxCollider>(crate);
+        }
+    }
+    RigidBody body;
+    body.restitution = 0.0f;
+    const ecs::Entity onCrate = addBall(world, Vec3(14.0f, 3.0f, 22.0f), body, 0.4f);   // above crate (7, 11)
+    const ecs::Entity between = addBall(world, Vec3(15.0f, 3.0f, 23.0f), body, 0.4f);   // in the gap
+    simulate(world, 3.0f);
+    EXPECT_NEAR(world.get<Transform>(onCrate).position.y, 1.4f, 0.02f);
+    EXPECT_NEAR(world.get<Transform>(between).position.y, 0.4f, 0.02f);
+}

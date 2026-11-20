@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 #include <vector>
 
 namespace bdex::physics {
@@ -109,12 +110,65 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
         }
     }
 
-    // Spheres against static boxes.
+    // Spheres against static boxes. Boxes go into a grid over the XZ plane
+    // (most worlds are wide rather than tall), except very large ones (a
+    // floor) that every sphere checks; each sphere only visits the boxes
+    // around it, in their original order so results do not depend on the
+    // grid.
+    f32 cell = 1.0f;
+    {
+        // Typical box size, ignoring the large ones that set the maximum.
+        std::vector<f32> sizes;
+        for (const Box& box : boxes) {
+            sizes.push_back(std::max(box.max.x - box.min.x, box.max.z - box.min.z));
+        }
+        if (!sizes.empty()) {
+            std::nth_element(sizes.begin(), sizes.begin() + static_cast<std::ptrdiff_t>(sizes.size() / 2), sizes.end());
+            cell = std::max(sizes[sizes.size() / 2] * 2.0f, 0.5f);
+        }
+    }
+    const auto cellOf = [cell](f32 coordinate) { return static_cast<i64>(std::floor(coordinate / cell)); };
+    const auto key = [](i64 x, i64 z) { return (static_cast<u64>(x) << 32) ^ static_cast<u64>(z & 0xffffffff); };
+    std::vector<u32> large;
+    std::unordered_map<u64, std::vector<u32>> grid;
+    for (u32 i = 0; i < boxes.size(); ++i) {
+        const Box& box = boxes[i];
+        const i64 x0 = cellOf(box.min.x);
+        const i64 x1 = cellOf(box.max.x);
+        const i64 z0 = cellOf(box.min.z);
+        const i64 z1 = cellOf(box.max.z);
+        if ((x1 - x0 + 1) * (z1 - z0 + 1) > 16) {
+            large.push_back(i);
+            continue;
+        }
+        for (i64 x = x0; x <= x1; ++x) {
+            for (i64 z = z0; z <= z1; ++z) {
+                grid[key(x, z)].push_back(i);
+            }
+        }
+    }
+
+    std::vector<u32> candidates;
     for (Sphere& sphere : spheres) {
         if (sphere.body == nullptr) {
             continue;
         }
-        for (const Box& box : boxes) {
+        // A correction moves the sphere by less than its radius: a margin of
+        // one radius keeps every box it may touch this step.
+        const f32 reach = sphere.radius * 2.0f;
+        candidates.assign(large.begin(), large.end());
+        for (i64 x = cellOf(sphere.center.x - reach); x <= cellOf(sphere.center.x + reach); ++x) {
+            for (i64 z = cellOf(sphere.center.z - reach); z <= cellOf(sphere.center.z + reach); ++z) {
+                if (const auto found = grid.find(key(x, z)); found != grid.end()) {
+                    candidates.insert(candidates.end(), found->second.begin(), found->second.end());
+                }
+            }
+        }
+        std::sort(candidates.begin(), candidates.end());
+        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+
+        for (const u32 boxIndex : candidates) {
+            const Box& box = boxes[boxIndex];
             const Vec3 closest = glm::clamp(sphere.center, box.min, box.max);
             Vec3 offset = sphere.center - closest;
             f32 distance = glm::length(offset);
