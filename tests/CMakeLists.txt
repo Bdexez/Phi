@@ -65,6 +65,9 @@ target_link_libraries(bdex_tests PRIVATE
 bdex_configure_target(bdex_tests)
 bdex_target_modules(bdex_tests test_plugin window_null rhi_null rhi_vulkan renderer_forward audio_null audio_openal)
 
+# A test that deadlocks (the job system's, say) fails after two minutes
+# rather than ctest's default 25: the slowest takes about 6 s under TSan.
 gtest_discover_tests(bdex_tests
     WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-    DISCOVERY_TIMEOUT 30)
+    DISCOVERY_TIMEOUT 30
+    PROPERTIES TIMEOUT 120)
