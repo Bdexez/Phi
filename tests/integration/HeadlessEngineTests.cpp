@@ -539,6 +539,19 @@ TEST(HeadlessEngine, ModelsBecomeEntityTreesSharingGpuResources) {
 
     render::releaseModel(test.renderer(), resources);
     EXPECT_TRUE(resources.meshes.empty());
+
+    // Uploading with names labels everything for scene files, telling
+    // apart items that share a name.
+    model.meshes.push_back(model.meshes[0]);
+    model.meshes[0].name = "box";
+    model.meshes[1].name = "box";
+    render::ResourceNames names;
+    resources = render::uploadModel(test.renderer(), model, &names, "robot");
+    EXPECT_EQ(names.mesh("robot/box#0/1"), resources.meshes[0][1]);
+    EXPECT_EQ(names.mesh("robot/box#1/0"), resources.meshes[1][0]);
+    EXPECT_EQ(names.material("robot/0"), resources.materials[0]);  // unnamed: its index
+    EXPECT_EQ(names.material("robot/default"), resources.defaultMaterial);
+    render::releaseModel(test.renderer(), resources);
 }
 
 TEST(HeadlessEngine, SilentAudioPlaysSoundsInRealTime) {

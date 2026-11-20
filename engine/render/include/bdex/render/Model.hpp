@@ -2,6 +2,7 @@
 
 #include <bdex/assets/Gltf.hpp>
 #include <bdex/render/Renderer.hpp>
+#include <bdex/render/ResourceNames.hpp>
 #include <bdex/scene/Scene.hpp>
 
 #include <string_view>
@@ -26,8 +27,11 @@ struct ModelResources {
 
 /// Creates the meshes, textures and materials of `model` (once, for any
 /// number of instances). Images that did not decode leave their materials
-/// untextured.
-[[nodiscard]] ModelResources uploadModel(IRenderer& renderer, const assets::ModelData& model);
+/// untextured. With `names`, the meshes and materials are named after
+/// `prefix` for scene files: "<prefix>/<mesh name or index>/<primitive>",
+/// "<prefix>/<material name or index>", "<prefix>/default".
+[[nodiscard]] ModelResources uploadModel(IRenderer& renderer, const assets::ModelData& model,
+                                         ResourceNames* names = nullptr, std::string_view prefix = {});
 void releaseModel(IRenderer& renderer, ModelResources& resources);
 
 /// Creates an entity per node of the model's scene under one root entity
