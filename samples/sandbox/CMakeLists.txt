@@ -1,6 +1,7 @@
 add_executable(sandbox
     src/FlyCamera.cpp
     src/Hud.cpp
+    src/Lamps.cpp
     src/Palette.cpp
     src/Sandbox.cpp
     src/SettingsPanel.cpp

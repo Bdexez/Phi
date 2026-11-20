@@ -20,6 +20,7 @@
 
 #include "FlyCamera.hpp"
 #include "Hud.hpp"
+#include "Lamps.hpp"
 #include "Palette.hpp"
 #include "SkyFeature.hpp"
 #include "Sounds.hpp"
@@ -287,11 +288,7 @@ private:
         flyCamera_.adoptFacing(world, camera_);
         platform_ = scene().find("Platform");
         // Players are not saved; the lamps' nodes are, so they sway again.
-        if (lampSway_ != nullptr) {
-            for (const ecs::Entity lamp : lampRoots()) {
-                world.emplace<animation::AnimationPlayer>(lamp, lampSway_);
-            }
-        }
+        lamps_.restartSway(world);
         // A body saved while walking would stand there, invisible.
         if (const ecs::Entity player = scene().find("Player"); world.alive(player)) {
             world.destroy(player);
@@ -629,101 +626,22 @@ private:
                                          .range = 7.0f});
         }
 
-        placeLamps();
+        if (engine().services().has<render::IRenderer>()) {
+            lamps_.placeDefault(engine().services().get<VirtualFileSystem>(), renderer(), level, palette_.names);
+        }
         log::info("sandbox", "scene ready: {} entities", world.entityCount());
-    }
-
-    /// Two lamp posts from a glTF file, each with a warm light in its
-    /// lantern. The model is uploaded once and placed twice.
-    /// Two lamp posts from a glTF file, each with a warm light in its
-    /// lantern. The model is uploaded once and placed twice.
-    void placeLamps() {
-        std::vector<scene::Transform> poses;
-        for (const f32 side : {-1.0f, 1.0f}) {
-            scene::Transform pose;
-            pose.position = Vec3(side * 4.5f, 0.0f, -2.5f);
-            // The arm reaches toward the middle of the scene.
-            pose.rotation = glm::angleAxis(side < 0.0f ? 0.0f : std::numbers::pi_v<f32>, Vec3(0.0f, 1.0f, 0.0f));
-            poses.push_back(pose);
-        }
-        placeLamps(poses);
-    }
-
-    /// Loads the lamp model (again) and places it at `poses`. A model that
-    /// does not load leaves the current one in place.
-    void placeLamps(const std::vector<scene::Transform>& poses) {
-        if (!engine().services().has<render::IRenderer>()) {
-            return;
-        }
-        const auto model = assets::loadGltf(engine().services().get<VirtualFileSystem>(), kLampModel);
-        if (!model) {
-            log::warn("sandbox", "{}", model.error().message);
-            return;
-        }
-        for (const std::string& warning : model->warnings) {
-            log::warn("sandbox", "{}", warning);
-        }
-        ecs::World& world = scene().world();
-        // Replacing: the old instances and their GPU side go first.
-        for (const ecs::Entity lamp : lampRoots()) {
-            scene::destroyHierarchy(world, lamp);
-        }
-        render::releaseModel(renderer(), lampResources_);
-        // Named "lamp/..." for scene files.
-        lampResources_ = render::uploadModel(renderer(), *model, &palette_.names, "lamp");
-        // Its lantern sways, if the file says so.
-        lampSway_ = model->animations.empty() ? nullptr
-                                              : std::make_shared<assets::ModelAnimation>(model->animations.front());
-        u32 lanternNode = 0;
-        for (u32 node = 0; node < model->nodes.size(); ++node) {
-            if (model->nodes[node].name == "Lantern") {
-                lanternNode = node;
-            }
-        }
-        for (const scene::Transform& pose : poses) {
-            const ecs::Entity lamp = render::instantiateModel(scene(), *model, lampResources_, "Lamp");
-            scene::Transform& transform = world.get<scene::Transform>(lamp);
-            transform.position = pose.position;
-            transform.rotation = pose.rotation;
-            transform.scale = pose.scale;
-            if (lampSway_ != nullptr) {
-                world.emplace<animation::AnimationPlayer>(lamp, lampSway_);
-            }
-            // The light hangs in the lantern, swaying with it.
-            ecs::Entity lantern = lamp;
-            for (const ecs::Entity part : scene::branch(world, lamp)) {
-                if (const auto* node = world.tryGet<scene::ModelNode>(part); node != nullptr && node->index == lanternNode) {
-                    lantern = part;
-                }
-            }
-            const ecs::Entity glow = scene().createEntity("Lamp light");
-            world.emplace<scene::Parent>(glow, lantern);
-            world.emplace<render::PointLight>(
-                glow, render::PointLight{.color = Vec3(1.0f, 0.75f, 0.4f), .intensity = 4.0f, .range = 6.0f});
-        }
-    }
-
-    /// The lamp instances: entities named "Lamp" (duplicates included).
-    [[nodiscard]] std::vector<ecs::Entity> lampRoots() {
-        std::vector<ecs::Entity> roots;
-        scene().world().view<const scene::Name>().each([&](ecs::Entity entity, const scene::Name& name) {
-            if (name.value == "Lamp") {
-                roots.push_back(entity);
-            }
-        });
-        return roots;
     }
 
     /// Hot reloading: the lamp model when its file changes, shaders when
     /// they are rebuilt (no need for F7).
     void setUpHotReload() {
         const auto& vfs = engine().services().get<VirtualFileSystem>();
-        for (const char* path : {kLampModel, "engine:/shaders", "app:/shaders"}) {
+        for (const char* path : {sandbox::Lamps::kModel, "engine:/shaders", "app:/shaders"}) {
             if (const auto resolved = vfs.resolve(path)) {
                 watcher_.watch(*resolved);
             }
         }
-        if (const auto lamp = vfs.resolve(kLampModel)) {
+        if (const auto lamp = vfs.resolve(sandbox::Lamps::kModel)) {
             lampFile_ = *lamp;
         }
     }
@@ -738,11 +656,7 @@ private:
         for (const std::filesystem::path& changed : watcher_.poll()) {
             if (changed == lampFile_) {
                 log::info("sandbox", "{} changed: reloading the lamps", changed.filename().string());
-                std::vector<scene::Transform> poses;
-                for (const ecs::Entity lamp : lampRoots()) {
-                    poses.push_back(scene().world().get<scene::Transform>(lamp));
-                }
-                placeLamps(poses);
+                lamps_.reload(engine().services().get<VirtualFileSystem>(), renderer(), scene(), palette_.names);
             } else if (changed.extension() == ".spv") {
                 shaders = true;
             }
@@ -769,24 +683,22 @@ private:
 
     void onStop() override {
         if (engine().services().has<render::IRenderer>()) {
-            render::releaseModel(renderer(), lampResources_);
+            lamps_.release(renderer());
         }
     }
 
     static constexpr u32 kCubeCount = sandbox::Palette::kCubeCount;
 
     sandbox::Palette palette_;
+    sandbox::Lamps lamps_;
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
     std::vector<ecs::Entity> crates_;
-    render::ModelResources lampResources_;
     ecs::Entity platform_;
     f64 platformTime_ = 0.0;  ///< Paused with the platform.
     bool platformMoving_ = true;
     static constexpr Vec3 kPlatformBase{-7.5f, 0.16f, 1.0f};
-    std::shared_ptr<const assets::ModelAnimation> lampSway_;
-    static constexpr const char* kLampModel = "app:/models/lamp.gltf";
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;
