@@ -1,10 +1,14 @@
+#include <bdex/core/Engine.hpp>
 #include <bdex/physics/Physics.hpp>
+#include <bdex/scene/Scene.hpp>
 #include <bdex/scene/Components.hpp>
 #include <bdex/scene/Serialization.hpp>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace bdex;
 using namespace bdex::physics;
@@ -166,4 +170,65 @@ TEST(Physics, SceneFilesKeepBodiesAndColliders) {
     });
     EXPECT_EQ(bodies, 1u);
     EXPECT_EQ(copy.view<const BoxCollider>().count(), 1u);
+}
+
+TEST(Physics, BodiesAreDrawnBetweenTheirLastTwoSteps) {
+    ecs::World world;
+    RigidBody body;
+    body.velocity = Vec3(10.0f, 0.0f, 0.0f);
+    body.gravityScale = 0.0f;
+    const ecs::Entity ball = addBall(world, Vec3(0.0f), body);
+    world.emplace<scene::WorldTransform>(ball);
+
+    interpolate(world, 0.5f);  // never stepped: nothing to blend yet
+    EXPECT_EQ(Vec3(world.get<scene::WorldTransform>(ball).matrix[3]), Vec3(0.0f));
+
+    step(world, 0.1f);  // x: 0 -> 1
+    for (const f32 alpha : {0.0f, 0.25f, 1.0f}) {
+        interpolate(world, alpha);
+        EXPECT_NEAR(world.get<scene::WorldTransform>(ball).matrix[3].x, alpha, 1e-5f);
+    }
+    EXPECT_FLOAT_EQ(world.get<Transform>(ball).position.x, 1.0f);  // the simulated pose is untouched
+}
+
+TEST(Physics, InterpolationSmoothsMotionBetweenFixedSteps) {
+    // Displayed x of a ball moving at a constant 10 m/s, simulated at
+    // 60 Hz and drawn at about 144 Hz, through the engine loop.
+    const auto frameSteps = [](bool interpolated) {
+        Config config;
+        config.set("engine.forced_delta", "0.0069444");
+        config.set("engine.fixed_timestep", "0.0166667");
+        Engine engine(config);
+        EXPECT_TRUE(engine.initialize().has_value());
+        ecs::World world;
+        RigidBody body;
+        body.velocity = Vec3(10.0f, 0.0f, 0.0f);
+        body.gravityScale = 0.0f;
+        const ecs::Entity ball = addBall(world, Vec3(0.0f), body);
+        world.emplace<scene::WorldTransform>(ball);
+        engine.scheduler().add(Phase::FixedUpdate, "physics",
+                               [&](const FrameTime& time) { step(world, static_cast<f32>(time.delta)); });
+        engine.scheduler().add(Phase::PostUpdate, "transforms", [&](const FrameTime& time) {
+            scene::updateWorldTransforms(world);
+            if (interpolated) {
+                interpolate(world, static_cast<f32>(time.fixedAlpha));
+            }
+        });
+        std::vector<f32> steps;
+        f32 previous = 0.0f;
+        for (int frame = 0; frame < 60; ++frame) {
+            engine.tick();
+            const f32 drawn = world.get<scene::WorldTransform>(ball).matrix[3].x;
+            if (frame > 10) {  // past the start
+                steps.push_back(drawn - previous);
+            }
+            previous = drawn;
+        }
+        const auto [smallest, largest] = std::minmax_element(steps.begin(), steps.end());
+        return *largest - *smallest;
+    };
+    // Without interpolation the ball stands still some frames and jumps a
+    // whole step on others; with it, every frame moves it about as much.
+    EXPECT_GT(frameSteps(false), 0.1f);
+    EXPECT_LT(frameSteps(true), 0.01f);
 }

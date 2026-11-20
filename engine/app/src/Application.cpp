@@ -299,9 +299,11 @@ int Application::run(int argc, char** argv) {
         100);
     scheduler.add(
         Phase::PostUpdate, "scene.world_transforms",
-        [this](const FrameTime&) {
+        [this](const FrameTime& time) {
             if (scene::Scene* active = state_->scenes->active()) {
                 scene::updateWorldTransforms(active->world(), this->engine().services().get<JobSystem>());
+                // Rigid bodies are drawn between their last two fixed steps.
+                physics::interpolate(active->world(), static_cast<f32>(time.fixedAlpha));
             }
         },
         1000);
