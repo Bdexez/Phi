@@ -6,6 +6,7 @@ bdex_add_library(core
         src/Engine.cpp
         src/EventBus.cpp
         src/FileSystem.cpp
+        src/FileWatcher.cpp
         src/JobSystem.cpp
         src/Json.cpp
         src/Log.cpp
