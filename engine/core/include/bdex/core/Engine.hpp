@@ -8,7 +8,9 @@
 #include <bdex/core/ServiceRegistry.hpp>
 #include <bdex/core/Time.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace bdex {
 
@@ -66,6 +68,12 @@ public:
     bool tick();
 
     void requestExit() { exitRequested_ = true; }
+
+    /// Game time runs at this multiple of real time: 0.25 for slow motion,
+    /// 0 pauses (fixed steps stop, FrameTime::delta is 0); FrameTime's
+    /// unscaledDelta keeps real time. Starts from engine.time_scale (1).
+    void setTimeScale(f64 scale) { timeScale_ = std::isfinite(scale) ? std::clamp(scale, 0.0, 100.0) : 1.0; }
+    [[nodiscard]] f64 timeScale() const { return timeScale_; }
     [[nodiscard]] bool exitRequested() const { return exitRequested_; }
 
     /// Shuts modules down, then releases tasks, events, services and plugin
@@ -91,6 +99,7 @@ private:
     f64 fixedAccumulator_ = 0.0;
     f64 fixedElapsed_ = 0.0;
     f64 forcedDelta_ = 0.0;
+    f64 timeScale_ = 1.0;
     u64 maxFrames_ = 0;
     u32 maxFixedSteps_ = 8;
     Clock::duration minFrameTime_{0};
