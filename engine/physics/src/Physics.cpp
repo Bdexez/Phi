@@ -1,5 +1,6 @@
 #include <bdex/physics/Physics.hpp>
 
+#include "BoxDynamics.hpp"
 #include "Geometry.hpp"
 
 #include <bdex/scene/Components.hpp>
@@ -359,6 +360,15 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             }
         }
     }
+
+    // Dynamic boxes, against the same static boxes and spheres.
+    std::vector<SphereShape> staticSpheres;
+    for (const Sphere& sphere : spheres) {
+        if (sphere.body == nullptr) {
+            staticSpheres.push_back({sphere.entity, sphere.center, sphere.radius});
+        }
+    }
+    stepBoxes(world, dt, settings, boxes, staticSpheres, contacts);
 
     // Triggers: which bodies overlap each zone now, compared with before.
     world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {

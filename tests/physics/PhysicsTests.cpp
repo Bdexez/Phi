@@ -705,3 +705,160 @@ TEST(CharacterMovement, BumpsIntoBallsAndPassesTriggers) {
     EXPECT_TRUE(result.blocked);
     EXPECT_NEAR(world.get<Transform>(hero).position.x, 2.0f, 0.01f);  // touching the ball, through the zone
 }
+
+namespace {
+
+ecs::Entity addCrate(ecs::World& world, const Vec3& position, const RigidBody& body = {},
+                     const Quat& rotation = Quat(1, 0, 0, 0), const Vec3& half = Vec3(0.5f)) {
+    const ecs::Entity crate = world.create();
+    Transform& pose = world.emplace<Transform>(crate);
+    pose.position = position;
+    pose.rotation = rotation;
+    world.emplace<BoxCollider>(crate, half);
+    world.emplace<RigidBody>(crate, body);
+    return crate;
+}
+
+/// How closely one of the crate's axes points up (1: lying on a face).
+f32 flatness(const Quat& rotation) {
+    f32 best = 0.0f;
+    for (int axis = 0; axis < 3; ++axis) {
+        Vec3 direction(0.0f);
+        direction[axis] = 1.0f;
+        best = std::max(best, std::abs(glm::dot(rotation * direction, Vec3(0.0f, 1.0f, 0.0f))));
+    }
+    return best;
+}
+
+}  // namespace
+
+TEST(BoxDynamics, CratesLandAndSettleOnAFace) {
+    ecs::World world;
+    const ecs::Entity floor = addFloor(world);
+    RigidBody body;
+    body.restitution = 0.2f;
+    const ecs::Entity flat = addCrate(world, Vec3(-3.0f, 3.0f, 0.0f), body);
+    // Dropped on a corner, it tumbles onto a face.
+    const Quat tilted = glm::angleAxis(0.6f, glm::normalize(Vec3(1.0f, 0.0f, 0.7f)));
+    const ecs::Entity tumbling = addCrate(world, Vec3(3.0f, 2.0f, 0.0f), body, tilted);
+
+    std::vector<Contact> contacts;
+    for (int i = 0; i < static_cast<int>(4.0f / kStep); ++i) {
+        step(world, kStep, {}, &contacts);
+    }
+    for (const ecs::Entity crate : {flat, tumbling}) {
+        const Transform& pose = world.get<Transform>(crate);
+        EXPECT_NEAR(pose.position.y, 0.5f, 0.02f);
+        EXPECT_GT(flatness(pose.rotation), 0.995f);
+        EXPECT_LT(glm::length(world.get<RigidBody>(crate).velocity), 0.05f);
+    }
+    EXPECT_TRUE(world.get<RigidBody>(flat).asleep);  // at rest, it sleeps
+    // Its landing was reported, against the floor, pushing down into it.
+    ASSERT_FALSE(contacts.empty());
+    EXPECT_EQ(contacts.front().b, floor);
+    EXPECT_NEAR(contacts.front().normal.y, -1.0f, 0.05f);
+}
+
+TEST(BoxDynamics, FrictionHoldsCratesOnGentleSlopesOnly) {
+    // A crate laid on a ramp: it grips at 15 degrees with a rough surface,
+    // slides down 35 degrees with a slick one.
+    for (const auto& [degrees, friction, shouldSlide] :
+         {std::tuple{15.0f, 0.9f, false}, std::tuple{35.0f, 0.1f, true}}) {
+        ecs::World world;
+        const Quat tilt = glm::angleAxis(glm::radians(degrees), Vec3(0.0f, 0.0f, 1.0f));
+        const ecs::Entity ramp = world.create();
+        world.emplace<Transform>(ramp).rotation = tilt;
+        world.emplace<BoxCollider>(ramp, Vec3(10.0f, 0.5f, 3.0f));
+        const Vec3 up = tilt * Vec3(0.0f, 1.0f, 0.0f);
+        RigidBody body;
+        body.friction = friction;
+        body.restitution = 0.0f;
+        const Vec3 start = up * 1.005f;  // resting on the surface
+        const ecs::Entity crate = addCrate(world, start, body, tilt);
+        for (int i = 0; i < static_cast<int>(2.0f / kStep); ++i) {
+            step(world, kStep);
+        }
+        const f32 moved = glm::length(world.get<Transform>(crate).position - start);
+        if (shouldSlide) {
+            EXPECT_GT(moved, 1.0f) << degrees;
+        } else {
+            EXPECT_LT(moved, 0.05f) << degrees;
+        }
+        EXPECT_GT(glm::dot(world.get<Transform>(crate).rotation * Vec3(0.0f, 1.0f, 0.0f), up), 0.99f) << degrees;
+    }
+}
+
+TEST(BoxDynamics, SpinsFreelyAndBounces) {
+    // In free fall a cube keeps its spin and turns by it.
+    ecs::World world;
+    RigidBody spinning;
+    spinning.gravityScale = 0.0f;
+    spinning.angularVelocity = Vec3(0.0f, 2.0f, 0.0f);
+    const ecs::Entity cube = addCrate(world, Vec3(0.0f, 10.0f, 0.0f), spinning);
+    simulate(world, 1.0f);
+    EXPECT_NEAR(world.get<RigidBody>(cube).angularVelocity.y, 2.0f, 1e-4f);
+    EXPECT_NEAR(glm::angle(world.get<Transform>(cube).rotation), 2.0f, 0.02f);
+
+    // A bouncy crate dropped flat comes back up.
+    ecs::World bouncing;
+    addFloor(bouncing);
+    RigidBody rubber;
+    rubber.restitution = 0.8f;
+    const ecs::Entity crate = addCrate(bouncing, Vec3(0.0f, 2.5f, 0.0f), rubber);
+    f32 highest = 0.0f;
+    bool landed = false;
+    for (int i = 0; i < static_cast<int>(2.0f / kStep); ++i) {
+        step(bouncing, kStep);
+        const f32 y = bouncing.get<Transform>(crate).position.y;
+        landed |= y < 0.55f;
+        if (landed) {
+            highest = std::max(highest, y);
+        }
+    }
+    EXPECT_GT(highest, 1.5f);  // fell 2 m, rose over 1 m back
+}
+
+TEST(BoxDynamics, CratesRollOffStaticSpheres) {
+    ecs::World world;
+    addFloor(world);
+    const ecs::Entity boulder = world.create();
+    world.emplace<Transform>(boulder).position = Vec3(0.0f, 1.0f, 0.0f);
+    world.emplace<SphereCollider>(boulder, 1.0f);  // static
+    // Dropped slightly off its top: the crate lands on the boulder, tips
+    // off it and comes to rest on the floor beside it.
+    const ecs::Entity crate = addCrate(world, Vec3(0.4f, 3.5f, 0.0f), RigidBody{}, Quat(1, 0, 0, 0), Vec3(0.3f));
+    f32 lowestOverBoulder = 1e9f;
+    for (int i = 0; i < static_cast<int>(4.0f / kStep); ++i) {
+        step(world, kStep);
+        const Vec3 position = world.get<Transform>(crate).position;
+        if (std::abs(position.x) < 0.5f) {
+            lowestOverBoulder = std::min(lowestOverBoulder, position.y);
+        }
+    }
+    EXPECT_GT(lowestOverBoulder, 1.9f);  // never sank into the boulder
+    const Vec3 rest = world.get<Transform>(crate).position;
+    EXPECT_NEAR(rest.y, 0.3f, 0.02f);
+    EXPECT_GT(rest.x, 0.8f);  // fell off to the side it leaned toward
+}
+
+TEST(BoxDynamics, FastCratesDoNotFallThroughThinFloors) {
+    // A floor 2 cm thick, as the sandbox's: a crate falling at 15 m/s
+    // moves 12 cm per step.
+    ecs::World world;
+    const ecs::Entity floor = world.create();
+    world.emplace<Transform>(floor);
+    world.emplace<BoxCollider>(floor, Vec3(20.0f, 0.01f, 20.0f));
+    RigidBody body;
+    body.velocity = Vec3(2.0f, -15.0f, 0.0f);
+    body.angularVelocity = Vec3(3.0f, 0.0f, 5.0f);
+    body.restitution = 0.0f;
+    const ecs::Entity crate = addCrate(world, Vec3(0.0f, 3.0f, 0.0f), body, Quat(1, 0, 0, 0), Vec3(0.35f));
+    f32 lowest = 1e9f;
+    for (int i = 0; i < static_cast<int>(3.0f / kStep); ++i) {
+        step(world, kStep);
+        lowest = std::min(lowest, world.get<Transform>(crate).position.y);
+    }
+    EXPECT_GT(lowest, 0.2f);
+    EXPECT_NEAR(world.get<Transform>(crate).position.y, 0.01f + 0.35f, 0.02f);
+    EXPECT_GT(flatness(world.get<Transform>(crate).rotation), 0.995f);
+}

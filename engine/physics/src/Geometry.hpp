@@ -121,6 +121,13 @@ inline std::optional<Penetration> sphereBoxContact(const Box& box, const Vec3& c
     return Penetration{box.rotation * normal, nearest + radius};
 }
 
+/// A static sphere collider, as boxes meet it.
+struct SphereShape {
+    ecs::Entity entity;
+    Vec3 center;
+    f32 radius;
+};
+
 inline f32 largestScale(const Transform& transform) {
     return std::max({std::abs(transform.scale.x), std::abs(transform.scale.y), std::abs(transform.scale.z)});
 }
