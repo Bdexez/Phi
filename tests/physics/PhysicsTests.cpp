@@ -494,3 +494,49 @@ TEST(Physics, RestingBodiesSleepUntilHit) {
     EXPECT_FALSE(world.get<RigidBody>(top).asleep);
     EXPECT_GT(world.get<RigidBody>(top).velocity.y, 2.0f);
 }
+
+TEST(Physics, FastBallsDoNotTunnelThroughThinWalls) {
+    for (const f32 speed : {30.0f, 200.0f}) {
+        ecs::World world;
+        const ecs::Entity wall = world.create();
+        world.emplace<Transform>(wall).position = Vec3(5.0f, 0.0f, 0.0f);
+        world.emplace<BoxCollider>(wall, Vec3(0.05f, 3.0f, 3.0f));  // 10 cm thick
+        RigidBody body;
+        body.velocity = Vec3(speed, 0.0f, 0.0f);
+        body.gravityScale = 0.0f;
+        body.restitution = 0.5f;
+        const ecs::Entity ball = addBall(world, Vec3(0.0f), body, 0.1f);
+        std::vector<Contact> contacts;
+        for (int i = 0; i < 30; ++i) {
+            step(world, kStep, {}, &contacts);
+        }
+        EXPECT_LT(world.get<Transform>(ball).position.x, 5.0f) << speed;
+        EXPECT_LT(world.get<RigidBody>(ball).velocity.x, 0.0f) << speed;  // bounced back
+        ASSERT_FALSE(contacts.empty()) << speed;
+        EXPECT_EQ(contacts.front().b, wall);
+        EXPECT_NEAR(contacts.front().point.x, 4.95f, 0.02f) << speed;  // on the near face
+    }
+
+    // Paths that start in contact or only graze a box keep going.
+    ecs::World world;
+    addFloor(world);
+    const ecs::Entity post = world.create();
+    world.emplace<Transform>(post).position = Vec3(5.0f, 1.0f, 1.0f);  // grown, entered mid-step
+    world.emplace<BoxCollider>(post, Vec3(0.5f));
+    RigidBody fast;
+    fast.velocity = Vec3(40.0f, 0.0f, 0.0f);
+    fast.friction = 0.0f;
+    // Slides along the floor, well clear of the post.
+    const ecs::Entity skimmer = addBall(world, Vec3(0.0f, 0.5f, -5.0f), fast, 0.5f);
+    // Runs along the post's top front edge (y 1.5, z 0.5), 0.45 m off on
+    // both axes: inside the post grown by the radius, yet 0.64 m from it.
+    fast.gravityScale = 0.0f;
+    const ecs::Entity grazer = addBall(world, Vec3(0.0f, 1.95f, 0.05f), fast, 0.5f);
+    for (int i = 0; i < 30; ++i) {
+        step(world, kStep);
+    }
+    for (const ecs::Entity ball : {skimmer, grazer}) {
+        EXPECT_NEAR(world.get<Transform>(ball).position.x, 40.0f * 30.0f * kStep, 0.01f);
+        EXPECT_FLOAT_EQ(world.get<RigidBody>(ball).velocity.x, 40.0f);
+    }
+}
