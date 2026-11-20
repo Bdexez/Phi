@@ -11,7 +11,8 @@ namespace bdex::physics {
 
 // --- Components -----------------------------------------------------------------
 // Bodies live in world space: their entity's Transform is their pose, so
-// they must not have a Parent. Rotation is not simulated.
+// they must not have a Parent. Bodies do not rotate; boxes are posed by
+// their Transform's rotation.
 
 /// Makes an entity with a collider move under gravity and collisions.
 struct RigidBody {
@@ -34,8 +35,8 @@ struct SphereCollider {
     f32 radius = 0.5f;
 };
 
-/// Axis-aligned box centered on the entity, scaled by its Transform (its
-/// rotation is ignored). Without a RigidBody it is static: floors, walls...
+/// Box centered on the entity, oriented and scaled by its Transform. Without
+/// a RigidBody it is static: floors, walls, ramps...
 struct BoxCollider {
     Vec3 halfExtents{0.5f};
 };
@@ -78,8 +79,8 @@ struct Collision {
 
 /// Advances every RigidBody of `world` by `dt` seconds (call it from
 /// FixedUpdate with the fixed step): gravity, then collisions of dynamic
-/// spheres with each other and with every box and static sphere, resolved
-/// with restitution and friction. Deterministic for a given world.
+/// spheres with each other and with every (oriented) box and static sphere,
+/// resolved with restitution and friction. Deterministic for a given world.
 ///
 /// Dynamic bodies need a SphereCollider; boxes are static.
 /// When `contacts` is given, the collisions resolved during the step are

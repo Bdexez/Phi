@@ -363,3 +363,52 @@ TEST(Physics, TriggersReportBodiesPassingThrough) {
     ASSERT_EQ(events.size(), 1u);
     EXPECT_FALSE(events[0].entered);
 }
+
+TEST(Physics, BoxesFollowTheirRotation) {
+    ecs::World world;
+    // A 30 degree ramp going down toward +X.
+    const f32 tilt = glm::radians(30.0f);
+    const ecs::Entity ramp = world.create();
+    const Quat rampRotation = glm::angleAxis(-tilt, Vec3(0.0f, 0.0f, 1.0f));
+    world.emplace<Transform>(ramp).rotation = rampRotation;  // (references die as pools grow)
+    world.emplace<BoxCollider>(ramp, Vec3(5.0f, 0.1f, 2.0f));
+
+    RigidBody body;
+    body.restitution = 0.0f;
+    body.friction = 0.1f;
+    const ecs::Entity ball = addBall(world, Vec3(-2.0f, 2.5f, 0.0f), body, 0.3f);
+    simulate(world, 0.8f);
+    // It landed on the slope and slides down it, along the surface.
+    const Vec3 velocity = world.get<RigidBody>(ball).velocity;
+    EXPECT_GT(velocity.x, 0.5f);
+    EXPECT_LT(velocity.y, 0.0f);
+    const Vec3 slope(std::cos(tilt), -std::sin(tilt), 0.0f);
+    EXPECT_NEAR(glm::dot(glm::normalize(velocity), slope), 1.0f, 0.02f);
+    // Resting on the surface: its distance to the ramp's plane is its radius.
+    const Vec3 up = rampRotation * Vec3(0.0f, 1.0f, 0.0f);
+    EXPECT_NEAR(glm::dot(world.get<Transform>(ball).position, up), 0.1f + 0.3f, 0.02f);
+
+    // Rays meet the tilted top face, with its tilted normal.
+    const auto hit = raycast(world, Vec3(0.0f, 5.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f));
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->entity, ramp);
+    EXPECT_NEAR(glm::dot(hit->normal, up), 1.0f, 1e-4f);
+    EXPECT_NEAR(hit->point.y, 0.1f / std::cos(tilt), 1e-3f);
+
+    // A rotated trigger covers its rotated volume, not the unrotated one.
+    const ecs::Entity zone = world.create();
+    Transform& zonePose = world.emplace<Transform>(zone);
+    zonePose.position = Vec3(0.0f, 20.0f, 0.0f);
+    zonePose.rotation = glm::angleAxis(glm::radians(90.0f), Vec3(0.0f, 0.0f, 1.0f));  // long along Y now
+    // (zonePose is not used past this point: pools may move on emplace.)
+    world.emplace<BoxCollider>(zone, Vec3(3.0f, 0.5f, 0.5f));
+    world.emplace<Trigger>(zone);
+    RigidBody floating;
+    floating.gravityScale = 0.0f;
+    const ecs::Entity insideRotated = addBall(world, Vec3(0.0f, 22.5f, 0.0f), floating, 0.1f);
+    const ecs::Entity insideUnrotated = addBall(world, Vec3(2.5f, 20.0f, 0.0f), floating, 0.1f);
+    step(world, kStep);
+    const std::vector<ecs::Entity>& inside = world.get<Trigger>(zone).inside;
+    EXPECT_NE(std::find(inside.begin(), inside.end(), insideRotated), inside.end());
+    EXPECT_EQ(std::find(inside.begin(), inside.end(), insideUnrotated), inside.end());
+}
