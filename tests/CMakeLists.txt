@@ -13,6 +13,7 @@ bdex_add_module(test_plugin
 target_include_directories(bdex_module_test_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(bdex_tests
+    app/ApplicationTests.cpp
     core/ConfigTests.cpp
     core/EngineTests.cpp
     core/EventBusTests.cpp
@@ -41,6 +42,7 @@ target_link_libraries(bdex_tests PRIVATE
     bdex::assets
     bdex::scene
     bdex::render
+    bdex::app
     GTest::gtest
     GTest::gtest_main)
 bdex_configure_target(bdex_tests)
