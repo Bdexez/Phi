@@ -62,6 +62,11 @@ if(BDEX_MODULE_AUDIO_OPENAL)
     endif()
 endif()
 
+# Before the samples, which register smoke runs of their own.
+if(BDEX_BUILD_TESTS)
+    enable_testing()
+endif()
+
 add_subdirectory(engine)
 add_subdirectory(modules)
 
@@ -70,6 +75,5 @@ if(BDEX_BUILD_SAMPLES)
 endif()
 
 if(BDEX_BUILD_TESTS)
-    enable_testing()
     add_subdirectory(tests)
 endif()

@@ -39,3 +39,22 @@ configure_file(models/lamp.gltf ${BDEX_ASSET_OUTPUT_DIR}/sandbox/models/lamp.glt
 # Default configuration, picked up next to the executable.
 # (with the audio module this build has).
 configure_file(sandbox.ini ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/sandbox.ini @ONLY)
+
+if(BDEX_BUILD_TESTS)
+    # Smoke run: five seconds of the demo (throws, impacts, sparks, trails,
+    # sounds) headless, with the null device so it runs anywhere, sanitizers
+    # included. It passes on the demo's closing line, which counts at least
+    # ten throws and which a crash never reaches. A pass expression makes
+    # ctest ignore the exit code, and leaks are reported after that line, so
+    # sanitizer reports fail it explicitly.
+    add_test(NAME sandbox.demo
+        COMMAND sandbox --headless --frames 300
+                --set engine.forced_delta=0.0167
+                --set sandbox.demo=true
+                --set engine.modules=window_null,rhi_null,renderer_forward,audio_null
+                --set log.level=info
+        WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+    set_tests_properties(sandbox.demo PROPERTIES
+        PASS_REGULAR_EXPRESSION "demo: [1-9][0-9]+ throws"
+        FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
+endif()
