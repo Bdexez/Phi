@@ -647,3 +647,46 @@ TEST(Hierarchy, ReparentingRejectsCyclesAndCanKeepTheWorldPose) {
     EXPECT_FALSE(world.has<Parent>(hand));
     expectNear(worldPosition(world, hand), before);
 }
+
+TEST(Hierarchy, CloningCopiesAWholeBranch) {
+    Scene scene("test");
+    ecs::World& world = scene.world();
+    const ecs::Entity room = scene.createEntity("room");
+    const ecs::Entity table = scene.createEntity("table");
+    const ecs::Entity leg = scene.createEntity("leg");
+    const ecs::Entity lamp = scene.createEntity("lamp");
+    ASSERT_TRUE(setParent(world, table, room).has_value());
+    ASSERT_TRUE(setParent(world, leg, table).has_value());
+    ASSERT_TRUE(setParent(world, lamp, table).has_value());
+    world.get<Transform>(table).position = Vec3(1.0f, 0.0f, 0.0f);
+    world.get<Transform>(leg).position = Vec3(0.0f, -0.5f, 0.0f);
+
+    const ecs::Entity copy = cloneHierarchy(world, table);
+    ASSERT_TRUE(world.alive(copy));
+    EXPECT_EQ(world.entityCount(), 7u);
+    // The copy sits beside the original, its children under the copy.
+    EXPECT_EQ(world.get<Parent>(copy).entity, room);
+    const std::vector<ecs::Entity> copiedChildren = children(world, copy);
+    ASSERT_EQ(copiedChildren.size(), 2u);
+    for (const ecs::Entity child : copiedChildren) {
+        EXPECT_NE(child, leg);
+        EXPECT_NE(child, lamp);
+    }
+    EXPECT_EQ(children(world, table), (std::vector<ecs::Entity>{leg, lamp}));
+    EXPECT_EQ(children(world, room).size(), 2u);
+
+    // Moving the copy moves its own children only.
+    world.get<Transform>(copy).position = Vec3(5.0f, 0.0f, 0.0f);
+    updateWorldTransforms(world);
+    expectNear(worldPosition(world, leg), Vec3(1.0f, -0.5f, 0.0f));
+    bool movedLeg = false;
+    for (const ecs::Entity child : copiedChildren) {
+        movedLeg |= glm::all(glm::epsilonEqual(worldPosition(world, child), Vec3(5.0f, -0.5f, 0.0f), 1e-5f));
+    }
+    EXPECT_TRUE(movedLeg);
+
+    // Destroying the copy leaves the original alone.
+    EXPECT_EQ(destroyHierarchy(world, copy), 3u);
+    EXPECT_EQ(children(world, table).size(), 2u);
+    EXPECT_FALSE(world.alive(cloneHierarchy(world, copy)));
+}

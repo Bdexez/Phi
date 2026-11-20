@@ -106,14 +106,14 @@ std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
     return found;
 }
 
-usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
-    if (!world.alive(root)) {
-        return 0;
-    }
+namespace {
 
-    // Children of each entity, gathered in one pass over the Parent links.
-    std::vector<ecs::Entity> doomed = {root};
+/// `root` and every entity below it through Parent links, breadth-first, so
+/// parents come before their children.
+std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
+    std::vector<ecs::Entity> found = {root};
     if (const auto* parents = world.storage<Parent>(); parents != nullptr) {
+        // Children of each entity, gathered in one pass over the Parent links.
         std::unordered_map<u32, std::vector<ecs::Entity>> children;
         for (const u32 index : parents->entities()) {
             const ecs::Entity parent = parents->get(index).entity;
@@ -121,20 +121,48 @@ usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
                 children[parent.index].push_back(world.entityAt(index));
             }
         }
-        // Breadth-first; the set guards against cycles.
+        // The set guards against cycles.
         std::unordered_set<u32> seen = {root.index};
-        for (usize i = 0; i < doomed.size(); ++i) {
-            const auto found = children.find(doomed[i].index);
-            if (found == children.end()) {
+        for (usize i = 0; i < found.size(); ++i) {
+            const auto it = children.find(found[i].index);
+            if (it == children.end()) {
                 continue;
             }
-            for (const ecs::Entity child : found->second) {
+            for (const ecs::Entity child : it->second) {
                 if (seen.insert(child.index).second) {
-                    doomed.push_back(child);
+                    found.push_back(child);
                 }
             }
         }
     }
+    return found;
+}
+
+}  // namespace
+
+ecs::Entity cloneHierarchy(ecs::World& world, ecs::Entity root) {
+    if (!world.alive(root)) {
+        return {};
+    }
+    const std::vector<ecs::Entity> originals = branch(world, root);
+    std::unordered_map<u32, ecs::Entity> copies;  // original slot -> copy
+    for (const ecs::Entity original : originals) {
+        const ecs::Entity copy = world.clone(original);
+        copies[original.index] = copy;
+        // Below the root, attach to the copy of the parent; the root's copy
+        // stays where the root is (a sibling under the same parent).
+        if (original != root) {
+            world.emplace<Parent>(copy, copies.at(world.get<Parent>(original).entity.index));
+        }
+    }
+    return copies.at(root.index);
+}
+
+usize destroyHierarchy(ecs::World& world, ecs::Entity root) {
+    if (!world.alive(root)) {
+        return 0;
+    }
+    const std::vector<ecs::Entity> doomed = branch(world, root);
 
     for (const ecs::Entity entity : doomed) {
         world.destroy(entity);
