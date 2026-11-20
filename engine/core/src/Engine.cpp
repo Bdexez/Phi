@@ -1,5 +1,7 @@
 #include <bdex/core/Engine.hpp>
 
+#include <bdex/core/JobSystem.hpp>
+
 #include <bdex/core/Log.hpp>
 
 #include <algorithm>
@@ -100,6 +102,14 @@ bool Engine::tick() {
         exitRequested_ = true;
     }
     return !exitRequested_;
+}
+
+void Engine::setTrace(TraceRecorder* trace) {
+    trace_ = trace;
+    scheduler_.setTrace(trace);
+    if (auto* jobs = services_.tryGet<JobSystem>()) {
+        jobs->setTrace(trace);  // their work too, on their own rows
+    }
 }
 
 void Engine::shutdown() {
