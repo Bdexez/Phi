@@ -15,6 +15,7 @@
 // shaders, F8 to throw a ball, F11 for fullscreen, Escape to quit. A gamepad works too: sticks to
 // move and look, bumpers up / down, right trigger to go faster.
 
+#include "FlyCamera.hpp"
 #include "SkyFeature.hpp"
 
 #include <bdex/app/Application.hpp>
@@ -116,7 +117,9 @@ protected:
     }
 
     void onUpdate(const FrameTime& time) override {
-        updateCamera(static_cast<f32>(time.delta));
+        if (const auto* controls = actions(); controls != nullptr && input() != nullptr) {
+            flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
+        }
         updateTitle(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
@@ -265,12 +268,7 @@ private:
         }
         camera_ = scene().find("Camera");
         selected_ = {};
-        if (world.has<scene::Transform>(camera_)) {
-            // Recover yaw and pitch from the camera's facing.
-            const Vec3 forward = world.get<scene::Transform>(camera_).forward();
-            cameraYaw_ = std::atan2(-forward.x, -forward.z);
-            cameraPitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
-        }
+        flyCamera_.adoptFacing(world, camera_);
         log::info("sandbox", "scene loaded from {} ({} entities)", kSceneFile, world.entityCount());
     }
 
@@ -510,8 +508,7 @@ private:
         camera_ = level.createEntity("Camera");
         world.emplace<render::Camera>(camera_);
         world.get<scene::Transform>(camera_).position = Vec3(0.0f, 3.2f, 9.5f);
-        cameraPitch_ = -0.26f;
-        applyCameraRotation();
+        flyCamera_.attach(world, camera_, 0.0f, -0.26f);
 
         // Ground
         const ecs::Entity ground = level.createEntity("Ground");
@@ -576,52 +573,6 @@ private:
         log::info("sandbox", "scene ready: {} entities", world.entityCount());
     }
 
-    void applyCameraRotation() {
-        scene().world().get<scene::Transform>(camera_).rotation =
-            glm::angleAxis(cameraYaw_, Vec3(0.0f, 1.0f, 0.0f)) *
-            glm::angleAxis(cameraPitch_, Vec3(1.0f, 0.0f, 0.0f));
-    }
-
-    void updateCamera(f32 deltaSeconds) {
-        const platform::InputActions* controls = actions();
-        const platform::InputState* pointer = input();
-        if (controls == nullptr || pointer == nullptr) {
-            return;
-        }
-
-        // Mouse look while the look button is held.
-        const bool looking = controls->down("look");
-        if (looking != looking_) {
-            looking_ = looking;
-            if (platform::IWindow* target = window()) {
-                target->setCursorCaptured(looking);
-            }
-        }
-        // Mouse look while the button is held, or the right stick (radians
-        // per second at full tilt).
-        Vec2 turn = looking_ ? pointer->mouseDelta() * 0.0025f : Vec2(0.0f);
-        turn += Vec2(controls->value("look_right") - controls->value("look_left"),
-                     controls->value("look_down") - controls->value("look_up")) *
-                (2.5f * deltaSeconds);
-        if (turn != Vec2(0.0f)) {
-            const f32 limit = std::numbers::pi_v<f32> * 0.49f;
-            cameraYaw_ -= turn.x;
-            cameraPitch_ = std::clamp(cameraPitch_ - turn.y, -limit, limit);
-            applyCameraRotation();
-        }
-
-        scene::Transform& transform = scene().world().get<scene::Transform>(camera_);
-        Vec3 direction(0.0f);
-        // Analog: a stick pushed halfway moves at half speed.
-        direction += transform.forward() * (controls->value("move_forward") - controls->value("move_back"));
-        direction += transform.right() * (controls->value("move_right") - controls->value("move_left"));
-        direction.y += controls->value("move_up") - controls->value("move_down");
-        if (const f32 length = glm::length(direction); length > 0.0f) {
-            const f32 speed = glm::mix(5.0f, 14.0f, controls->value("move_fast"));
-            transform.position += direction / std::max(length, 1.0f) * speed * deltaSeconds;
-        }
-    }
-
     void updateTitle(const FrameTime& time) {
         ++framesSinceTitle_;
         secondsSinceTitle_ += time.delta;
@@ -655,9 +606,7 @@ private:
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
     ecs::Entity camera_;
-    f32 cameraYaw_ = 0.0f;
-    f32 cameraPitch_ = 0.0f;
-    bool looking_ = false;
+    sandbox::FlyCamera flyCamera_;
 
     u32 framesSinceTitle_ = 0;
     f64 secondsSinceTitle_ = 0.0;
