@@ -140,6 +140,16 @@ void DebugDraw::screenLine(const Vec2& from, const Vec2& to, const Vec4& color) 
     overlay_.push_back({Vec3(to, 0.0f), color});
 }
 
+void DebugDraw::screenRect(const Vec2& min, const Vec2& max, const Vec4& color) {
+    const Vec3 a(min.x, min.y, 0.0f);
+    const Vec3 b(max.x, min.y, 0.0f);
+    const Vec3 c(max.x, max.y, 0.0f);
+    const Vec3 d(min.x, max.y, 0.0f);
+    for (const Vec3& corner : {a, b, c, a, c, d}) {
+        overlayTriangles_.push_back({corner, color});
+    }
+}
+
 void DebugDraw::screenText(const Vec2& position, std::string_view text, f32 height, const Vec4& color) {
     // Pixel rows grow downward: letters stand toward -y.
     writeText(overlay_, Vec3(position.x, position.y + height, 0.0f), text, height, color, Vec3(1.0f, 0.0f, 0.0f),

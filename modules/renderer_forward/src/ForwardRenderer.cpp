@@ -737,7 +737,7 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
         }
         // Overlay lines last, on the finished image.
         if (const auto* debug = engine_.services().tryGet<render::DebugDraw>()) {
-            overlay_.upload(device_, debug->overlayVertices());
+            overlay_.upload(device_, debug->overlayTriangles(), debug->overlayVertices());
             overlay_.draw(commands, target, extent_);
             if (extraCapture) {
                 overlay_.draw(commands, captureTarget_, extent_);

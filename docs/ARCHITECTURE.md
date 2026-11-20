@@ -257,7 +257,7 @@ Window modules publish keyboard, mouse, and gamepad events; `platform::InputStat
 
 ## Tools
 
-- `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, frusta, and text in a stroke font (`text`, facing any direction, for labels in the world) drawn for one frame; `screenLine` and `screenText` draw in pixels on the finished image, after tone mapping and FXAA, crisp and never hidden, for heads-up debug panels.
+- `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, frusta, and text in a stroke font (`text`, facing any direction, for labels in the world) drawn for one frame; `screenLine`, `screenText` and `screenRect` (filled, under the lines and text) draw in pixels on the finished image, after tone mapping and FXAA, crisp and never hidden, for heads-up debug panels.
 - `render::rayThroughPixel` and `render::intersect`, with `IRenderer::meshBounds`, for picking.
 - `Scheduler::taskStats()`: CPU time of every task; the `benchmark` sample prints it for a reproducible scene.
 - `TraceRecorder` (`Engine::setTrace`, or `--trace <file>` / `app.trace`): every frame, phase and task as a timed span, written in the Chrome trace event format for ui.perfetto.dev or chrome://tracing. Spans nest by time (frame, phase, task), so a slow frame among many shows which task made it slow. Recording is bounded (two million spans by default).

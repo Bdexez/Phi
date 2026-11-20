@@ -1398,6 +1398,8 @@ TEST(VulkanHeadless, OverlayLinesLandUntouchedOnTheFinalImage) {
     auto& debug = test.engine->services().get<render::DebugDraw>();
     debug.screenLine(Vec2(0.0f, 100.0f), Vec2(320.0f, 100.0f), Vec4(1.0f, 0.0f, 0.0f, 1.0f));
     debug.screenText(Vec2(4.0f, 4.0f), "FPS", 12.0f, Vec4(0.0f, 1.0f, 0.0f, 1.0f));
+    // A filled panel the line crosses: drawn first, under it.
+    debug.screenRect(Vec2(140.0f, 90.0f), Vec2(180.0f, 120.0f), Vec4(0.0f, 0.0f, 1.0f, 1.0f));
 
     const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_overlay.png";
     test.renderer().requestScreenshot(path);
@@ -1417,6 +1419,14 @@ TEST(VulkanHeadless, OverlayLinesLandUntouchedOnTheFinalImage) {
         EXPECT_EQ(on[2], 0) << x;
         EXPECT_LT(pixel(x, 98)[0], 250) << x;  // not smeared by FXAA
     }
+    // The panel is solid blue, under the line.
+    const u8* panel = pixel(160, 112);
+    EXPECT_EQ(panel[0], 0);
+    EXPECT_EQ(panel[2], 255);
+    EXPECT_EQ(pixel(160, 100)[0], 255);  // the line on top of it
+    EXPECT_EQ(pixel(160, 100)[2], 0);
+    EXPECT_LT(pixel(185, 112)[2], 250);  // and nothing beyond its edge
+
     // The text's top-left glyph stroke (the F's stem) is pure green.
     int green = 0;
     for (u32 y = 4; y <= 16; ++y) {

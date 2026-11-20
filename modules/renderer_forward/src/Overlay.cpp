@@ -36,8 +36,11 @@ Result<> Overlay::create(rhi::IDevice& device, assets::AssetManager& assets, rhi
     desc.blend = rhi::BlendMode::AlphaBlend;
     desc.pushConstantSize = sizeof(Vec2);
     desc.pushConstantStages = rhi::ShaderStage::Vertex;
-    desc.debugName = "forward.overlay";
-    pipeline_ = device.createGraphicsPipeline(desc);
+    desc.debugName = "forward.overlay lines";
+    lines_ = device.createGraphicsPipeline(desc);
+    desc.topology = rhi::PrimitiveTopology::TriangleList;
+    desc.debugName = "forward.overlay triangles";
+    triangles_ = device.createGraphicsPipeline(desc);
     device.destroyShader(vertexShader);
     device.destroyShader(fragmentShader);
     buffers_.assign(device.framesInFlight(), VertexBuffer{});
@@ -49,17 +52,25 @@ void Overlay::destroy(rhi::IDevice& device) {
         device.destroyBuffer(slot.buffer);
     }
     buffers_.clear();
-    device.destroyPipeline(pipeline_);
-    pipeline_ = {};
+    device.destroyPipeline(lines_);
+    device.destroyPipeline(triangles_);
+    lines_ = {};
+    triangles_ = {};
     current_ = {};
-    count_ = 0;
+    triangleVertices_ = 0;
+    lineVertices_ = 0;
 }
 
-void Overlay::upload(rhi::IDevice& device, std::span<const render::DebugDraw::Vertex> vertices) {
-    count_ = 0;
-    if (vertices.empty() || buffers_.empty()) {
+void Overlay::upload(rhi::IDevice& device, std::span<const render::DebugDraw::Vertex> triangles,
+                     std::span<const render::DebugDraw::Vertex> lines) {
+    triangleVertices_ = 0;
+    lineVertices_ = 0;
+    if ((triangles.empty() && lines.empty()) || buffers_.empty()) {
         return;
     }
+    staging_.assign(triangles.begin(), triangles.end());
+    staging_.insert(staging_.end(), lines.begin(), lines.end());
+    const std::span<const render::DebugDraw::Vertex> vertices(staging_);
     VertexBuffer& slot = buffers_[device.frameSlot()];
     if (slot.capacity < vertices.size()) {
         device.destroyBuffer(slot.buffer);  // deferred by the device
@@ -73,11 +84,12 @@ void Overlay::upload(rhi::IDevice& device, std::span<const render::DebugDraw::Ve
     }
     device.writeBuffer(slot.buffer, rhi::asBytes(vertices));
     current_ = slot.buffer;
-    count_ = static_cast<u32>(vertices.size());
+    triangleVertices_ = static_cast<u32>(triangles.size());
+    lineVertices_ = static_cast<u32>(lines.size());
 }
 
 void Overlay::draw(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent) const {
-    if (count_ == 0) {
+    if (triangleVertices_ + lineVertices_ == 0) {
         return;
     }
     const std::array<rhi::ColorAttachment, 1> attachments = {{
@@ -87,11 +99,19 @@ void Overlay::draw(rhi::ICommandList& commands, rhi::TextureHandle target, Exten
     commands.beginRendering({attachments, nullptr});
     commands.setViewport({0.0f, 0.0f, static_cast<f32>(extent.width), static_cast<f32>(extent.height), 0.0f, 1.0f});
     commands.setScissor({0, 0, extent.width, extent.height});
-    commands.bindPipeline(pipeline_);
     const Vec2 size(static_cast<f32>(extent.width), static_cast<f32>(extent.height));
-    commands.pushConstants(0, rhi::asBytes(std::span(&size, 1)));
     commands.bindVertexBuffer(current_);
-    commands.draw(count_);
+    // Filled shapes first, so lines and text land on top of them.
+    if (triangleVertices_ > 0) {
+        commands.bindPipeline(triangles_);
+        commands.pushConstants(0, rhi::asBytes(std::span(&size, 1)));
+        commands.draw(triangleVertices_);
+    }
+    if (lineVertices_ > 0) {
+        commands.bindPipeline(lines_);
+        commands.pushConstants(0, rhi::asBytes(std::span(&size, 1)));
+        commands.draw(lineVertices_, 1, triangleVertices_, 0);
+    }
     commands.endRendering();
     commands.endDebugGroup();
 }
