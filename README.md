@@ -103,6 +103,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | Left click | Select the object under the cursor (logged and circled). |
 | `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
 | `F6` | Toggle a flashlight (a spot light carried by the camera). |
+| `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
 | `F11` | Toggle fullscreen (or start with `window.fullscreen = true`). |
 | `Escape` | Quit. |
 

@@ -75,6 +75,7 @@ public:
     [[nodiscard]] render::MaterialHandle createMaterial(const render::MaterialDesc& desc) override;
     void destroyMaterial(render::MaterialHandle material) override;
     Result<> addFeature(std::unique_ptr<render::IRenderFeature> feature) override;
+    Result<> reloadShaders() override;
     bool removeFeature(std::string_view name) override;
     void setClearColor(const Vec4& color) override { clearColor_ = color; }
     [[nodiscard]] Extent2D renderExtent() const override { return extent_; }
