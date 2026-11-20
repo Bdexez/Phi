@@ -32,7 +32,7 @@ public:
     void release(bdex::render::IRenderer& renderer);
 
     /// The lamp instances: entities named "Lamp" (duplicates included).
-    [[nodiscard]] static std::vector<bdex::ecs::Entity> roots(bdex::ecs::World& world);
+    [[nodiscard]] static std::vector<bdex::ecs::Entity> roots(const bdex::ecs::World& world);
 
 private:
     void place(const bdex::VirtualFileSystem& vfs, bdex::render::IRenderer& renderer, bdex::scene::Scene& scene,

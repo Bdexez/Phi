@@ -25,6 +25,8 @@ class View;
 /// Pools are keyed by bdex::typeId, so a component type defined in a plugin
 /// and the same type used by the executable share one pool. Queries
 /// (has, tryGet, remove) never create a pool; only emplace and view do.
+/// A const World gives views of const components only, creating nothing:
+/// functions that only read the world can take it as `const World&`.
 ///
 /// Systems are plain functions over views, scheduled through the engine
 /// Scheduler:
@@ -133,7 +135,18 @@ public:
     /// handed to the callback as a const reference.
     template <class... Components>
     [[nodiscard]] View<Components...> view() {
-        return View<Components...>(*this, pool<Components>()...);
+        return View<Components...>(*this, &pool<Components>()...);
+    }
+    /// Read-only views: every type must be const (`view<const Name>()`).
+    /// A type no entity ever had makes the view empty.
+    template <class... Components>
+    [[nodiscard]] View<Components...> view() const {
+        static_assert((std::is_const_v<Components> && ...),
+                      "a const World only gives views of const components: view<const T>()");
+        // The view hands out const references only, so dropping const from
+        // the pools never lets anything be written.
+        return View<Components...>(
+            *this, const_cast<ComponentPool<std::remove_cvref_t<Components>>*>(findPool<Components>())...);
     }
 
     /// Direct access to the storage of a component type, or null if no entity
@@ -220,7 +233,8 @@ class View {
     using PoolOf = ComponentPool<std::remove_const_t<T>>;
 
 public:
-    View(World& world, PoolOf<Components>&... pools) : world_(&world), pools_(&pools...) {}
+    /// A null pool (a type no entity ever had) makes the view empty.
+    View(const World& world, PoolOf<Components>*... pools) : world_(&world), pools_(pools...) {}
 
     /// The same view, skipping entities that own any of `Excluded`:
     ///
@@ -242,6 +256,9 @@ public:
     template <class Fn>
     void each(Fn&& fn) {
         IComponentPool* driver = smallestPool();
+        if (driver == nullptr) {
+            return;
+        }
         for (usize i = driver->size(); i-- > 0;) {
             // Re-read the span every iteration: the callback may have grown
             // or shrunk the pool.
@@ -270,6 +287,9 @@ public:
     template <class Fn>
     void parallelEach(JobSystem& jobs, Fn&& fn, usize grain = 256) {
         IComponentPool* driver = smallestPool();
+        if (driver == nullptr) {
+            return;
+        }
         const std::span<const u32> entities = driver->entities();
         jobs.parallelFor(entities.size(), grain, [&](usize begin, usize end) {
             for (usize i = begin; i < end; ++i) {
@@ -290,6 +310,9 @@ public:
     [[nodiscard]] usize count() const {
         usize result = 0;
         IComponentPool* driver = smallestPool();
+        if (driver == nullptr) {
+            return 0;
+        }
         for (const u32 index : driver->entities()) {
             if (matches(index)) {
                 ++result;
@@ -317,18 +340,22 @@ private:
         return true;
     }
 
+    /// Null when a pool is missing: then nothing matches.
     IComponentPool* smallestPool() const {
         IComponentPool* smallest = nullptr;
-        const auto consider = [&smallest](IComponentPool* candidate) {
-            if (smallest == nullptr || candidate->size() < smallest->size()) {
+        bool missing = false;
+        const auto consider = [&](IComponentPool* candidate) {
+            if (candidate == nullptr) {
+                missing = true;
+            } else if (smallest == nullptr || candidate->size() < smallest->size()) {
                 smallest = candidate;
             }
         };
         (consider(std::get<PoolOf<Components>*>(pools_)), ...);
-        return smallest;
+        return missing ? nullptr : smallest;
     }
 
-    World* world_;
+    const World* world_;
     std::tuple<PoolOf<Components>*...> pools_;
     std::vector<const IComponentPool*> excluded_;
 };
