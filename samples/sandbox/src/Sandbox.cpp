@@ -28,6 +28,7 @@
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
 #include <bdex/render/Model.hpp>
+#include <bdex/render/ResourceNames.hpp>
 #include <bdex/render/Serialization.hpp>
 #include <bdex/scene/Serialization.hpp>
 #include <bdex/core/Log.hpp>
@@ -214,11 +215,6 @@ private:
 
     static constexpr std::string_view kSceneFile = "sandbox_scene.ini";
 
-    struct Model {
-        std::string name;
-        render::MeshHandle mesh;
-        render::MaterialHandle material;
-    };
 
     void registerSerializers() {
         serializers_ = scene::ComponentSerializers::withSceneComponents();
@@ -237,31 +233,9 @@ private:
                 }
                 return scene::parseField(in, "speed", spin.speed);
             });
-        if (models_.empty()) {
-            return;  // no renderer: nothing is drawn, nothing to save
+        if (engine().services().has<render::IRenderer>()) {
+            render::addMeshRendererSerializer(serializers_, names_);  // by the names given at creation
         }
-        serializers_.add<render::MeshRenderer>(
-            "Model",
-            [this](const render::MeshRenderer& renderer, scene::Fields& out, const scene::EntityRefs&) {
-                for (const Model& model : models_) {
-                    if (model.mesh == renderer.mesh && model.material == renderer.material) {
-                        out["name"] = model.name;
-                    }
-                }
-                out["visible"] = scene::formatField(renderer.visible);
-            },
-            [this](render::MeshRenderer& renderer, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
-                const auto name = in.find("name");
-                const auto model = std::find_if(models_.begin(), models_.end(), [&](const Model& candidate) {
-                    return name != in.end() && candidate.name == name->second;
-                });
-                if (model == models_.end()) {
-                    return fail("unknown model '{}'", name != in.end() ? name->second : "");
-                }
-                renderer.mesh = model->mesh;
-                renderer.material = model->material;
-                return scene::parseField(in, "visible", renderer.visible);
-            });
     }
 
     void saveScene() {
@@ -306,7 +280,7 @@ private:
     /// Throws a bouncing ball from the camera; the oldest goes once there
     /// are too many.
     void throwBall() {
-        if (models_.empty()) {
+        if (!sphereMesh_.valid()) {
             return;  // nothing to draw it with
         }
         ecs::World& world = scene().world();
@@ -618,14 +592,18 @@ private:
             cubeMaterials_[i] = gfx.createMaterial(painted);
         }
 
-        models_ = {{"ground", planeMesh_, groundMaterial_},
-                   {"ball", sphereMesh_, ballMaterial_},
-                   {"sphere", sphereMesh_, sphereMaterial_},
-                   {"glass", cubeMesh_, glassMaterial_},
-                   {"moon_0", sphereMesh_, moonMaterials_[0]},
-                   {"moon_1", cubeMesh_, moonMaterials_[1]}};
+        // Names for scene files.
+        names_.name(planeMesh_, "plane");
+        names_.name(cubeMesh_, "cube");
+        names_.name(sphereMesh_, "sphere");
+        names_.name(groundMaterial_, "ground");
+        names_.name(ballMaterial_, "ball");
+        names_.name(sphereMaterial_, "sphere");
+        names_.name(glassMaterial_, "glass");
+        names_.name(moonMaterials_[0], "moon 0");
+        names_.name(moonMaterials_[1], "moon 1");
         for (u32 i = 0; i < kCubeCount; ++i) {
-            models_.push_back({std::format("cube_{}", i), cubeMesh_, cubeMaterials_[i]});
+            names_.name(cubeMaterials_[i], std::format("cube {}", i));
         }
         return {};
     }
@@ -728,16 +706,8 @@ private:
         for (const std::string& warning : model->warnings) {
             log::warn("sandbox", "{}", warning);
         }
-        lampResources_ = render::uploadModel(renderer(), *model);
-        // Named, so scene files can save and load the lamps' parts.
-        for (usize mesh = 0; mesh < model->meshes.size(); ++mesh) {
-            for (usize part = 0; part < model->meshes[mesh].primitives.size(); ++part) {
-                const i32 material = model->meshes[mesh].primitives[part].material;
-                models_.push_back({std::format("lamp {}.{}", mesh, part), lampResources_.meshes[mesh][part],
-                                   material >= 0 ? lampResources_.materials[static_cast<usize>(material)]
-                                                 : lampResources_.defaultMaterial});
-            }
-        }
+        // Named "lamp/..." for scene files.
+        lampResources_ = render::uploadModel(renderer(), *model, &names_, "lamp");
         ecs::World& world = scene().world();
         for (const f32 side : {-1.0f, 1.0f}) {
             const ecs::Entity lamp = render::instantiateModel(scene(), *model, lampResources_, "Lamp");
@@ -813,7 +783,7 @@ private:
     Subscription collisions_;
     render::MaterialHandle ballMaterial_;
     scene::ComponentSerializers serializers_;
-    std::vector<Model> models_;
+    render::ResourceNames names_;
     ecs::Entity selected_;
     std::array<render::MaterialHandle, 2> moonMaterials_{};
     std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
