@@ -226,6 +226,10 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 - `onAdd<T>` / `onRemove<T>` observe components coming and going (including through `destroy` and `clear`), for indexes or resources that follow components.
 - `scene::updateWorldTransforms(world, jobs)` derives `WorldTransform` from `Transform` and `Parent` once per frame in O(n), computing roots in parallel.
 
+## Physics
+
+`physics::step(world, dt)` advances every `RigidBody` (velocity, mass, restitution, friction): gravity with semi-implicit Euler, then collisions of dynamic spheres (`SphereCollider`) with static axis-aligned boxes (`BoxCollider` without a `RigidBody`) and with each other, found by sort and sweep and resolved with impulses. Bodies use their entity's `Transform` as a world pose, so they have no `Parent`, and rotation is not simulated. `Application` runs it in `FixedUpdate`, after `onFixedUpdate`; `physics.gravity` sets the gravity. A step is deterministic for a given world.
+
 ## Input
 
 Window modules publish keyboard, mouse, and gamepad events; `platform::InputState` turns them into polled state with per-frame transitions, and releases everything when the window loses focus. `platform::InputActions` maps named actions to keys, mouse buttons, gamepad buttons, and stick directions loaded from the `[input]` configuration section, with `value()` for analog strength past a dead zone. `Application` provides it as a service.
@@ -328,5 +332,5 @@ Known gaps, listed so they are not mistaken for design decisions:
 - One window; `IWindowSystem` exposes a primary window only.
 - The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from four cascades covering `renderer.shadow_distance` in front of the camera, without blending between cascades. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
-- No audio, physics, or scripting modules yet.
+- No audio or scripting modules yet; physics covers spheres against spheres and axis-aligned boxes, without rotation.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.

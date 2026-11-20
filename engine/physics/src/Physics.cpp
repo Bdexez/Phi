@@ -188,4 +188,39 @@ void step(ecs::World& world, f32 dt, const Settings& settings) {
     }
 }
 
+void addComponentSerializers(scene::ComponentSerializers& serializers) {
+    using scene::EntityRefs;
+    using scene::Fields;
+    using scene::formatField;
+    using scene::parseField;
+    serializers.add<RigidBody>(
+        "RigidBody",
+        [](const RigidBody& body, Fields& out, const EntityRefs&) {
+            out["velocity"] = formatField(body.velocity);
+            out["mass"] = formatField(body.mass);
+            out["restitution"] = formatField(body.restitution);
+            out["friction"] = formatField(body.friction);
+            out["gravity_scale"] = formatField(body.gravityScale);
+        },
+        [](RigidBody& body, const Fields& in, const EntityRefs&) -> Result<> {
+            for (auto parsed : {parseField(in, "velocity", body.velocity), parseField(in, "mass", body.mass),
+                                parseField(in, "restitution", body.restitution),
+                                parseField(in, "friction", body.friction),
+                                parseField(in, "gravity_scale", body.gravityScale)}) {
+                if (!parsed) {
+                    return parsed;
+                }
+            }
+            return {};
+        });
+    serializers.add<SphereCollider>(
+        "SphereCollider",
+        [](const SphereCollider& sphere, Fields& out, const EntityRefs&) { out["radius"] = formatField(sphere.radius); },
+        [](SphereCollider& sphere, const Fields& in, const EntityRefs&) { return parseField(in, "radius", sphere.radius); });
+    serializers.add<BoxCollider>(
+        "BoxCollider",
+        [](const BoxCollider& box, Fields& out, const EntityRefs&) { out["half_extents"] = formatField(box.halfExtents); },
+        [](BoxCollider& box, const Fields& in, const EntityRefs&) { return parseField(in, "half_extents", box.halfExtents); });
+}
+
 }  // namespace bdex::physics
