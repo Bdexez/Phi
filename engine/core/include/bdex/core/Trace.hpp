@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,7 +29,9 @@ struct TraceEvent {
 /// among a hundred, a trace shows which one and why.
 ///
 /// Recording stops at `maxEvents` (memory stays bounded on long runs).
-/// Not thread-safe: record from one thread.
+/// Any thread may record; give each its own `thread` number (0 is the
+/// main thread) and name it with nameThread, so the timeline shows one row
+/// per thread. Read events() once recording has stopped.
 class TraceRecorder {
 public:
     using Clock = std::chrono::steady_clock;
@@ -36,6 +40,9 @@ public:
 
     void record(std::string_view name, std::string_view category, Clock::time_point start, Clock::time_point end,
                 u32 thread = 0);
+
+    /// Labels a thread's row in the timeline ("main", "worker 2").
+    void nameThread(u32 thread, std::string_view name);
 
     [[nodiscard]] const std::vector<TraceEvent>& events() const { return events_; }
     /// Whether events were dropped for reaching `maxEvents`.
@@ -47,7 +54,9 @@ public:
 
 private:
     usize maxEvents_;
+    mutable std::mutex mutex_;
     std::vector<TraceEvent> events_;
+    std::map<u32, std::string> threadNames_;
     Clock::time_point origin_;
     bool started_ = false;
     bool truncated_ = false;
