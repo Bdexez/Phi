@@ -557,3 +557,39 @@ TEST(Shadows, CascadesCoverTheirSlices) {
         }
     }
 }
+
+TEST(Hierarchy, ParallelUpdateMatchesTheSerialOne) {
+    Scene scene("forest");
+    ecs::World& world = scene.world();
+    u32 state = 7;
+    const auto next = [&] { return state = state * 1664525u + 1013904223u; };
+    std::vector<ecs::Entity> entities;
+    for (int i = 0; i < 5000; ++i) {
+        const ecs::Entity entity = i % 50 == 0 ? world.create() : scene.createEntity("node");
+        if (i % 50 == 0) {
+            world.emplace<Transform>(entity);  // pivot without a WorldTransform
+        }
+        Transform& transform = world.get<Transform>(entity);
+        transform.position = Vec3(static_cast<f32>(next() % 100), static_cast<f32>(next() % 7), 0.5f);
+        transform.rotation = glm::angleAxis(static_cast<f32>(next() % 628) / 100.0f, Vec3(0.0f, 1.0f, 0.0f));
+        // About half are roots; the others hang under an earlier entity.
+        if (i > 0 && next() % 2 == 0) {
+            world.emplace<Parent>(entity, entities[next() % entities.size()]);
+        }
+        entities.push_back(entity);
+    }
+    world.emplace<Parent>(entities[1], entities[2]);  // and a cycle
+    world.emplace<Parent>(entities[2], entities[1]);
+    world.destroy(entities[3]);                      // and broken links
+
+    updateWorldTransforms(world);
+    std::vector<Mat4> serial;
+    world.view<const WorldTransform>().each([&](const WorldTransform& t) { serial.push_back(t.matrix); });
+
+    world.view<WorldTransform>().each([](WorldTransform& t) { t.matrix = Mat4(0.0f); });
+    JobSystem jobs(4);
+    updateWorldTransforms(world, jobs);
+    std::vector<Mat4> parallel;
+    world.view<const WorldTransform>().each([&](const WorldTransform& t) { parallel.push_back(t.matrix); });
+    EXPECT_EQ(parallel, serial);
+}

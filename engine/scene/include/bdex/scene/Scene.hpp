@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bdex/core/JobSystem.hpp>
 #include <bdex/ecs/World.hpp>
 #include <bdex/scene/Components.hpp>
 
@@ -62,5 +63,8 @@ usize destroyHierarchy(ecs::World& world, ecs::Entity root);
 /// Transform is treated as "no parent"; in a cycle, the link that closes it is
 /// ignored.
 void updateWorldTransforms(ecs::World& world);
+/// The same, computing entities without a parent (usually most of them) on
+/// the job system's threads; hierarchies are then resolved on the caller's.
+void updateWorldTransforms(ecs::World& world, JobSystem& jobs);
 
 }  // namespace bdex::scene
