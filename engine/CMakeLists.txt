@@ -10,5 +10,6 @@ add_subdirectory(audio)     # software mixer, sound sources and listeners
 add_subdirectory(animation) # keyframe animation of model nodes
 add_subdirectory(particles) # particle emitters and their simulation
 add_subdirectory(render)    # renderer interfaces and render components
+add_subdirectory(ui)        # immediate-mode interface on the overlay
 add_subdirectory(physics)   # rigid bodies and collisions
 add_subdirectory(app)       # application framework gluing everything together
