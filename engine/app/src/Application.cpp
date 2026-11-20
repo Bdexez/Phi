@@ -3,6 +3,8 @@
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/core/Log.hpp>
+#include <bdex/physics/Physics.hpp>
+#include <bdex/scene/Serialization.hpp>
 #include <bdex/platform/Events.hpp>
 
 #include <algorithm>
@@ -278,6 +280,23 @@ int Application::run(int argc, char** argv) {
     scheduler.add(Phase::Update, "app.update", [this](const FrameTime& time) { onUpdate(time); });
     scheduler.add(Phase::FixedUpdate, "app.fixed_update",
                   [this](const FrameTime& time) { onFixedUpdate(time); });
+    // Physics after the application's own fixed step, so forces it applies
+    // act in the same step.
+    physics::Settings physicsSettings;
+    if (const auto gravity = config.find("physics.gravity")) {
+        scene::Fields fields{{"gravity", *gravity}};
+        if (const auto parsed = scene::parseField(fields, "gravity", physicsSettings.gravity); !parsed) {
+            log::warn("app", "physics.gravity: {}", parsed.error().message);
+        }
+    }
+    scheduler.add(
+        Phase::FixedUpdate, "physics.step",
+        [this, physicsSettings](const FrameTime& time) {
+            if (scene::Scene* active = state_->scenes->active()) {
+                physics::step(active->world(), static_cast<f32>(time.delta), physicsSettings);
+            }
+        },
+        100);
     scheduler.add(
         Phase::PostUpdate, "scene.world_transforms",
         [this](const FrameTime&) {

@@ -3,6 +3,7 @@
 
 #include <bdex/app/Application.hpp>
 #include <bdex/core/Log.hpp>
+#include <bdex/physics/Physics.hpp>
 
 #include <gtest/gtest.h>
 
@@ -54,7 +55,9 @@ protected:
         return {};
     }
     void onUpdate(const FrameTime&) override { ++updates; }
-    void onStop() override { trace.push_back("stop"); }
+    void onStop() override {
+        trace.push_back("stop");
+    }
 };
 
 }  // namespace
@@ -109,4 +112,38 @@ TEST(Application, ReportsProblemsThroughExitCodes) {
     EXPECT_EQ(refusing.run({"--frames", "5"}), 1);
     EXPECT_EQ(refusing.trace, (std::vector<std::string>{"start", "stop"}));
     EXPECT_EQ(refusing.updates, 0);
+}
+
+TEST(Application, StepsPhysicsInTheFixedUpdate) {
+    struct Dropper final : app::Application {
+        f32 height = 0.0f;
+        ecs::Entity ball;
+        int run(std::vector<std::string> arguments) {
+            arguments.insert(arguments.begin(), "dropper");
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null"); }
+        Result<> onStart() override {
+            ball = scene().createEntity("ball");
+            scene().world().emplace<physics::SphereCollider>(ball);
+            scene().world().emplace<physics::RigidBody>(ball);
+            return {};
+        }
+        void onStop() override { height = scene().world().get<scene::Transform>(ball).position.y; }
+    };
+
+    // 10 frames of 0.1 s with a 0.1 s step: 10 steps of a 2 m/s^2 gravity.
+    Dropper dropper;
+    EXPECT_EQ(dropper.run({"--frames", "10", "--set", "engine.forced_delta=0.1", "--set",
+                           "engine.fixed_timestep=0.1", "--set", "physics.gravity=0 -2 0"}),
+              0);
+    // Semi-implicit Euler: y = -g dt^2 (1 + 2 + ... + 10) = -2 * 0.01 * 55.
+    EXPECT_NEAR(dropper.height, -1.1f, 1e-4f);
 }
