@@ -33,6 +33,9 @@ struct MouseButtonEvent {
     bool pressed = false;
 };
 
+/// Cursor position in framebuffer pixels from the window's top-left corner,
+/// the units rendering, picking and overlays use (on a high-DPI display a
+/// window's own coordinates are scaled down from these).
 struct MouseMoved {
     f64 x = 0.0;
     f64 y = 0.0;

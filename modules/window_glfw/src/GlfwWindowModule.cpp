@@ -78,7 +78,17 @@ public:
                 MouseButtonEvent{static_cast<MouseButton>(button), action == GLFW_PRESS});
         });
         glfwSetCursorPosCallback(handle_, [](GLFWwindow* window, double x, double y) {
-            from(window).events_->publish(MouseMoved{x, y});
+            // GLFW reports screen coordinates; on high-DPI displays the
+            // framebuffer has more pixels than those, so scale to it.
+            int windowWidth = 0;
+            int windowHeight = 0;
+            int pixelWidth = 0;
+            int pixelHeight = 0;
+            glfwGetWindowSize(window, &windowWidth, &windowHeight);
+            glfwGetFramebufferSize(window, &pixelWidth, &pixelHeight);
+            const double scaleX = windowWidth > 0 ? static_cast<double>(pixelWidth) / windowWidth : 1.0;
+            const double scaleY = windowHeight > 0 ? static_cast<double>(pixelHeight) / windowHeight : 1.0;
+            from(window).events_->publish(MouseMoved{x * scaleX, y * scaleY});
         });
         glfwSetScrollCallback(handle_, [](GLFWwindow* window, double dx, double dy) {
             from(window).events_->publish(MouseScrolled{dx, dy});
