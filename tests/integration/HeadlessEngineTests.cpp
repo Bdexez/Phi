@@ -14,6 +14,7 @@
 #include <bdex/platform/Input.hpp>
 #include <bdex/platform/Window.hpp>
 #include <bdex/render/DebugDraw.hpp>
+#include <bdex/render/Model.hpp>
 #include <bdex/render/Renderer.hpp>
 #include <bdex/rhi/Device.hpp>
 #include <bdex/scene/Scene.hpp>
@@ -470,6 +471,74 @@ TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
     test.world().destroy(first);
     test.engine->tick();
     EXPECT_FLOAT_EQ(probePtr->lastCameraPosition.x, 2.0f);
+}
+
+TEST(HeadlessEngine, ModelsBecomeEntityTreesSharingGpuResources) {
+    TestEngine test(kNullStack);
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    test.populate(0);  // a camera
+
+    // A parent node one unit right of the origin, its child scaled by 2
+    // and drawing a mesh of two primitives (one without a material).
+    assets::ModelData model;
+    assets::ModelMaterial gold;
+    gold.baseColor = Vec4(1.0f, 0.8f, 0.2f, 1.0f);
+    gold.metallic = 1.0f;
+    gold.roughness = 0.3f;
+    model.materials.push_back(gold);
+    assets::ModelMesh mesh;
+    mesh.primitives.push_back({assets::makeCube(0.5f), 0});
+    mesh.primitives.push_back({assets::makeSphere(0.25f), -1});
+    model.meshes.push_back(mesh);
+    assets::ModelNode parent;
+    parent.name = "Body";
+    parent.translation = Vec3(1.0f, 0.0f, 0.0f);
+    parent.children = {1};
+    assets::ModelNode child;
+    child.name = "Head";
+    child.translation = Vec3(0.0f, 1.0f, 0.0f);
+    child.scale = Vec3(2.0f);
+    child.mesh = 0;
+    model.nodes = {parent, child};
+    model.roots = {0};
+
+    render::ModelResources resources = render::uploadModel(test.renderer(), model);
+    ASSERT_EQ(resources.meshes.size(), 1u);
+    ASSERT_EQ(resources.meshes[0].size(), 2u);
+    const usize before = test.world().entityCount();
+    const ecs::Entity first = render::instantiateModel(test.scene(), model, resources, "Robot");
+    const ecs::Entity second = render::instantiateModel(test.scene(), model, resources, "Robot");
+    // Root, Body, Head and Head's two parts, twice.
+    EXPECT_EQ(test.world().entityCount(), before + 10);
+    test.world().get<scene::Transform>(second).position = Vec3(-3.0f, 0.0f, 0.0f);
+
+    const std::vector<ecs::Entity> body = scene::children(test.world(), first);
+    ASSERT_EQ(body.size(), 1u);
+    EXPECT_EQ(test.world().get<scene::Name>(body[0]).value, "Body");
+    const std::vector<ecs::Entity> head = scene::children(test.world(), body[0]);
+    ASSERT_EQ(head.size(), 1u);
+    const std::vector<ecs::Entity> parts = scene::children(test.world(), head[0]);
+    ASSERT_EQ(parts.size(), 2u);
+    EXPECT_EQ(test.world().get<render::MeshRenderer>(parts[0]).material, resources.materials[0]);
+    EXPECT_EQ(test.world().get<render::MeshRenderer>(parts[1]).material, resources.defaultMaterial);
+
+    test.engine->tick();
+    const Vec3 headPosition(test.world().get<scene::WorldTransform>(parts[0]).matrix[3]);
+    EXPECT_EQ(headPosition, Vec3(1.0f, 1.0f, 0.0f));
+    EXPECT_EQ(test.device().lastFrameStats().instances, 4u);  // two parts, two robots
+
+    // Metal and smoothness show in the approximation.
+    const render::MaterialDesc smoothMetal = render::approximateMaterial(gold);
+    assets::ModelMaterial chalk;
+    chalk.metallic = 0.0f;
+    chalk.roughness = 1.0f;
+    const render::MaterialDesc rough = render::approximateMaterial(chalk);
+    EXPECT_GT(smoothMetal.shininess, rough.shininess);
+    EXPECT_GT(smoothMetal.specular, rough.specular);
+    EXPECT_LT(smoothMetal.baseColor.r, gold.baseColor.r);  // metals darken their diffuse
+
+    render::releaseModel(test.renderer(), resources);
+    EXPECT_TRUE(resources.meshes.empty());
 }
 
 TEST(HeadlessEngine, SilentAudioPlaysSoundsInRealTime) {

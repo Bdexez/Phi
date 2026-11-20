@@ -3,6 +3,7 @@ bdex_add_library(render
         src/Camera.cpp
         src/DebugDraw.cpp
         src/Frustum.cpp
+        src/Model.cpp
         src/Serialization.cpp
         src/Shadows.cpp
     PUBLIC_DEPS
