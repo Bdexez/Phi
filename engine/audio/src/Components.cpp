@@ -25,6 +25,65 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         [](AudioListener&, const scene::Fields&, const scene::EntityRefs&) -> Result<> { return {}; });
 }
 
+void addAudioSourceSerializer(scene::ComponentSerializers& serializers, const SoundNames& sounds) {
+    // Saving cannot fail: a sound without a name is written as an empty
+    // name with `unnamed` set, which loading refuses.
+    serializers.add<AudioSource>(
+        "AudioSource",
+        [&sounds](const AudioSource& source, scene::Fields& out, const scene::EntityRefs&) {
+            using scene::formatField;
+            const std::string_view name = sounds.nameOf(source.clip.get());
+            out["sound"] = std::string(name);
+            if (source.clip != nullptr && name.empty()) {
+                out["unnamed"] = formatField(true);
+            }
+            const PlayParams& params = source.params;
+            out["volume"] = formatField(params.volume);
+            out["pitch"] = formatField(params.pitch);
+            out["pan"] = formatField(params.pan);
+            out["loop"] = formatField(params.loop);
+            out["spatial"] = formatField(params.spatial);
+            out["min_distance"] = formatField(params.minDistance);
+            out["max_distance"] = formatField(params.maxDistance);
+            out["bus"] = std::string(busName(params.bus));
+            out["autoplay"] = formatField(source.autoplay);
+        },
+        [&sounds](AudioSource& source, const scene::Fields& in, const scene::EntityRefs&) -> Result<> {
+            using scene::parseField;
+            std::string name;
+            std::string bus = std::string(busName(source.params.bus));
+            bool unnamed = false;
+            PlayParams& params = source.params;
+            for (auto parsed : {parseField(in, "sound", name), parseField(in, "unnamed", unnamed),
+                                parseField(in, "volume", params.volume), parseField(in, "pitch", params.pitch),
+                                parseField(in, "pan", params.pan), parseField(in, "loop", params.loop),
+                                parseField(in, "spatial", params.spatial),
+                                parseField(in, "min_distance", params.minDistance),
+                                parseField(in, "max_distance", params.maxDistance), parseField(in, "bus", bus),
+                                parseField(in, "autoplay", source.autoplay)}) {
+                if (!parsed) {
+                    return parsed;
+                }
+            }
+            if (const auto known = busNamed(bus)) {
+                params.bus = *known;
+            } else {
+                return fail("unknown bus '{}' (effects, music, voice or ambience)", bus);
+            }
+            if (unnamed) {
+                return fail("an audio source was saved with a sound that had no name (name it with "
+                            "audio::SoundNames)");
+            }
+            if (!name.empty()) {
+                source.clip = sounds.find(name);
+                if (source.clip == nullptr) {
+                    return fail("unknown sound '{}' (name it with audio::SoundNames)", name);
+                }
+            }
+            return {};
+        });
+}
+
 void AudioSystem::update(ecs::World& world) {
     // The ears.
     bool heard = false;

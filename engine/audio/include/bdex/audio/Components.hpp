@@ -2,6 +2,7 @@
 
 #include <bdex/audio/Mixer.hpp>
 #include <bdex/ecs/World.hpp>
+#include <bdex/scene/AssetNames.hpp>
 #include <bdex/scene/Serialization.hpp>
 
 #include <memory>
@@ -61,9 +62,20 @@ inline void stop(AudioSource& source) {
 /// camera. With several, the first found is used.
 struct AudioListener {};
 
-/// Registers AudioListener with scene files. (AudioSource is not saved: a
-/// clip has no file name to write.)
+/// Registers AudioListener with scene files. AudioSource needs its sounds
+/// named: see addAudioSourceSerializer.
 void addComponentSerializers(scene::ComponentSerializers& serializers);
+
+/// Names for sounds, so scene files can refer to them ("sounds/rain").
+using SoundNames = scene::AssetNames<assets::AudioData>;
+
+/// Registers AudioSource with scene files: its sound by name, how it plays
+/// (volume, pitch, pan, loop, spatial, distances, bus by name) and
+/// autoplay. What is playing is not saved: a loaded source starts from the
+/// beginning. A sound with no name in `sounds`, or a name it does not know,
+/// fails the load naming it; a source without a sound stays without one.
+/// `sounds` must outlive the serializers.
+void addAudioSourceSerializer(scene::ComponentSerializers& serializers, const SoundNames& sounds);
 
 /// Connects entities to the mixer, once per frame after world transforms.
 /// Holds the mixer: release it before the engine shuts down (see

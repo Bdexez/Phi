@@ -152,3 +152,67 @@ TEST(AudioComponents, ListenersSurviveSceneFiles) {
     ASSERT_TRUE(entities.has_value()) << entities.error().message;
     EXPECT_TRUE(loaded.world().has<AudioListener>(entities->front()));
 }
+
+TEST(AudioComponents, SourcesRoundTripThroughSceneFilesBySoundName) {
+    const auto rain = constant(0.25f, 48000);
+    SoundNames sounds;
+    sounds.name(rain, "sounds/rain");
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    addComponentSerializers(serializers);
+    addAudioSourceSerializer(serializers, sounds);
+
+    Rig rig;
+    const ecs::Entity roof = rig.scene.createEntity("roof");
+    // Every setting off its default.
+    AudioSource& source = rig.world.emplace<AudioSource>(
+        roof, rain,
+        PlayParams{.volume = 0.5f, .pitch = 1.5f, .pan = -0.25f, .loop = true, .spatial = false,
+                   .minDistance = 2.0f, .maxDistance = 30.0f, .bus = Bus::Ambience},
+        false);
+    source.started = true;  // runtime state: not saved
+    const std::string text = serializers.save(rig.world);
+    EXPECT_NE(text.find("AudioSource.sound = sounds/rain"), std::string::npos);
+    EXPECT_NE(text.find("AudioSource.bus = ambience"), std::string::npos);
+
+    Rig loaded;
+    ASSERT_TRUE(serializers.load(loaded.world, text).has_value());
+    AudioSource& copy = loaded.world.get<AudioSource>(loaded.scene.find("roof"));
+    EXPECT_EQ(copy.clip, rain);
+    EXPECT_EQ(copy.params.volume, 0.5f);
+    EXPECT_EQ(copy.params.pitch, 1.5f);
+    EXPECT_EQ(copy.params.pan, -0.25f);
+    EXPECT_TRUE(copy.params.loop);
+    EXPECT_FALSE(copy.params.spatial);
+    EXPECT_EQ(copy.params.minDistance, 2.0f);
+    EXPECT_EQ(copy.params.maxDistance, 30.0f);
+    EXPECT_EQ(copy.params.bus, Bus::Ambience);
+    EXPECT_FALSE(copy.autoplay);
+    EXPECT_FALSE(copy.started);
+    EXPECT_EQ(copy.voice, 0u);
+
+    // Told to play, the loaded source is heard, panned a little left.
+    restart(copy);
+    loaded.frame();
+    EXPECT_EQ(loaded.mixer->voiceCount(), 1u);
+    const auto [left, right] = listen(*loaded.mixer);
+    EXPECT_GT(left, right);
+    EXPECT_GT(right, 0.0f);
+
+    // A sound nobody named, a name nobody gave, a bus that does not exist.
+    Rig stray;
+    stray.world.emplace<AudioSource>(stray.scene.createEntity("stray"), constant(0.1f, 10));
+    Rig broken;
+    EXPECT_FALSE(serializers.load(broken.world, serializers.save(stray.world)).has_value());
+    SoundNames none;
+    scene::ComponentSerializers strangers = scene::ComponentSerializers::withSceneComponents();
+    addAudioSourceSerializer(strangers, none);
+    const auto unknown = strangers.load(broken.world, text);
+    ASSERT_FALSE(unknown.has_value());
+    EXPECT_NE(unknown.error().message.find("sounds/rain"), std::string::npos);
+    std::string badBus = text;
+    badBus.replace(badBus.find("= ambience"), 10, "= drums");
+    const auto drums = serializers.load(broken.world, badBus);
+    ASSERT_FALSE(drums.has_value());
+    EXPECT_NE(drums.error().message.find("drums"), std::string::npos);
+    EXPECT_EQ(broken.world.entityCount(), 0u);
+}
