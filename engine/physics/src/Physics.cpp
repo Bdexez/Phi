@@ -84,7 +84,8 @@ void separate(Sphere& a, Sphere* b, const Vec3& normal, f32 depth) {
 
 }  // namespace
 
-void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Contact>* contacts) {
+void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Contact>* contacts,
+          std::vector<TriggerEvent>* triggers) {
     if (dt <= 0.0f) {
         return;
     }
@@ -96,13 +97,13 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
 
     // Gather: dynamic and static spheres, static boxes.
     std::vector<Sphere> spheres;
-    world.view<Transform, const SphereCollider>().each(
+    world.view<Transform, const SphereCollider>().exclude<Trigger>().each(
         [&](ecs::Entity entity, Transform& transform, const SphereCollider& collider) {
             spheres.push_back({entity, transform.position, collider.radius * largestScale(transform),
                                world.tryGet<RigidBody>(entity)});
         });
     std::vector<Box> boxes;
-    world.view<const Transform, const BoxCollider>().exclude<RigidBody>().each(
+    world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
         [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
             const Vec3 half = collider.halfExtents * glm::abs(transform.scale);
             boxes.push_back({entity, transform.position - half, transform.position + half});
@@ -251,6 +252,47 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
         }
     }
 
+    // Triggers: which bodies overlap each zone now, compared with before.
+    world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
+        const auto* box = world.tryGet<BoxCollider>(zone);
+        const auto* ball = world.tryGet<SphereCollider>(zone);
+        const Vec3 half = box != nullptr ? box->halfExtents * glm::abs(transform.scale) : Vec3(0.0f);
+        const f32 zoneRadius = ball != nullptr ? ball->radius * largestScale(transform) : 0.0f;
+        std::vector<ecs::Entity> inside;
+        for (const Sphere& sphere : spheres) {
+            if (sphere.body == nullptr) {
+                continue;
+            }
+            bool overlaps = false;
+            if (box != nullptr) {
+                const Vec3 closest = glm::clamp(sphere.center, transform.position - half, transform.position + half);
+                overlaps = glm::dot(sphere.center - closest, sphere.center - closest) < sphere.radius * sphere.radius;
+            } else if (ball != nullptr) {
+                const f32 reach = zoneRadius + sphere.radius;
+                overlaps = glm::dot(sphere.center - transform.position, sphere.center - transform.position) < reach * reach;
+            }
+            if (overlaps) {
+                inside.push_back(sphere.entity);
+            }
+        }
+        if (triggers != nullptr) {
+            const auto contains = [](const std::vector<ecs::Entity>& list, ecs::Entity entity) {
+                return std::find(list.begin(), list.end(), entity) != list.end();
+            };
+            for (const ecs::Entity entity : inside) {
+                if (!contains(trigger.inside, entity)) {
+                    triggers->push_back({zone, entity, true});
+                }
+            }
+            for (const ecs::Entity entity : trigger.inside) {
+                if (!contains(inside, entity)) {
+                    triggers->push_back({zone, entity, false});
+                }
+            }
+        }
+        trigger.inside = std::move(inside);
+    });
+
     // Write the poses back.
     for (const Sphere& sphere : spheres) {
         if (sphere.body != nullptr) {
@@ -376,6 +418,10 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
         "SphereCollider",
         [](const SphereCollider& sphere, Fields& out, const EntityRefs&) { out["radius"] = formatField(sphere.radius); },
         [](SphereCollider& sphere, const Fields& in, const EntityRefs&) { return parseField(in, "radius", sphere.radius); });
+    // Who is inside is runtime state: a loaded trigger starts empty.
+    serializers.add<Trigger>(
+        "Trigger", [](const Trigger&, Fields&, const EntityRefs&) {},
+        [](Trigger&, const Fields&, const EntityRefs&) -> Result<> { return {}; });
     serializers.add<BoxCollider>(
         "BoxCollider",
         [](const BoxCollider& box, Fields& out, const EntityRefs&) { out["half_extents"] = formatField(box.halfExtents); },

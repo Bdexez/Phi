@@ -40,6 +40,21 @@ struct BoxCollider {
     Vec3 halfExtents{0.5f};
 };
 
+/// Turns a static collider (box or sphere, without RigidBody) into a zone
+/// that bodies pass through, reporting when they enter and leave it:
+/// finish lines, damage zones, checkpoints.
+struct Trigger {
+    /// Bodies inside after the last step (maintained by step()).
+    std::vector<ecs::Entity> inside;
+};
+
+/// A body entering or leaving a Trigger.
+struct TriggerEvent {
+    ecs::Entity trigger;
+    ecs::Entity body;
+    bool entered = true;  ///< false: it left (or stopped existing).
+};
+
 struct Settings {
     Vec3 gravity{0.0f, -9.81f, 0.0f};
     /// Contacts below this impulse (N.s) are not reported. Resting bodies
@@ -68,8 +83,10 @@ struct Collision {
 ///
 /// Dynamic bodies need a SphereCollider; boxes are static.
 /// When `contacts` is given, the collisions resolved during the step are
-/// appended to it (see Settings::minimumContactImpulse).
-void step(ecs::World& world, f32 dt, const Settings& settings = {}, std::vector<Contact>* contacts = nullptr);
+/// appended to it (see Settings::minimumContactImpulse); when `triggers` is
+/// given, bodies entering and leaving triggers are.
+void step(ecs::World& world, f32 dt, const Settings& settings = {}, std::vector<Contact>* contacts = nullptr,
+          std::vector<TriggerEvent>* triggers = nullptr);
 
 /// Draws bodies between their last two steps: sets the translation of each
 /// body's WorldTransform to mix(previous, current position, `alpha`), the
@@ -92,7 +109,8 @@ struct RayHit {
 [[nodiscard]] std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin,
                                             const Vec3& direction, f32 maxDistance = 1e30f);
 
-/// Registers RigidBody, SphereCollider and BoxCollider with scene files.
+/// Registers RigidBody, SphereCollider, BoxCollider and Trigger with scene
+/// files.
 void addComponentSerializers(scene::ComponentSerializers& serializers);
 
 }  // namespace bdex::physics
