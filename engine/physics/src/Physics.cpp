@@ -598,6 +598,124 @@ std::optional<RayHit> raycast(const ecs::World& world, const Vec3& origin, const
     return nearest;
 }
 
+MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displacement,
+                        const MoveSettings& settings) {
+    MoveResult result;
+    Transform* transform = world.tryGet<Transform>(entity);
+    const SphereCollider* body = world.tryGet<SphereCollider>(entity);
+    if (transform == nullptr || body == nullptr || !finite(transform->position) || !finite(displacement)) {
+        return result;
+    }
+    const f32 radius = body->radius * largestScale(*transform);
+    const f32 walkable = std::cos(settings.maxSlope);
+
+    // What the character can bump into: static boxes, and every other
+    // sphere, triggers aside.
+    std::vector<Box> boxes;
+    world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
+        [&](ecs::Entity other, const Transform& pose, const BoxCollider& collider) {
+            Box box = makeBox(other, pose, collider);
+            if (finite(box.boundsMin) && finite(box.boundsMax)) {
+                boxes.push_back(box);
+            }
+        });
+    struct Obstacle {
+        Vec3 center;
+        f32 reach;  ///< Both radii.
+    };
+    std::vector<Obstacle> spheres;
+    world.view<const Transform, const SphereCollider>().exclude<Trigger>().each(
+        [&](ecs::Entity other, const Transform& pose, const SphereCollider& collider) {
+            const f32 reach = radius + collider.radius * largestScale(pose);
+            if (other != entity && finite(pose.position) && std::isfinite(reach)) {
+                spheres.push_back({pose.position, reach});
+            }
+        });
+
+    Vec3 position = transform->position;
+    const Vec3 start = position;
+    const auto touch = [&](const Vec3& normal) {
+        if (normal.y >= walkable) {
+            result.grounded = true;
+            result.groundNormal = normal;
+        }
+    };
+
+    // Overlapping already (spawned in a wall, a box moved onto us): step out.
+    for (const Box& box : boxes) {
+        if (const auto contact = sphereBoxContact(box, position, radius)) {
+            position -= contact->normal * (contact->depth + settings.skin);
+            touch(-contact->normal);
+        }
+    }
+
+    Vec3 remaining = displacement;
+    for (u32 iteration = 0; iteration < settings.iterations; ++iteration) {
+        const f32 length = glm::length(remaining);
+        if (length < 1e-6f) {
+            break;
+        }
+        const Vec3 direction = remaining / length;
+        // The first surface along the way, and its normal (facing us).
+        f32 nearest = length;
+        Vec3 normal(0.0f);
+        for (const Box& box : boxes) {
+            const auto hit = rayBox(box, position, direction, nearest, radius);
+            if (!hit || hit->distance >= nearest) {
+                continue;
+            }
+            // The grown box reaches too far at edges and corners: count the
+            // hit only where the sphere really meets the box.
+            const auto contact =
+                sphereBoxContact(box, position + direction * hit->distance, radius + 2.0f * settings.skin);
+            // Only surfaces moved into: leaving the ground is not hitting it.
+            if (contact && glm::dot(direction, contact->normal) > 0.0f) {
+                nearest = hit->distance;
+                normal = -contact->normal;
+            }
+        }
+        for (const Obstacle& sphere : spheres) {
+            const Vec3 toCenter = sphere.center - position;
+            const f32 along = glm::dot(toCenter, direction);
+            const f32 missSquared = glm::dot(toCenter, toCenter) - along * along;
+            if (along <= 0.0f || missSquared >= sphere.reach * sphere.reach) {
+                continue;  // behind, or passing by
+            }
+            const f32 distance = std::max(along - std::sqrt(sphere.reach * sphere.reach - missSquared), 0.0f);
+            if (distance < nearest) {
+                nearest = distance;
+                normal = glm::normalize(position + direction * distance - sphere.center);
+            }
+        }
+
+        if (normal == Vec3(0.0f)) {
+            position += remaining;  // a clear path
+            break;
+        }
+        result.blocked = true;
+        touch(normal);
+        // Up to the surface, then a skin off it along its normal: backing
+        // off along the move instead would shorten every slide.
+        position += direction * nearest + normal * settings.skin;
+        // Slide: keep the part of the rest of the move along the surface.
+        // A steep one is a wall for anything but falling: sliding up it
+        // would climb it.
+        Vec3 slideNormal = normal;
+        if (normal.y < walkable && remaining.y >= 0.0f) {
+            const Vec3 flat(normal.x, 0.0f, normal.z);
+            if (glm::length(flat) > 1e-4f) {
+                slideNormal = glm::normalize(flat);
+            }
+        }
+        remaining = direction * (length - nearest);
+        remaining -= slideNormal * glm::dot(remaining, slideNormal);
+    }
+
+    result.moved = position - start;
+    transform->position = position;
+    return result;
+}
+
 void interpolate(ecs::World& world, f32 alpha) {
     alpha = std::clamp(alpha, 0.0f, 1.0f);
     world.view<const RigidBody, const Transform, scene::WorldTransform>().each(
