@@ -1186,3 +1186,44 @@ TEST(VulkanHeadless, SpotLightsLightOnlyTheirCone) {
     EXPECT_LT(render(glm::angleAxis(glm::radians(90.0f), Vec3(0.0f, 1.0f, 0.0f)), glm::radians(30.0f)), 10);
     EXPECT_LT(render(glm::angleAxis(glm::radians(40.0f), Vec3(1.0f, 0.0f, 0.0f)), glm::radians(10.0f)), 10);
 }
+
+TEST(VulkanHeadless, MeasuresGpuTimePerDebugGroup) {
+    Config config;
+    config.set("rhi.validation", "true");
+    config.set("renderer.shadows", "true");
+    config.set("renderer.hdr", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.populate(3);
+    for (int i = 0; i < 4; ++i) {  // timings come back once a frame slot is reused
+        test.engine->tick();
+    }
+    const std::vector<rhi::GpuTiming> timings = test.device().lastGpuTimings();
+    if (timings.empty()) {
+        GTEST_SKIP() << "this GPU's graphics queue has no timestamps";
+    }
+    // The whole frame first, then its passes inside it.
+    EXPECT_EQ(timings.front().name, "frame");
+    EXPECT_EQ(timings.front().depth, 0u);
+    f64 passes = 0.0;
+    std::vector<std::string> names;
+    for (usize i = 1; i < timings.size(); ++i) {
+        EXPECT_GE(timings[i].depth, 1u);
+        EXPECT_GE(timings[i].milliseconds, 0.0);
+        if (timings[i].depth == 1) {
+            passes += timings[i].milliseconds;
+        }
+        names.push_back(timings[i].name);
+    }
+    for (const char* pass : {"shadows", "forward.meshes", "tonemap"}) {
+        EXPECT_NE(std::find(names.begin(), names.end(), pass), names.end()) << pass;
+    }
+    EXPECT_GT(timings.front().milliseconds, 0.0);
+    EXPECT_LE(passes, timings.front().milliseconds * 1.001 + 1e-3);
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+    test.engine->shutdown();
+}

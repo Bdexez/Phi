@@ -177,9 +177,11 @@ void CommandList::drawIndexed(u32 indexCount, u32 instanceCount, u32 firstIndex,
 
 void CommandList::beginDebugGroup(std::string_view name) {
     device_->beginDebugLabel(commandBuffer_, name);
+    device_->beginTimedSpan(name);
 }
 
 void CommandList::endDebugGroup() {
+    device_->endTimedSpan();
     device_->endDebugLabel(commandBuffer_);
 }
 
