@@ -20,6 +20,7 @@
 
 #include "FlyCamera.hpp"
 #include "Hud.hpp"
+#include "Palette.hpp"
 #include "SkyFeature.hpp"
 #include "Sounds.hpp"
 #include "SettingsPanel.hpp"
@@ -72,14 +73,6 @@ void spinSystem(ecs::World& world, JobSystem& jobs, f32 deltaSeconds) {
         });
 }
 
-Vec3 hsvToRgb(f32 hue, f32 saturation, f32 value) {
-    const auto channel = [&](f32 offset) {
-        const f32 k = std::fmod(offset + hue * 6.0f, 6.0f);
-        return value - value * saturation * std::clamp(std::min(k, 4.0f - k), 0.0f, 1.0f);
-    };
-    return {channel(5.0f), channel(3.0f), channel(1.0f)};
-}
-
 }  // namespace
 
 class Sandbox final : public app::Application {
@@ -123,7 +116,10 @@ protected:
     Result<> onStart() override {
         // Without a renderer module the sandbox still runs its simulation.
         if (engine().services().has<render::IRenderer>()) {
-            if (const auto built = buildRenderResources(); !built) {
+            if (const auto sky = renderer().addFeature(std::make_unique<sandbox::SkyFeature>()); !sky) {
+                return sky;
+            }
+            if (const auto built = palette_.create(renderer()); !built) {
                 return built;
             }
         } else {
@@ -228,22 +224,6 @@ protected:
     }
 
 private:
-    /// Normal map of `cells` x `cells` square tiles whose edges slope down
-    /// over `bevel` texels.
-    static assets::ImageData beveledTiles(u32 size, u32 cells, f32 bevel, f32 strength) {
-        const f32 cell = static_cast<f32>(size) / static_cast<f32>(cells);
-        std::vector<f32> heights(static_cast<usize>(size) * size);
-        for (u32 y = 0; y < size; ++y) {
-            for (u32 x = 0; x < size; ++x) {
-                const f32 u = std::fmod(static_cast<f32>(x) + 0.5f, cell);
-                const f32 v = std::fmod(static_cast<f32>(y) + 0.5f, cell);
-                const f32 edge = std::min({u, v, cell - u, cell - v});
-                heights[static_cast<usize>(y) * size + x] = std::min(edge, bevel);
-            }
-        }
-        return assets::makeNormalMap(heights, size, size, strength / bevel);
-    }
-
     // --- Scene files ---------------------------------------------------------------
     // Shows how applications extend scene files: Spin is the sandbox's own
     // component, and MeshRenderer handles are saved as model names.
@@ -269,7 +249,7 @@ private:
                 return scene::parseField(in, "speed", spin.speed);
             });
         if (engine().services().has<render::IRenderer>()) {
-            render::addMeshRendererSerializer(serializers_, names_);  // by the names given at creation
+            render::addMeshRendererSerializer(serializers_, palette_.names);  // by the names given at creation
         }
     }
 
@@ -322,7 +302,7 @@ private:
     /// Throws a bouncing ball from the camera; the oldest goes once there
     /// are too many.
     void throwBall() {
-        if (!sphereMesh_.valid()) {
+        if (!palette_.sphere.valid()) {
             return;  // nothing to draw it with
         }
         ecs::World& world = scene().world();
@@ -331,7 +311,7 @@ private:
         scene::Transform& transform = world.get<scene::Transform>(ball);
         transform.position = eye.position + eye.forward() * 1.0f;
         transform.scale = Vec3(0.6f);
-        world.emplace<render::MeshRenderer>(ball, sphereMesh_, ballMaterial_);
+        world.emplace<render::MeshRenderer>(ball, palette_.sphere, palette_.ball);
         world.emplace<physics::SphereCollider>(ball, 0.5f);
         world.emplace<physics::RigidBody>(
             ball, physics::RigidBody{.velocity = eye.forward() * 12.0f + Vec3(0.0f, 2.0f, 0.0f),
@@ -359,7 +339,7 @@ private:
     }
 
     void throwCrate() {
-        if (!cubeMesh_.valid()) {
+        if (!palette_.cube.valid()) {
             return;
         }
         ecs::World& world = scene().world();
@@ -369,7 +349,7 @@ private:
         transform.position = eye.position + eye.forward() * 1.2f;
         transform.rotation = eye.rotation;
         transform.scale = Vec3(0.7f);
-        world.emplace<render::MeshRenderer>(crate, cubeMesh_, cubeMaterials_[crates_.size() % kCubeCount]);
+        world.emplace<render::MeshRenderer>(crate, palette_.cube, palette_.cubes[crates_.size() % kCubeCount]);
         world.emplace<physics::BoxCollider>(crate, Vec3(0.5f));
         world.emplace<physics::RigidBody>(
             crate, physics::RigidBody{.velocity = eye.forward() * 8.0f + Vec3(0.0f, 2.0f, 0.0f),
@@ -559,87 +539,6 @@ private:
         scheduler.resetStats();
     }
 
-    Result<> buildRenderResources() {
-        render::IRenderer& gfx = renderer();
-
-        if (const auto added = gfx.addFeature(std::make_unique<sandbox::SkyFeature>()); !added) {
-            return added;
-        }
-
-        cubeMesh_ = gfx.createMesh(assets::makeCube(1.0f));
-        sphereMesh_ = gfx.createMesh(assets::makeSphere(0.5f, 48, 24));
-        planeMesh_ = gfx.createMesh(assets::makePlane(40.0f, 20.0f));
-
-        const render::TextureHandle checker = gfx.createTexture(
-            assets::makeCheckerboard(256, 8, {235, 235, 235, 255}, {120, 124, 130, 255}));
-        const render::TextureHandle crate = gfx.createTexture(
-            assets::makeCheckerboard(64, 4, {255, 255, 255, 255}, {200, 200, 200, 255}));
-
-        // Beveled tiles, matching the checker cells, give the floor and the
-        // crates some relief through normal maps.
-        const render::TextureHandle tiles = gfx.createTexture(beveledTiles(256, 8, 6.0f, 3.0f),
-                                                              render::TextureColorSpace::Linear);
-        const render::TextureHandle panels = gfx.createTexture(beveledTiles(64, 4, 3.0f, 2.0f),
-                                                               render::TextureColorSpace::Linear);
-
-        render::MaterialDesc ground;
-        ground.baseColor = Vec4(0.55f, 0.6f, 0.55f, 1.0f);
-        ground.albedo = checker;
-        ground.normalMap = tiles;
-        ground.specular = 0.05f;
-        groundMaterial_ = gfx.createMaterial(ground);
-
-        render::MaterialDesc polished;  // no texture: plain base color
-        polished.baseColor = Vec4(0.95f, 0.95f, 1.0f, 1.0f);
-        polished.specular = 0.9f;
-        polished.shininess = 96.0f;
-        sphereMaterial_ = gfx.createMaterial(polished);
-
-        // The moons glow with the color of the lamp they carry.
-        for (u32 i = 0; i < 2; ++i) {
-            render::MaterialDesc moon;
-            moon.baseColor = Vec4(0.05f, 0.05f, 0.05f, 1.0f);
-            moon.emissive = i == 0 ? Vec3(1.0f, 0.35f, 0.05f) : Vec3(0.05f, 0.4f, 1.0f);
-            moonMaterials_[i] = gfx.createMaterial(moon);
-        }
-
-        render::MaterialDesc rubber;
-        rubber.baseColor = Vec4(0.95f, 0.3f, 0.2f, 1.0f);
-        rubber.specular = 0.5f;
-        ballMaterial_ = gfx.createMaterial(rubber);
-
-        render::MaterialDesc glass;  // tinted and see-through
-        glass.baseColor = Vec4(0.3f, 0.7f, 1.0f, 0.45f);
-        glass.specular = 1.0f;
-        glass.shininess = 128.0f;
-        glass.transparent = true;
-        glassMaterial_ = gfx.createMaterial(glass);
-
-        for (u32 i = 0; i < kCubeCount; ++i) {
-            render::MaterialDesc painted;
-            painted.baseColor = Vec4(hsvToRgb(static_cast<f32>(i) / kCubeCount, 0.65f, 0.95f), 1.0f);
-            painted.albedo = crate;
-            painted.normalMap = panels;
-            painted.specular = 0.4f;
-            cubeMaterials_[i] = gfx.createMaterial(painted);
-        }
-
-        // Names for scene files.
-        names_.name(planeMesh_, "plane");
-        names_.name(cubeMesh_, "cube");
-        names_.name(sphereMesh_, "sphere");
-        names_.name(groundMaterial_, "ground");
-        names_.name(ballMaterial_, "ball");
-        names_.name(sphereMaterial_, "sphere");
-        names_.name(glassMaterial_, "glass");
-        names_.name(moonMaterials_[0], "moon 0");
-        names_.name(moonMaterials_[1], "moon 1");
-        for (u32 i = 0; i < kCubeCount; ++i) {
-            names_.name(cubeMaterials_[i], std::format("cube {}", i));
-        }
-        return {};
-    }
-
     void buildScene() {
         scene::Scene& level = scene();
         ecs::World& world = level.world();
@@ -662,7 +561,7 @@ private:
 
         // Ground
         const ecs::Entity ground = level.createEntity("Ground");
-        world.emplace<render::MeshRenderer>(ground, planeMesh_, groundMaterial_);
+        world.emplace<render::MeshRenderer>(ground, palette_.plane, palette_.ground);
         world.emplace<physics::BoxCollider>(ground, Vec3(20.0f, 0.01f, 20.0f));
 
         // A platform gliding back and forth beside the scene (moved in
@@ -671,7 +570,7 @@ private:
         scene::Transform& slab = world.get<scene::Transform>(platform_);
         slab.position = kPlatformBase;
         slab.scale = Vec3(2.4f, 0.3f, 2.4f);
-        world.emplace<render::MeshRenderer>(platform_, cubeMesh_, groundMaterial_);
+        world.emplace<render::MeshRenderer>(platform_, palette_.cube, palette_.ground);
         world.emplace<physics::BoxCollider>(platform_, Vec3(0.5f));
         world.emplace<physics::Kinematic>(platform_);
 
@@ -679,7 +578,7 @@ private:
         const ecs::Entity sphere = level.createEntity("Sphere");
         world.get<scene::Transform>(sphere).position = Vec3(0.0f, 1.4f, 0.0f);
         world.get<scene::Transform>(sphere).scale = Vec3(2.2f);
-        world.emplace<render::MeshRenderer>(sphere, sphereMesh_, sphereMaterial_);
+        world.emplace<render::MeshRenderer>(sphere, palette_.sphere, palette_.polished);
         world.emplace<physics::SphereCollider>(sphere, 0.5f);  // static: no RigidBody
 
         // A slowly turning glass block in front of the sphere
@@ -687,7 +586,7 @@ private:
         scene::Transform& glassTransform = world.get<scene::Transform>(glassBlock);
         glassTransform.position = Vec3(0.0f, 1.6f, 2.4f);
         glassTransform.scale = Vec3(1.6f, 1.6f, 0.4f);
-        world.emplace<render::MeshRenderer>(glassBlock, cubeMesh_, glassMaterial_);
+        world.emplace<render::MeshRenderer>(glassBlock, palette_.cube, palette_.glass);
         world.emplace<Spin>(glassBlock, Vec3(0.0f, 1.0f, 0.0f), 0.35f);
 
         // A ring of spinning cubes
@@ -697,7 +596,7 @@ private:
             scene::Transform& transform = world.get<scene::Transform>(cube);
             transform.position = Vec3(std::cos(angle) * 4.5f, 0.75f, std::sin(angle) * 4.5f);
             transform.rotation = glm::angleAxis(angle, Vec3(0.0f, 1.0f, 0.0f));
-            world.emplace<render::MeshRenderer>(cube, cubeMesh_, cubeMaterials_[i]);
+            world.emplace<render::MeshRenderer>(cube, palette_.cube, palette_.cubes[i]);
             world.emplace<physics::BoxCollider>(cube);  // axis-aligned, ignores the spin
             world.emplace<Spin>(cube, glm::normalize(Vec3(0.3f, 1.0f, 0.2f * static_cast<f32>(i))),
                                 0.6f + 0.15f * static_cast<f32>(i));
@@ -715,8 +614,8 @@ private:
             transform.position = Vec3(i == 0 ? 2.0f : -2.0f, 0.0f, 0.0f);
             transform.scale = Vec3(0.45f);
             world.emplace<scene::Parent>(moon, pivot);
-            world.emplace<render::MeshRenderer>(moon, i == 0 ? sphereMesh_ : cubeMesh_,
-                                                moonMaterials_[i]);
+            world.emplace<render::MeshRenderer>(moon, i == 0 ? palette_.sphere : palette_.cube,
+                                                palette_.moons[i]);
             world.emplace<Spin>(moon, Vec3(1.0f, 0.0f, 0.0f), 2.0f);
 
             // Each moon carries a colored lamp, slightly below it, that
@@ -771,7 +670,7 @@ private:
         }
         render::releaseModel(renderer(), lampResources_);
         // Named "lamp/..." for scene files.
-        lampResources_ = render::uploadModel(renderer(), *model, &names_, "lamp");
+        lampResources_ = render::uploadModel(renderer(), *model, &palette_.names, "lamp");
         // Its lantern sways, if the file says so.
         lampSway_ = model->animations.empty() ? nullptr
                                               : std::make_shared<assets::ModelAnimation>(model->animations.front());
@@ -874,14 +773,9 @@ private:
         }
     }
 
-    static constexpr u32 kCubeCount = 8;
+    static constexpr u32 kCubeCount = sandbox::Palette::kCubeCount;
 
-    render::MeshHandle cubeMesh_;
-    render::MeshHandle sphereMesh_;
-    render::MeshHandle planeMesh_;
-    render::MaterialHandle groundMaterial_;
-    render::MaterialHandle sphereMaterial_;
-    render::MaterialHandle glassMaterial_;
+    sandbox::Palette palette_;
     bool debugView_ = false;
     static constexpr usize kMaxBalls = 40;
     std::vector<ecs::Entity> balls_;
@@ -896,12 +790,8 @@ private:
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;
-    render::MaterialHandle ballMaterial_;
     scene::ComponentSerializers serializers_;
-    render::ResourceNames names_;
     ecs::Entity selected_;
-    std::array<render::MaterialHandle, 2> moonMaterials_{};
-    std::array<render::MaterialHandle, kCubeCount> cubeMaterials_{};
 
     ecs::Entity camera_;
     sandbox::FlyCamera flyCamera_;
