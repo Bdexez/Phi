@@ -31,6 +31,7 @@ struct ContactSide {
     RigidBody* body;
     Vec3 arm;
     f32 radius;  ///< Of the sphere, for its inertia; 0 for boxes.
+    Vec3 surfaceVelocity{0.0f};  ///< A static side's motion there (Kinematic).
 };
 
 f32 inverseMass(const ContactSide& side) {
@@ -44,7 +45,8 @@ f32 inverseInertia(const ContactSide& side) {
 }
 
 Vec3 contactVelocity(const ContactSide& side) {
-    return side.body != nullptr ? side.body->velocity + glm::cross(side.body->angularVelocity, side.arm) : Vec3(0.0f);
+    return side.body != nullptr ? side.body->velocity + glm::cross(side.body->angularVelocity, side.arm)
+                                : side.surfaceVelocity;
 }
 
 /// Applies the impulse separating two bodies along `normal` (from a to b),
@@ -137,17 +139,47 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
                                world.tryGet<RigidBody>(entity), &transform});
         });
     std::vector<Box> boxes;
+    // Kinematic colliders: their velocity is how they moved since last step.
+    world.view<const Transform, Kinematic>().each([&](const Transform& transform, Kinematic& motion) {
+        if (motion.hasPrevious && dt > 0.0f) {
+            motion.velocity = (transform.position - motion.previousPosition) / dt;
+            const Quat turn = glm::normalize(transform.rotation) * glm::conjugate(glm::normalize(motion.previousRotation));
+            const Quat shortest = turn.w < 0.0f ? -turn : turn;  // the short way round
+            const f32 angle = glm::angle(shortest);
+            motion.angularVelocity = angle > 1e-6f ? glm::axis(shortest) * (angle / dt) : Vec3(0.0f);
+        }
+        if (!finite(motion.velocity) || !finite(motion.angularVelocity)) {
+            motion.velocity = Vec3(0.0f);
+            motion.angularVelocity = Vec3(0.0f);
+        }
+        motion.previousPosition = transform.position;
+        motion.previousRotation = transform.rotation;
+        motion.hasPrevious = true;
+    });
     world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
         [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
-            boxes.push_back(makeBox(entity, transform, collider));
+            boxes.push_back(makeBox(entity, transform, collider, world.tryGet<Kinematic>(entity)));
         });
 
     // Sleeping bodies have zero velocity; one that has been given some
     // since was woken by its owner.
     const bool sleeping = settings.sleepSpeed > 0.0f;
+    // So is one resting on a moving platform: it must ride along.
+    std::vector<const Box*> moving;
+    for (const Box& box : boxes) {
+        if (box.velocity != Vec3(0.0f) || box.angularVelocity != Vec3(0.0f)) {
+            moving.push_back(&box);
+        }
+    }
+    const auto onMoving = [&](const Vec3& center, f32 radius) {
+        return std::any_of(moving.begin(), moving.end(), [&](const Box* box) {
+            return finite(center) && sphereBoxContact(*box, center, radius + 0.05f).has_value();
+        });
+    };
     for (Sphere& sphere : spheres) {
         if (sphere.body != nullptr && sphere.body->asleep &&
-            (!sleeping || sphere.body->velocity != Vec3(0.0f) || sphere.body->angularVelocity != Vec3(0.0f))) {
+            (!sleeping || sphere.body->velocity != Vec3(0.0f) || sphere.body->angularVelocity != Vec3(0.0f) ||
+             onMoving(sphere.center, sphere.radius))) {
             wake(*sphere.body);
         }
     }
@@ -300,7 +332,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
             const f32 depth = contact->depth;
             separate(sphere, nullptr, normal, depth);
             report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
-                   resolve({sphere.body, normal * sphere.radius, sphere.radius}, {nullptr, Vec3(0.0f), 0.0f}, normal));
+                   resolve({sphere.body, normal * sphere.radius, sphere.radius},
+                           {nullptr, Vec3(0.0f), 0.0f, box.velocityAt(sphere.center + normal * sphere.radius)}, normal));
         }
     }
 
@@ -531,7 +564,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
     std::vector<Box> boxes;
     world.view<const Transform, const BoxCollider>().exclude<Trigger>().each(
         [&](ecs::Entity other, const Transform& pose, const BoxCollider& collider) {
-            Box box = makeBox(other, pose, collider);
+            Box box = makeBox(other, pose, collider, world.tryGet<Kinematic>(other));
             if (finite(box.boundsMin) && finite(box.boundsMax)) {
                 boxes.push_back(box);
             }
@@ -551,10 +584,11 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
 
     Vec3 position = transform->position;
     const Vec3 start = position;
-    const auto touch = [&](const Vec3& normal) {
+    const auto touch = [&](const Vec3& normal, const Vec3& surfaceVelocity) {
         if (normal.y >= walkable) {
             result.grounded = true;
             result.groundNormal = normal;
+            result.groundVelocity = surfaceVelocity;
         }
     };
 
@@ -562,7 +596,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
     for (const Box& box : boxes) {
         if (const auto contact = sphereBoxContact(box, position, radius)) {
             position -= contact->normal * (contact->depth + settings.skin);
-            touch(-contact->normal);
+            touch(-contact->normal, box.velocityAt(position));
         }
     }
 
@@ -576,6 +610,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
         // The first surface along the way, and its normal (facing us).
         f32 nearest = length;
         Vec3 normal(0.0f);
+        Vec3 surfaceVelocity(0.0f);
         for (const Box& box : boxes) {
             const auto hit = rayBox(box, position, direction, nearest, radius);
             if (!hit || hit->distance >= nearest) {
@@ -589,6 +624,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
             if (contact && glm::dot(direction, contact->normal) > 0.0f) {
                 nearest = hit->distance;
                 normal = -contact->normal;
+                surfaceVelocity = box.velocityAt(position + direction * hit->distance);
             }
         }
         for (const Obstacle& sphere : spheres) {
@@ -602,6 +638,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
             if (distance < nearest) {
                 nearest = distance;
                 normal = glm::normalize(position + direction * distance - sphere.center);
+                surfaceVelocity = Vec3(0.0f);
             }
         }
 
@@ -610,7 +647,7 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
             break;
         }
         result.blocked = true;
-        touch(normal);
+        touch(normal, surfaceVelocity);
         // Up to the surface, then a skin off it along its normal: backing
         // off along the move instead would shorten every slide.
         position += direction * nearest + normal * settings.skin;
