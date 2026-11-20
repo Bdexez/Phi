@@ -246,7 +246,7 @@ Window modules publish keyboard, mouse, and gamepad events; `platform::InputStat
 
 ## Tools
 
-- `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, frusta, and text in a stroke font (`text`, facing any direction, for labels in the world) drawn for one frame.
+- `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, frusta, and text in a stroke font (`text`, facing any direction, for labels in the world) drawn for one frame; `screenLine` and `screenText` draw in pixels on the finished image, after tone mapping and FXAA, crisp and never hidden, for heads-up debug panels.
 - `render::rayThroughPixel` and `render::intersect`, with `IRenderer::meshBounds`, for picking.
 - `Scheduler::taskStats()`: CPU time of every task; the `benchmark` sample prints it for a reproducible scene.
 - `IRenderer::reloadShaders()`: rebuilds pipelines from the shader files on disk.

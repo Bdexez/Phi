@@ -1274,3 +1274,48 @@ TEST(VulkanHeadless, MeasuresGpuTimePerDebugGroup) {
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
     test.engine->shutdown();
 }
+
+TEST(VulkanHeadless, OverlayLinesLandUntouchedOnTheFinalImage) {
+    // HDR, tone mapping and FXAA all on: overlay lines come after them.
+    Config config;
+    config.set("rhi.validation", "true");
+    config.set("renderer.hdr", "true");
+    log::setLevel(log::Level::Warn);
+    TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+    log::setLevel(log::Level::Info);
+    if (!test.ready()) {
+        GTEST_SKIP() << "Vulkan is not available here: " << test.loadError << test.initError;
+    }
+    test.renderer().setClearColor(Vec4(0.2f, 0.2f, 0.2f, 1.0f));
+    test.populate(3);  // cubes in the middle: the line crosses them too
+    auto& debug = test.engine->services().get<render::DebugDraw>();
+    debug.screenLine(Vec2(0.0f, 100.0f), Vec2(320.0f, 100.0f), Vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    debug.screenText(Vec2(4.0f, 4.0f), "FPS", 12.0f, Vec4(0.0f, 1.0f, 0.0f, 1.0f));
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_overlay.png";
+    test.renderer().requestScreenshot(path);
+    test.engine->tick();
+    const auto png = fs::readBinaryFile(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(png.has_value());
+    const auto image = assets::decodePng(*png);
+    ASSERT_TRUE(image.has_value());
+    const auto pixel = [&](u32 x, u32 y) { return image->pixels.data() + (y * image->width + x) * 4; };
+
+    // Exactly one row of pure red, over background and cubes alike.
+    for (const u32 x : {10u, 160u, 310u}) {
+        const u8* on = pixel(x, 100);
+        EXPECT_EQ(on[0], 255) << x;
+        EXPECT_EQ(on[1], 0) << x;
+        EXPECT_EQ(on[2], 0) << x;
+        EXPECT_LT(pixel(x, 98)[0], 250) << x;  // not smeared by FXAA
+    }
+    // The text's top-left glyph stroke (the F's stem) is pure green.
+    int green = 0;
+    for (u32 y = 4; y <= 16; ++y) {
+        green += pixel(4, y)[1] == 255 && pixel(4, y)[0] == 0;
+    }
+    EXPECT_GE(green, 10);
+    EXPECT_EQ(test.device().validationErrorCount(), 0u);
+    test.engine->shutdown();
+}

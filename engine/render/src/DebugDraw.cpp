@@ -132,6 +132,22 @@ void DebugDraw::box(const Mat4& transform, const Vec3& halfExtents, const Vec4& 
 
 void DebugDraw::text(const Vec3& origin, std::string_view text, f32 height, const Vec4& color, const Vec3& right,
                      const Vec3& up) {
+    writeText(vertices_, origin, text, height, color, right, up);
+}
+
+void DebugDraw::screenLine(const Vec2& from, const Vec2& to, const Vec4& color) {
+    overlay_.push_back({Vec3(from, 0.0f), color});
+    overlay_.push_back({Vec3(to, 0.0f), color});
+}
+
+void DebugDraw::screenText(const Vec2& position, std::string_view text, f32 height, const Vec4& color) {
+    // Pixel rows grow downward: letters stand toward -y.
+    writeText(overlay_, Vec3(position.x, position.y + height, 0.0f), text, height, color, Vec3(1.0f, 0.0f, 0.0f),
+              Vec3(0.0f, -1.0f, 0.0f));
+}
+
+void DebugDraw::writeText(std::vector<Vertex>& out, const Vec3& origin, std::string_view text, f32 height,
+                          const Vec4& color, const Vec3& right, const Vec3& up) {
     const f32 unit = height / kGlyphHeight;
     Vec3 lineStart = origin;
     Vec3 pen = origin;
@@ -173,7 +189,8 @@ void DebugDraw::text(const Vec3& origin, std::string_view text, f32 height, cons
                 const f32 y = number();
                 const Vec3 point = pen + right * (x * unit) + up * (y * unit);
                 if (penDown) {
-                    line(previous, point, color);
+                    out.push_back({previous, color});
+                    out.push_back({point, color});
                 }
                 previous = point;
                 penDown = true;

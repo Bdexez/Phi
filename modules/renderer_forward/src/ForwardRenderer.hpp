@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Overlay.hpp"
 #include "PostProcess.hpp"
 
 #include <bdex/core/Engine.hpp>
@@ -126,6 +127,7 @@ private:
 
     // Post-processing
     PostProcess postProcess_;
+    Overlay overlay_;
     bool hdr_ = true;
 
     // Shadows. The map always exists (1x1 when shadows are off) because the
