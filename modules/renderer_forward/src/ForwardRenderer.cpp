@@ -3,6 +3,7 @@
 #include <bdex/render/DebugDraw.hpp>
 
 #include "MeshFeature.hpp"
+#include "ParticleFeature.hpp"
 
 #include <bdex/assets/AssetManager.hpp>
 #include <bdex/assets/Image.hpp>
@@ -151,7 +152,10 @@ Result<> ForwardRenderer::initialize() {
     }
 
     // --- Built-in features -------------------------------------------------------------
-    return addFeature(std::make_unique<MeshFeature>(*this));
+    if (const auto added = addFeature(std::make_unique<MeshFeature>(*this)); !added) {
+        return added;
+    }
+    return addFeature(std::make_unique<ParticleFeature>());
 }
 
 void ForwardRenderer::shutdown() {
