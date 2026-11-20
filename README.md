@@ -112,6 +112,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
 | `F8` | Throw a bouncing ball (rigid-body physics); impacts are heard where they happen, as loud as they are hard. |
 | `F10` / `Delete` | Duplicate the selected object, with everything attached to it / delete it. |
+| `G` | Walk instead of flying: the camera gets a body that falls, walks on what it stands on (collide and slide), and jumps with `Space`; `G` again to fly. |
 | `F12` | Toggle the stats panel: frame rate, GPU time, entity and voice counts. |
 | `F11` | Toggle fullscreen (or start with `window.fullscreen = true`). |
 | `Escape` | Quit. |
