@@ -109,7 +109,7 @@ The demo features a textured ground plane, a sphere, animated cubes, and two moo
 | Left click | Select the object under the cursor (logged and circled). |
 | `F5` / `F9` | Save the scene to `sandbox_scene.ini` / load it back. |
 | `F6` | Toggle a flashlight (a spot light carried by the camera, casting shadows). |
-| `F7` | Reload shaders: edit a shader, rebuild (`cmake --build build`), press `F7`. |
+| `F7` | Reload shaders. The sandbox also does it by itself once they are rebuilt (`cmake --build build`), and reloads `models/lamp.gltf` when the file changes. |
 | `F8` | Throw a bouncing ball (rigid-body physics); impacts are heard where they happen, as loud as they are hard. |
 | `F10` / `Delete` | Duplicate the selected object, with everything attached to it / delete it. |
 | `C` | Throw a tumbling crate (a dynamic box). |

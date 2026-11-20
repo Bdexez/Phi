@@ -24,6 +24,7 @@
 #include <bdex/assets/Audio.hpp>
 #include <bdex/audio/Components.hpp>
 #include <bdex/core/FileSystem.hpp>
+#include <bdex/core/FileWatcher.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/physics/Physics.hpp>
 #include <bdex/render/DebugDraw.hpp>
@@ -37,6 +38,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <filesystem>
 #include <format>
 #include <limits>
 #include <numbers>
@@ -121,6 +123,7 @@ protected:
         }
         buildScene();
         registerSerializers();
+        setUpHotReload();
         setUpSounds();
 
         engine().scheduler().add(Phase::Update, "sandbox.spin", [this](const FrameTime& time) {
@@ -135,6 +138,7 @@ protected:
         }
         updateTitle(time);
         drawStats();
+        pollHotReload(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
             if (controls->pressed("quit")) {
@@ -726,11 +730,27 @@ private:
 
     /// Two lamp posts from a glTF file, each with a warm light in its
     /// lantern. The model is uploaded once and placed twice.
+    /// Two lamp posts from a glTF file, each with a warm light in its
+    /// lantern. The model is uploaded once and placed twice.
     void placeLamps() {
+        std::vector<scene::Transform> poses;
+        for (const f32 side : {-1.0f, 1.0f}) {
+            scene::Transform pose;
+            pose.position = Vec3(side * 4.5f, 0.0f, -2.5f);
+            // The arm reaches toward the middle of the scene.
+            pose.rotation = glm::angleAxis(side < 0.0f ? 0.0f : std::numbers::pi_v<f32>, Vec3(0.0f, 1.0f, 0.0f));
+            poses.push_back(pose);
+        }
+        placeLamps(poses);
+    }
+
+    /// Loads the lamp model (again) and places it at `poses`. A model that
+    /// does not load leaves the current one in place.
+    void placeLamps(const std::vector<scene::Transform>& poses) {
         if (!engine().services().has<render::IRenderer>()) {
             return;
         }
-        const auto model = assets::loadGltf(engine().services().get<VirtualFileSystem>(), "app:/models/lamp.gltf");
+        const auto model = assets::loadGltf(engine().services().get<VirtualFileSystem>(), kLampModel);
         if (!model) {
             log::warn("sandbox", "{}", model.error().message);
             return;
@@ -738,20 +758,77 @@ private:
         for (const std::string& warning : model->warnings) {
             log::warn("sandbox", "{}", warning);
         }
+        ecs::World& world = scene().world();
+        // Replacing: the old instances and their GPU side go first.
+        for (const ecs::Entity lamp : lampRoots()) {
+            scene::destroyHierarchy(world, lamp);
+        }
+        render::releaseModel(renderer(), lampResources_);
         // Named "lamp/..." for scene files.
         lampResources_ = render::uploadModel(renderer(), *model, &names_, "lamp");
-        ecs::World& world = scene().world();
-        for (const f32 side : {-1.0f, 1.0f}) {
+        for (const scene::Transform& pose : poses) {
             const ecs::Entity lamp = render::instantiateModel(scene(), *model, lampResources_, "Lamp");
             scene::Transform& transform = world.get<scene::Transform>(lamp);
-            transform.position = Vec3(side * 4.5f, 0.0f, -2.5f);
-            // The arm reaches toward the middle of the scene.
-            transform.rotation = glm::angleAxis(side < 0.0f ? 0.0f : std::numbers::pi_v<f32>, Vec3(0.0f, 1.0f, 0.0f));
+            transform.position = pose.position;
+            transform.rotation = pose.rotation;
+            transform.scale = pose.scale;
             const ecs::Entity glow = scene().createEntity("Lamp light");
             world.get<scene::Transform>(glow).position = Vec3(0.65f, 2.55f, 0.0f);  // in the lantern
             world.emplace<scene::Parent>(glow, lamp);
             world.emplace<render::PointLight>(
                 glow, render::PointLight{.color = Vec3(1.0f, 0.75f, 0.4f), .intensity = 4.0f, .range = 6.0f});
+        }
+    }
+
+    /// The lamp instances: entities named "Lamp" (duplicates included).
+    [[nodiscard]] std::vector<ecs::Entity> lampRoots() {
+        std::vector<ecs::Entity> roots;
+        scene().world().view<const scene::Name>().each([&](ecs::Entity entity, const scene::Name& name) {
+            if (name.value == "Lamp") {
+                roots.push_back(entity);
+            }
+        });
+        return roots;
+    }
+
+    /// Hot reloading: the lamp model when its file changes, shaders when
+    /// they are rebuilt (no need for F7).
+    void setUpHotReload() {
+        const auto& vfs = engine().services().get<VirtualFileSystem>();
+        for (const char* path : {kLampModel, "engine:/shaders", "app:/shaders"}) {
+            if (const auto resolved = vfs.resolve(path)) {
+                watcher_.watch(*resolved);
+            }
+        }
+        if (const auto lamp = vfs.resolve(kLampModel)) {
+            lampFile_ = *lamp;
+        }
+    }
+
+    void pollHotReload(const FrameTime& time) {
+        secondsSinceWatch_ += time.delta;
+        if (secondsSinceWatch_ < 0.5 || !engine().services().has<render::IRenderer>()) {
+            return;
+        }
+        secondsSinceWatch_ = 0.0;
+        bool shaders = false;
+        for (const std::filesystem::path& changed : watcher_.poll()) {
+            if (changed == lampFile_) {
+                log::info("sandbox", "{} changed: reloading the lamps", changed.filename().string());
+                std::vector<scene::Transform> poses;
+                for (const ecs::Entity lamp : lampRoots()) {
+                    poses.push_back(scene().world().get<scene::Transform>(lamp));
+                }
+                placeLamps(poses);
+            } else if (changed.extension() == ".spv") {
+                shaders = true;
+            }
+        }
+        if (shaders) {
+            log::info("sandbox", "shaders changed: reloading them");
+            if (const auto reloaded = renderer().reloadShaders(); !reloaded) {
+                log::error("sandbox", "{}", reloaded.error().message);
+            }
         }
     }
 
@@ -811,6 +888,10 @@ private:
     std::vector<ecs::Entity> balls_;
     std::vector<ecs::Entity> crates_;
     render::ModelResources lampResources_;
+    static constexpr const char* kLampModel = "app:/models/lamp.gltf";
+    FileWatcher watcher_;
+    std::filesystem::path lampFile_;
+    f64 secondsSinceWatch_ = 0.0;
     std::shared_ptr<const assets::AudioData> throwSound_;
     std::shared_ptr<const assets::AudioData> impactSound_;
     Subscription collisions_;
