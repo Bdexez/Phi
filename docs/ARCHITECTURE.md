@@ -211,6 +211,33 @@ modules = window_glfw, rhi_vulkan, renderer_forward, audio_null
 
 [`tests/plugins/TestPlugin.cpp`](../tests/plugins/TestPlugin.cpp) is a complete minimal module, and [`modules/rhi_null`](../modules/rhi_null/src/NullRhiModule.cpp) is the smallest real backend.
 
+## Entities and components
+
+`ecs::World` stores components in sparse sets keyed by `typeId`, so any movable type is a component and plugins share pools with the executable. Systems are functions over views:
+
+```cpp
+world.view<Transform, const Velocity>().each([&](Transform& t, const Velocity& v) { t.position += v.value * dt; });
+world.view<Transform>().exclude<Parent>().each(...);              // roots only
+world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job system
+```
+
+- A `const` component type is handed to the callback as a const reference, which documents what a system only reads.
+- `parallelEach` splits the view across the `JobSystem`; its callback may only touch the components it is given.
+- `onAdd<T>` / `onRemove<T>` observe components coming and going (including through `destroy` and `clear`), for indexes or resources that follow components.
+- `scene::updateWorldTransforms(world, jobs)` derives `WorldTransform` from `Transform` and `Parent` once per frame in O(n), computing roots in parallel.
+
+## Input
+
+Window modules publish keyboard, mouse, and gamepad events; `platform::InputState` turns them into polled state with per-frame transitions, and releases everything when the window loses focus. `platform::InputActions` maps named actions to keys, mouse buttons, gamepad buttons, and stick directions loaded from the `[input]` configuration section, with `value()` for analog strength past a dead zone. `Application` provides it as a service.
+
+## Tools
+
+- `render::DebugDraw` (service of the forward renderer): lines, boxes, spheres, axes, and frusta drawn for one frame.
+- `render::rayThroughPixel` and `render::intersect`, with `IRenderer::meshBounds`, for picking.
+- `Scheduler::taskStats()`: CPU time of every task; the `benchmark` sample prints it for a reproducible scene.
+- `IRenderer::reloadShaders()`: rebuilds pipelines from the shader files on disk.
+- `log.file`: a copy of the log on disk.
+
 ## Assets
 
 `AssetManager` loads files through the virtual file system and caches them by type and virtual path. Loaders are registered per type and extension (case-insensitive), so a module or an application can add a format without touching the engine:
