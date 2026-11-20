@@ -473,6 +473,32 @@ TEST(SceneFiles, FieldsHoldColorsAndWholeNumbers) {
     EXPECT_FALSE(parseField(shortColor, "color", color).has_value());
 }
 
+TEST(SceneFiles, LeaveTransientEntitiesAndTheirChildrenOut) {
+    Scene level("level");
+    ecs::World& world = level.world();
+    const ecs::Entity floor = level.createEntity("Floor");
+    const ecs::Entity player = level.createEntity("Player");
+    const ecs::Entity gun = level.createEntity("Gun");
+    const ecs::Entity lamp = level.createEntity("Lamp");
+    world.emplace<Transient>(player);
+    ASSERT_TRUE(setParent(world, gun, player).has_value());
+    ASSERT_TRUE(setParent(world, lamp, floor).has_value());
+
+    const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
+    const std::string text = serializers.save(world);
+    EXPECT_NE(text.find("Floor"), std::string::npos);
+    EXPECT_NE(text.find("Lamp"), std::string::npos);
+    EXPECT_EQ(text.find("Player"), std::string::npos);
+    EXPECT_EQ(text.find("Gun"), std::string::npos);
+
+    Scene loaded("loaded");
+    ASSERT_TRUE(serializers.load(loaded.world(), text).has_value());
+    EXPECT_EQ(loaded.world().entityCount(), 2u);
+    const ecs::Entity loadedLamp = loaded.find("Lamp");
+    ASSERT_TRUE(loaded.world().alive(loadedLamp));
+    EXPECT_EQ(loaded.world().get<Parent>(loadedLamp).entity, loaded.find("Floor"));
+}
+
 TEST(SceneFiles, RejectBadDataWithoutLeavingHalfAScene) {
     const ComponentSerializers serializers = ComponentSerializers::withSceneComponents();
     ecs::World world;
