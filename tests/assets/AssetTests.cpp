@@ -465,3 +465,24 @@ TEST(AssetManager, AcceptsCustomLoaders) {
     ASSERT_TRUE(note.has_value()) << note.error().message;
     EXPECT_EQ((*note)->text, "hello");
 }
+
+TEST(AssetManager, ASyncLoadFromAJobJoinsAnAsyncOneQueuedBehindIt) {
+    // One worker, busy with a job that starts loading an asset in the
+    // background (queued behind itself) and then asks for it at once: it
+    // used to wait forever for a load that could never run.
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "bdex_asset_join";
+    std::filesystem::create_directories(dir);
+    { std::ofstream(dir / "value.num") << "x"; }
+    VirtualFileSystem vfs;
+    vfs.mount("tmp", dir);
+    JobSystem jobs(1);
+    assets::AssetManager manager(vfs, &jobs);
+    manager.registerLoader<int>(".num", [](std::span<const u8>) -> Result<int> { return 7; });
+    auto job = jobs.submit([&manager] {
+        auto pending = manager.loadAsync<int>("tmp:/value.num");
+        const auto loaded = manager.load<int>("tmp:/value.num");
+        return loaded ? **loaded : -1;
+    });
+    EXPECT_EQ(job.get(), 7);
+    std::filesystem::remove_all(dir);
+}

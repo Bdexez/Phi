@@ -101,10 +101,14 @@ public:
                   });
     }
 
-    /// Returns the cached asset, loading it on first use.
+    /// Returns the cached asset, loading it on first use. If an asynchronous
+    /// load of it is already under way, waits for that one, running queued
+    /// jobs meanwhile: from inside a job, that load may be queued behind it.
     template <class T>
     [[nodiscard]] Result<std::shared_ptr<const T>> load(std::string_view virtualPath) {
-        return AssetFuture<T>(request(typeId<T>(), typeName<T>(), virtualPath, false)).get();
+        const auto pending = request(typeId<T>(), typeName<T>(), virtualPath, false);
+        await(pending);
+        return AssetFuture<T>(pending).get();
     }
 
     /// Starts loading the asset on a worker thread (or returns the cached
@@ -130,6 +134,8 @@ private:
                                                     std::string_view virtualPath, bool async);
     detail::ErasedAsset loadNow(const Key& key, std::string_view typeName,
                                 const ErasedLoader* loader);
+    /// Waits for a load, running queued jobs meanwhile (JobSystem::wait).
+    void await(const std::shared_future<detail::ErasedAsset>& pending) const;
 
     const VirtualFileSystem* vfs_;
     JobSystem* jobs_;

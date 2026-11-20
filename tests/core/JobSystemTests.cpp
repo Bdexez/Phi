@@ -69,3 +69,19 @@ TEST(JobSystem, ParallelForHandlesTrivialRanges) {
     });
     EXPECT_EQ(calls, 1);
 }
+
+TEST(JobSystem, AJobCanWaitForJobsItSubmitted) {
+    // One worker: a job blocking on a job queued behind it would never see
+    // it run. wait() runs queued jobs meanwhile.
+    JobSystem jobs(1);
+    auto outer = jobs.submit([&jobs] {
+        auto middle = jobs.submit([&jobs] {
+            auto inner = jobs.submit([] { return 5; });
+            jobs.wait(inner);
+            return inner.get() * 2;
+        });
+        jobs.wait(middle);
+        return middle.get() + 1;
+    });
+    EXPECT_EQ(outer.get(), 11);
+}
