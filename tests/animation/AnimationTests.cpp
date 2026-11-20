@@ -100,3 +100,57 @@ TEST(Animation, ACopiedModelAnimatesItsOwnNodes) {
     applyAnimation(world, original, *door.swing, 0.5f);
     EXPECT_NEAR(world.get<scene::Transform>(doorOf(world, original)).position.y, 1.0f, 1e-5f);
 }
+
+TEST(Animation, PlayersRoundTripThroughSceneFilesByClipName) {
+    Door door;
+    ClipNames clips;
+    clips.name(door.swing, "door/swing");
+    scene::ComponentSerializers serializers = scene::ComponentSerializers::withSceneComponents();
+    addComponentSerializers(serializers, clips);
+
+    scene::Scene level("level");
+    const ecs::Entity root = render::instantiateModel(level, door.model, render::ModelResources{}, "Door");
+    AnimationPlayer& player = level.world().emplace<AnimationPlayer>(root, door.swing, false);
+    player.time = 0.5f;
+    player.speed = 2.0f;
+    level.world().emplace<AnimationPlayer>(level.createEntity("Idle"));  // no clip
+    const std::string text = serializers.save(level.world());
+    EXPECT_NE(text.find("AnimationPlayer.clip = door/swing"), std::string::npos);
+
+    scene::Scene loaded("loaded");
+    ASSERT_TRUE(serializers.load(loaded.world(), text).has_value());
+    const ecs::Entity copy = loaded.find("Door");
+    const AnimationPlayer& restored = loaded.world().get<AnimationPlayer>(copy);
+    EXPECT_EQ(restored.clip, door.swing);
+    EXPECT_EQ(restored.time, 0.5f);
+    EXPECT_EQ(restored.speed, 2.0f);
+    EXPECT_FALSE(restored.loop);
+    EXPECT_TRUE(restored.playing);
+    EXPECT_EQ(loaded.world().get<AnimationPlayer>(loaded.find("Idle")).clip, nullptr);
+    // And it animates its own nodes, found again through their indices:
+    // 0.5 s more at double speed is the middle of the clip.
+    updateAnimations(loaded.world(), 0.25f);
+    EXPECT_NEAR(loaded.world().get<scene::Transform>(doorOf(loaded.world(), copy)).position.y, 2.0f, 1e-5f);
+
+    // A clip nobody named, or a name nobody gave: refused when loading.
+    scene::Scene stray("stray");
+    stray.world().emplace<AnimationPlayer>(stray.createEntity("Stray"), std::make_shared<assets::ModelAnimation>());
+    scene::Scene broken("broken");
+    EXPECT_FALSE(serializers.load(broken.world(), serializers.save(stray.world())).has_value());
+    ClipNames none;
+    scene::ComponentSerializers strangers = scene::ComponentSerializers::withSceneComponents();
+    addComponentSerializers(strangers, none);
+    const auto unknown = strangers.load(broken.world(), text);
+    ASSERT_FALSE(unknown.has_value());
+    EXPECT_NE(unknown.error().message.find("door/swing"), std::string::npos);
+    EXPECT_EQ(broken.world().entityCount(), 0u);  // nothing half loaded
+
+    // Renaming: a name means one clip, a clip has one name.
+    const auto other = std::make_shared<assets::ModelAnimation>();
+    clips.name(door.swing, "door/open");
+    EXPECT_EQ(clips.clip("door/swing"), nullptr);
+    EXPECT_EQ(clips.nameOf(door.swing.get()), "door/open");
+    clips.name(other, "door/open");
+    EXPECT_EQ(clips.clip("door/open"), other);
+    EXPECT_EQ(clips.nameOf(door.swing.get()), "");
+}
