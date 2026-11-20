@@ -94,6 +94,19 @@ TEST(AudioComponents, VoicesEndWithTheirSource) {
     rig.frame();  // stopped sources stay stopped
     EXPECT_EQ(rig.mixer->voiceCount(), 0u);
 
+    // Assigning a source to itself keeps its voice.
+    restart(rig.world.get<AudioSource>(c));
+    rig.frame();
+    AudioSource& playing = rig.world.get<AudioSource>(c);
+    const VoiceId before = playing.voice;
+    AudioSource& alias = playing;
+    playing = alias;
+    EXPECT_EQ(rig.world.get<AudioSource>(c).voice, before);
+    rig.frame();
+    EXPECT_EQ(rig.mixer->voiceCount(), 1u);
+    stop(rig.world.get<AudioSource>(c));
+    rig.frame();
+
     // restart() plays again from the start.
     restart(rig.world.get<AudioSource>(c));
     rig.frame();

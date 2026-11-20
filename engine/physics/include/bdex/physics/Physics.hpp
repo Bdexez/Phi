@@ -76,8 +76,10 @@ struct Trigger {
     // empty, so it reports what enters it rather than what left the
     // original. Moves keep it.
     Trigger(const Trigger&) {}
-    Trigger& operator=(const Trigger&) {
-        inside.clear();
+    Trigger& operator=(const Trigger& other) {
+        if (this != &other) {
+            inside.clear();
+        }
         return *this;
     }
     Trigger(Trigger&&) noexcept = default;
