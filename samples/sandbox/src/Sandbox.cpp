@@ -343,6 +343,10 @@ private:
         }
         eye->rotation = facing;
         ++demoThrows_;
+        if (demoThrows_ == 6) {
+            // Halfway: save and load back, in memory, with things in flight.
+            demoReloads_ += restoreScene(sceneText(), "the demo's own save") ? 1 : 0;
+        }
     }
 
     /// Removes every thrown ball and crate.
@@ -624,7 +628,8 @@ private:
     void onStop() override {
         if (demo_) {
             // What the smoke test checks for: the demo did run.
-            log::info("sandbox", "demo: {} throws, {} entities at the end", demoThrows_, scene().world().entityCount());
+            log::info("sandbox", "demo: {} throws, {} reloads, {} entities at the end", demoThrows_, demoReloads_,
+                      scene().world().entityCount());
         }
         if (engine().services().has<render::IRenderer>()) {
             lamps_.release(renderer());
@@ -646,6 +651,7 @@ private:
     bool demo_ = false;
     f64 demoClock_ = 0.0;
     u32 demoThrows_ = 0;
+    u32 demoReloads_ = 0;
     FileWatcher watcher_;
     std::filesystem::path lampFile_;
     f64 secondsSinceWatch_ = 0.0;

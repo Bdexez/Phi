@@ -44,7 +44,8 @@ if(BDEX_BUILD_TESTS)
     # Smoke run: five seconds of the demo (throws, impacts, sparks, trails,
     # sounds) headless, with the null device so it runs anywhere, sanitizers
     # included. It passes on the demo's closing line, which counts at least
-    # ten throws and which a crash never reaches. A pass expression makes
+    # ten throws and the save and load done halfway, and which a crash
+    # never reaches. A pass expression makes
     # ctest ignore the exit code, and leaks are reported after that line, so
     # sanitizer reports fail it explicitly.
     add_test(NAME sandbox.demo
@@ -55,6 +56,6 @@ if(BDEX_BUILD_TESTS)
                 --set log.level=info
         WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     set_tests_properties(sandbox.demo PROPERTIES
-        PASS_REGULAR_EXPRESSION "demo: [1-9][0-9]+ throws"
+        PASS_REGULAR_EXPRESSION "demo: [1-9][0-9]+ throws, 1 reloads"
         FAIL_REGULAR_EXPRESSION "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:")
 endif()
