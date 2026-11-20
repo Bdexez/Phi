@@ -26,6 +26,7 @@ add_executable(bdex_tests
     core/ServiceRegistryTests.cpp
     core/TypeIdTests.cpp
     ecs/WorldTests.cpp
+    physics/PhysicsTests.cpp
     platform/InputTests.cpp
     assets/AssetTests.cpp
     assets/PngTests.cpp
@@ -43,6 +44,7 @@ target_link_libraries(bdex_tests PRIVATE
     bdex::scene
     bdex::render
     bdex::app
+    bdex::physics
     GTest::gtest
     GTest::gtest_main)
 bdex_configure_target(bdex_tests)
