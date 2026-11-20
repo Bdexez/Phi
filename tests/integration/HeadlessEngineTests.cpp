@@ -1401,3 +1401,80 @@ TEST(VulkanHeadless, OverlayLinesLandUntouchedOnTheFinalImage) {
     EXPECT_EQ(test.device().validationErrorCount(), 0u);
     test.engine->shutdown();
 }
+
+TEST(VulkanHeadless, SpotLightsCastShadows) {
+    // A spot straight down onto the ground, a cube floating in its cone, no
+    // sun: the ground under the cube is dark only if the spot casts shadows.
+    const auto render = [](bool castShadows) -> std::pair<int, int> {
+        Config config;
+        config.set("rhi.validation", "true");
+        config.set("renderer.shadows", "true");
+        log::setLevel(log::Level::Warn);
+        TestEngine test({"window_null", "rhi_vulkan", "renderer_forward"}, config);
+        log::setLevel(log::Level::Info);
+        if (!test.ready()) {
+            return {-1, -1};
+        }
+        const ecs::Entity camera = test.scene().createEntity("camera");
+        const render::Camera lens;
+        test.world().emplace<render::Camera>(camera, lens);
+        scene::Transform& eye = test.world().get<scene::Transform>(camera);
+        eye.position = Vec3(0.0f, 8.0f, 8.0f);
+        eye.rotation = glm::quatLookAt(glm::normalize(Vec3(0.0f, -1.0f, -1.0f)), Vec3(0.0f, 1.0f, 0.0f));
+
+        // A sun turned off: otherwise the renderer lights the scene with a default one.
+        test.world().emplace<render::DirectionalLight>(
+            test.scene().createEntity("sun"),
+            render::DirectionalLight{.intensity = 0.0f, .ambient = Vec3(0.0f), .castShadows = false});
+        const ecs::Entity spot = test.scene().createEntity("spot");
+        scene::Transform& lamp = test.world().get<scene::Transform>(spot);
+        lamp.position = Vec3(0.0f, 6.0f, 0.0f);
+        lamp.rotation = glm::quatLookAt(Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f));  // -Z points down
+        test.world().emplace<render::SpotLight>(spot, render::SpotLight{.color = Vec3(1.0f),
+                                                                       .intensity = 1.0f,
+                                                                       .range = 20.0f,
+                                                                       .innerAngle = glm::radians(35.0f),
+                                                                       .outerAngle = glm::radians(45.0f),
+                                                                       .castShadows = castShadows});
+        test.world().emplace<render::MeshRenderer>(test.scene().createEntity("ground"),
+                                                   test.renderer().createMesh(assets::makePlane(20.0f)),
+                                                   test.renderer().createMaterial({}));
+        const ecs::Entity cube = test.scene().createEntity("cube");
+        test.world().get<scene::Transform>(cube).position = Vec3(0.0f, 3.0f, 0.0f);
+        test.world().emplace<render::MeshRenderer>(cube, test.renderer().createMesh(assets::makeCube()),
+                                                   test.renderer().createMaterial({}));
+
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_spot_shadows.png";
+        test.engine->tick();
+        test.renderer().requestScreenshot(path);
+        test.engine->tick();
+        const auto png = fs::readBinaryFile(path);
+        std::filesystem::remove(path);
+        const auto image = png ? assets::decodePng(*png) : Result<assets::ImageData>{};
+        if (!image || test.device().validationErrorCount() != 0) {
+            return {-2, -2};
+        }
+        const render::CameraData view = render::makeCameraData(
+            test.world().get<scene::WorldTransform>(camera).matrix, lens,
+            static_cast<f32>(image->width) / static_cast<f32>(image->height));
+        const auto brightness = [&](const Vec3& point) {
+            const Vec4 clip = view.viewProjection * Vec4(point, 1.0f);
+            const u32 x = static_cast<u32>((clip.x / clip.w * 0.5f + 0.5f) * static_cast<f32>(image->width));
+            const u32 y = static_cast<u32>((clip.y / clip.w * 0.5f + 0.5f) * static_cast<f32>(image->height));
+            return static_cast<int>(image->pixels[(y * image->width + x) * 4]);
+        };
+        // Under the cube (its shadow: the cone from 6 m up through a 1 m cube
+        // 3 m below covers 2 m of ground), and lit ground beside it.
+        return {brightness(Vec3(0.5f, 0.0f, 0.0f)), brightness(Vec3(2.0f, 0.0f, 0.0f))};
+    };
+
+    const auto [shadowed, beside] = render(true);
+    if (shadowed == -1) {
+        GTEST_SKIP() << "Vulkan is not available here";
+    }
+    ASSERT_GE(shadowed, 0) << "capture failed or validation errors";
+    EXPECT_LT(shadowed, 8);  // no ambient: full shadow is black
+    EXPECT_GT(beside, 40);
+    const auto [unblocked, besideAgain] = render(false);
+    EXPECT_GE(unblocked, besideAgain);  // without shadows, the light passes through the cube
+}

@@ -60,13 +60,15 @@ void addComponentSerializers(scene::ComponentSerializers& serializers) {
             out["range"] = formatField(light.range);
             out["inner_angle"] = formatField(light.innerAngle);
             out["outer_angle"] = formatField(light.outerAngle);
+            out["cast_shadows"] = formatField(light.castShadows);
         },
         [](SpotLight& light, const Fields& in, const EntityRefs&) {
             return parseAll([&] { return parseField(in, "color", light.color); },
                             [&] { return parseField(in, "intensity", light.intensity); },
                             [&] { return parseField(in, "range", light.range); },
                             [&] { return parseField(in, "inner_angle", light.innerAngle); },
-                            [&] { return parseField(in, "outer_angle", light.outerAngle); });
+                            [&] { return parseField(in, "outer_angle", light.outerAngle); },
+                            [&] { return parseField(in, "cast_shadows", light.castShadows); });
         });
     serializers.add<PointLight>(
         "PointLight",

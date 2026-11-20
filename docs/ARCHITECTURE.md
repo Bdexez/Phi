@@ -347,7 +347,7 @@ Runtime layout, relative to the executable: plugins sit next to it, `assets/engi
 Known gaps, listed so they are not mistaken for design decisions:
 
 - One window; `IWindowSystem` exposes a primary window only.
-- The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). Only the directional light casts shadows, from four cascades covering `renderer.shadow_distance` in front of the camera; each blends into the next over the last tenth of its range, and the last fades out toward the shadow distance. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
+- The forward renderer has a shadow pass, a color pass, and a post pass with bloom, exposure, tone mapping, and FXAA (no temporal or multisample anti-aliasing). The sun casts shadows from four cascades covering `renderer.shadow_distance` in front of the camera, each blending into the next over the last tenth of its range, the last fading out toward the shadow distance; up to four spot lights with `castShadows` (the closest) add a perspective shadow each, in the second row of the same 4 x 2 atlas. Point lights cast none. Culling is per object against the view frustum, and transparent objects are sorted per object, not per triangle.
 - The RHI is main-thread only.
 - No scripting; physics covers dynamic spheres against spheres and oriented static boxes; dynamic boxes are not simulated.
 - Only built and run on Linux (GCC and Clang). Windows and macOS code paths exist (library loading, executable path, export macros) but are untested.
