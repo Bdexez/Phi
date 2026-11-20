@@ -66,6 +66,10 @@ public:
     /// left / right samples in [-1, 1], replacing its contents, and advances
     /// every voice; finished voices are dropped.
     void mix(std::span<f32> out);
+    /// Plays `seconds` of audio into the void: voices advance and finish as
+    /// if heard. For when no device consumes the mix (headless runs); call
+    /// it from one thread at a time.
+    void advance(f64 seconds);
 
 private:
     struct Voice {
@@ -86,6 +90,8 @@ private:
     Vec3 listenerPosition_{0.0f};
     Quat listenerOrientation_{1.0f, 0.0f, 0.0f, 0.0f};
     f32 masterVolume_ = 1.0f;
+    f64 advanceRemainder_ = 0.0;  ///< Fraction of a frame carried between advance() calls.
+    std::vector<f32> scratch_;
 };
 
 }  // namespace bdex::audio

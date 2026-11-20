@@ -46,6 +46,7 @@ cmake/          Helpers for building libraries, modules, and shaders
 | `rhi_vulkan` | Vulkan 1.3 graphics backend. |
 | `rhi_null` | Backend with no GPU execution, used for testing. |
 | `renderer_forward` | Scene rendering and support for custom render features. |
+| `audio_null` | Audio mixer without a device: sounds play and finish in real time, silently. |
 
 By default, modules are shared libraries loaded at runtime. Set the CMake option `BDEX_SHARED_MODULES=OFF` to link them statically and register their factories in the executable.
 
@@ -124,7 +125,7 @@ Capture an image using the offscreen Vulkan backend:
 ./build/bin/sandbox --headless --frames 3 --screenshot /tmp/bdex-sandbox.png
 ```
 
-`--headless` replaces the window module with `window_null` and keeps the configured graphics backend. With the default configuration, this mode still requires Vulkan.
+`--headless` replaces the window module with `window_null` (and any audio module with `audio_null`) and keeps the configured graphics backend. With the default configuration, this mode still requires Vulkan.
 
 Run the same application with the `null` backend, without a GPU:
 

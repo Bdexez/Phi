@@ -4,6 +4,8 @@
 // real GPU when one is available.
 
 #include <bdex/assets/AssetManager.hpp>
+#include <bdex/assets/Audio.hpp>
+#include <bdex/audio/Mixer.hpp>
 #include <bdex/assets/Image.hpp>
 #include <bdex/core/Engine.hpp>
 #include <bdex/core/FileSystem.hpp>
@@ -466,6 +468,26 @@ TEST(HeadlessEngine, TheFirstPrimaryCameraIsUsed) {
     test.world().destroy(first);
     test.engine->tick();
     EXPECT_FLOAT_EQ(probePtr->lastCameraPosition.x, 2.0f);
+}
+
+TEST(HeadlessEngine, SilentAudioPlaysSoundsInRealTime) {
+    TestEngine test({"audio_null"});
+    ASSERT_TRUE(test.ready()) << test.loadError << test.initError;
+    auto* mixer = test.engine->services().tryGet<audio::Mixer>();
+    ASSERT_NE(mixer, nullptr);
+    // 0.1 s of sound: still playing after 5 frames of 16 ms, done after 7.
+    const audio::VoiceId voice =
+        mixer->play(std::make_shared<assets::AudioData>(assets::makeTone(440.0f, 0.1f, mixer->sampleRate())));
+    for (int i = 0; i < 5; ++i) {
+        test.engine->tick();
+    }
+    EXPECT_TRUE(mixer->playing(voice));
+    for (int i = 0; i < 2; ++i) {
+        test.engine->tick();
+    }
+    EXPECT_FALSE(mixer->playing(voice));
+    test.engine->shutdown();
+    EXPECT_FALSE(test.engine->services().has<audio::Mixer>());
 }
 
 // --- Real GPU -------------------------------------------------------------------------

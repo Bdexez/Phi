@@ -213,12 +213,15 @@ int Application::run(int argc, char** argv) {
         }
     }
 
-    // Headless: keep the configured stack but swap the window backend.
+    // Headless: keep the configured stack but swap the window and audio
+    // backends for silent ones.
     std::vector<std::string> modules = config.getList("engine.modules");
     if (config.getBool("app.headless", false)) {
         for (std::string& module : modules) {
             if (module.starts_with("window_")) {
                 module = "window_null";
+            } else if (module.starts_with("audio_")) {
+                module = "audio_null";
             }
         }
         config.set("engine.modules", joinModules(modules));

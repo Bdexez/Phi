@@ -13,7 +13,7 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
                                         │ uses interfaces only
                  ┌──────────────────────▼───────────────────────┐
   engine         │ app                                          │
-  libraries      │ render    scene    assets                    │
+  libraries      │ render    physics  scene    audio  assets    │
   (interfaces    │ rhi       platform ecs                       │
    + shared      │ core  ← kernel: modules, services, events,   │
    logic)        │         scheduler, config, jobs, filesystem  │
@@ -21,7 +21,7 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
                                         │ implement interfaces
                  ┌──────────────────────┴───────────────────────┐
   modules        │ window_glfw   rhi_vulkan   renderer_forward  │
-  (plugins)      │ window_null   rhi_null                       │
+  (plugins)      │ window_null   rhi_null     audio_null        │
                  └──────────────────────────────────────────────┘
 ```
 
@@ -235,7 +235,7 @@ world.view<Transform, const Spin>().parallelEach(jobs, spinFn);   // on the job 
 
 ## Audio
 
-`audio::Mixer` sums voices into one stereo stream at its own sample rate. `play(clip, params)` starts an `assets::AudioData` (kept alive while it plays) and returns a `VoiceId` to change its volume, pitch, or position, or to stop it; finished voices drop out on their own. Clips at any rate are resampled (linear interpolation), mono ones are panned with equal power and stereo ones balanced, and `spatial` voices are attenuated as `minDistance / distance` (silent past `maxDistance`) and panned by their direction from the listener set with `setListener`. An audio backend calls `mix(buffer)` from its own thread to fill device buffers while the game drives voices from another; a mutex, held for one buffer at a time, keeps them apart. Mixing 64 voices costs about 0.6% of real time.
+The `audio::Mixer` service comes from an audio module (capability `"audio"`): `audio_null` runs it in real time and discards its output, so sounds still start, play for their length, and finish in headless runs and tests (`--headless` swaps any audio module for it). `audio::Mixer` sums voices into one stereo stream at its own sample rate. `play(clip, params)` starts an `assets::AudioData` (kept alive while it plays) and returns a `VoiceId` to change its volume, pitch, or position, or to stop it; finished voices drop out on their own. Clips at any rate are resampled (linear interpolation), mono ones are panned with equal power and stereo ones balanced, and `spatial` voices are attenuated as `minDistance / distance` (silent past `maxDistance`) and panned by their direction from the listener set with `setListener`. An audio backend calls `mix(buffer)` from its own thread to fill device buffers while the game drives voices from another; a mutex, held for one buffer at a time, keeps them apart. Mixing 64 voices costs about 0.6% of real time.
 
 ## Input
 
