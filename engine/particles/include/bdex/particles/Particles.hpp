@@ -32,6 +32,9 @@ struct ParticleEmitter {
     f32 speed = 2.0f;                  ///< Meters per second; varies by +/- speedVariance of it.
     f32 speedVariance = 0.3f;
     f32 emitRadius = 0.0f;             ///< Born anywhere within this ball around the emitter.
+    /// Share of the emitter's own velocity its particles leave with: 0
+    /// leaves them where they were born, 1 carries them along with it.
+    f32 inheritVelocity = 0.0f;
 
     // --- Motion --------------------------------------------------------------
     Vec3 gravity{0.0f, -9.81f, 0.0f};  ///< Smoke wants it small or upward.
@@ -48,6 +51,12 @@ struct ParticleEmitter {
     // --- Runtime, kept by updateParticles -----------------------------------
     std::vector<Particle> particles;
     f32 pending = 0.0f;  ///< Fraction of a particle carried to the next update.
+    /// Where the emitter was at the last update: particles of a frame are
+    /// born along the way from there, so a fast emitter leaves an even
+    /// trail. Clear hasPreviousOrigin after teleporting it, or the trail
+    /// streaks across the jump.
+    Vec3 previousOrigin{0.0f};
+    bool hasPreviousOrigin = false;
     u32 seed = 1;        ///< Advances with each random draw: emitters replay identically.
 };
 
@@ -62,8 +71,10 @@ struct ParticleEmitter {
 }
 
 /// Ages and moves every emitter's particles by `dt` seconds, drops the
-/// expired, and emits new ones (its rate, and any burst) from the emitter's
-/// world position (WorldTransform if present, else Transform).
+/// expired, and emits new ones from the emitter's world position
+/// (WorldTransform if present, else Transform): a burst all at once where
+/// it stands, its rate spread over the frame, each particle born where the
+/// emitter was at that instant and already aged since.
 void updateParticles(ecs::World& world, f32 dt);
 
 }  // namespace bdex::particles

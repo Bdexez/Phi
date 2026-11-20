@@ -31,7 +31,9 @@ Vec3 inCone(const Vec3& axis, f32 spread, u32& seed) {
     return up * cosine + (side * std::cos(turn) + other * std::sin(turn)) * sine;
 }
 
-void emit(ParticleEmitter& emitter, const Vec3& origin) {
+/// Emits one particle at `origin` that has lived `age` seconds already
+/// (born during the frame), leaving with `carried` on top of its own speed.
+void emit(ParticleEmitter& emitter, const Vec3& origin, const Vec3& carried, f32 age) {
     if (emitter.particles.size() >= emitter.maxParticles) {
         return;
     }
@@ -46,9 +48,19 @@ void emit(ParticleEmitter& emitter, const Vec3& origin) {
                              (emitter.emitRadius * std::cbrt(random(seed)));
     }
     const f32 speed = emitter.speed * (1.0f + emitter.speedVariance * (2.0f * random(seed) - 1.0f));
-    particle.velocity = inCone(emitter.direction, emitter.spread, seed) * speed;
+    particle.velocity = inCone(emitter.direction, emitter.spread, seed) * speed + carried;
     particle.lifetime =
         std::max(emitter.lifetime * (1.0f + emitter.lifetimeVariance * (2.0f * random(seed) - 1.0f)), 1e-3f);
+    if (age > 0.0f) {
+        if (age >= particle.lifetime) {
+            return;  // born and gone within the frame
+        }
+        // Catch up on the time since its birth, as the update would have.
+        particle.age = age;
+        const f32 keep = emitter.drag > 0.0f ? std::exp(-emitter.drag * age) : 1.0f;
+        particle.velocity = (particle.velocity + emitter.gravity * age) * keep;
+        particle.position += particle.velocity * age;
+    }
     emitter.particles.push_back(particle);
 }
 
@@ -81,15 +93,29 @@ void updateParticles(ecs::World& world, f32 dt) {
         } else if (const auto* local = world.tryGet<scene::Transform>(entity)) {
             origin = local->position;
         }
+        // The way the emitter came this frame, and how fast.
+        const Vec3 from = emitter.hasPreviousOrigin ? emitter.previousOrigin : origin;
+        const Vec3 carried =
+            dt > 0.0f ? (origin - from) / dt * (std::isfinite(emitter.inheritVelocity) ? emitter.inheritVelocity : 0.0f)
+                      : Vec3(0.0f);
+        emitter.previousOrigin = origin;
+        emitter.hasPreviousOrigin = true;
+
         for (; emitter.burst > 0; --emitter.burst) {
-            emit(emitter, origin);
+            emit(emitter, origin, carried, 0.0f);
         }
         if (emitter.emitting && emitter.rate > 0.0f && std::isfinite(emitter.rate)) {
+            const f32 before = emitter.pending;
             emitter.pending += emitter.rate * dt;
             // Bounded: a long frame should not emit thousands in one go.
             emitter.pending = std::min(emitter.pending, static_cast<f32>(emitter.maxParticles));
-            for (; emitter.pending >= 1.0f; emitter.pending -= 1.0f) {
-                emit(emitter, origin);
+            for (u32 count = 1; emitter.pending >= 1.0f; emitter.pending -= 1.0f, ++count) {
+                // The count reached `count` this many seconds into the frame:
+                // the particle is born there, on the emitter's way.
+                const f32 born = std::clamp((static_cast<f32>(count) - before) / emitter.rate, 0.0f, dt);
+                const f32 along = dt > 0.0f ? born / dt : 1.0f;
+                // from + (origin - from) * along, unlike mix, is exact for a still emitter.
+                emit(emitter, from + (origin - from) * along, carried, dt - born);
             }
         }
     });
