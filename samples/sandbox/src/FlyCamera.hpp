@@ -44,6 +44,7 @@ private:
     bdex::ecs::Entity body_;
     bdex::f32 verticalSpeed_ = 0.0f;
     bool grounded_ = false;
+    bdex::Vec3 groundVelocity_{0.0f};
 };
 
 }  // namespace sandbox

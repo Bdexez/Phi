@@ -109,9 +109,12 @@ void FlyCamera::walk(ecs::World& world, const platform::InputActions& actions, f
         verticalSpeed_ = kJumpSpeed;
     }
     verticalSpeed_ -= kGravity * deltaSeconds;
-    const physics::MoveResult moved =
-        physics::moveAndSlide(world, body_, wish * (speed * deltaSeconds) + Vec3(0.0f, verticalSpeed_ * deltaSeconds, 0.0f));
+    // Standing on a moving platform, ride along with it.
+    const Vec3 carried = grounded_ ? groundVelocity_ * deltaSeconds : Vec3(0.0f);
+    const physics::MoveResult moved = physics::moveAndSlide(
+        world, body_, wish * (speed * deltaSeconds) + carried + Vec3(0.0f, verticalSpeed_ * deltaSeconds, 0.0f));
     grounded_ = moved.grounded;
+    groundVelocity_ = moved.grounded ? moved.groundVelocity : Vec3(0.0f);
     if (grounded_ && verticalSpeed_ < 0.0f) {
         verticalSpeed_ = -1.0f;  // keep pressing on the ground, to keep touching it
     } else if (moved.blocked && verticalSpeed_ > 0.0f && moved.moved.y < verticalSpeed_ * deltaSeconds * 0.5f) {
