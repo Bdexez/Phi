@@ -31,6 +31,7 @@ add_executable(bdex_tests
     platform/InputTests.cpp
     assets/AssetTests.cpp
     assets/AudioTests.cpp
+    assets/GltfTests.cpp
     assets/PngTests.cpp
     assets/ZlibTests.cpp
     audio/AudioComponentsTests.cpp

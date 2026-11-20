@@ -15,7 +15,7 @@ The project separates engine interfaces from their implementations: windowing, g
 - **Vulkan backend:** dynamic rendering, synchronization2, memory management with Vulkan Memory Allocator, mipmap generation, anisotropic filtering, and PNG screenshots.
 - **Physics:** rigid bodies with gravity, sphere and oriented box colliders, triggers, raycasts, a collide-and-slide character controller, restitution, and friction that sets balls rolling, stepped deterministically in the fixed update.
 - **Audio:** a software mixer with any number of voices, resampling, pitch, looping, and 3D panning and attenuation around a listener.
-- **Assets:** a virtual file system, asset caching, OBJ, PNG, TGA, WAV, and SPIR-V loaders, plus procedural cubes, planes, spheres, textures, and tones.
+- **Assets:** a virtual file system, asset caching, glTF 2.0 (`.gltf`, `.glb`), OBJ, PNG, TGA, WAV, and SPIR-V loaders, plus procedural cubes, planes, spheres, textures, and tones.
 - **Headless execution:** offscreen Vulkan rendering or a `null` graphics backend for tests without a GPU.
 
 ## Architecture
@@ -235,7 +235,7 @@ With GoogleTest installed and `BDEX_BUILD_TESTS=ON`:
 ctest --test-dir build --output-on-failure
 ```
 
-Tests cover the core, plugin loading, ECS, assets, scenes, physics, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run).
+Tests cover the core, plugin loading, ECS, assets, scenes, physics, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, WAV, OBJ, glTF, JSON, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run).
 
 If GoogleTest is missing, CMake prints a warning and continues configuration without building the tests.
 
