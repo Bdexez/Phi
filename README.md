@@ -229,7 +229,7 @@ With GoogleTest installed and `BDEX_BUILD_TESTS=ON`:
 ctest --test-dir build --output-on-failure
 ```
 
-Tests cover the core, plugin loading, ECS, assets, scenes, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available.
+Tests cover the core, plugin loading, ECS, assets, scenes, physics, and renderer integration with the `null` and Vulkan backends. Vulkan tests run offscreen and are skipped if no usable Vulkan device is available. Robustness tests feed tens of thousands of deterministic corruptions of valid files to every loader of outside data (PNG, TGA, OBJ, config and scene files, then a few physics steps over what loaded); they must never crash or throw, which the `asan` preset checks down to memory accesses and undefined behavior (any UBSan report, float-to-integer overflows included, fails the run).
 
 If GoogleTest is missing, CMake prints a warning and continues configuration without building the tests.
 
