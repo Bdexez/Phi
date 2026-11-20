@@ -21,7 +21,7 @@
 
 #include <bdex/app/Application.hpp>
 #include <bdex/assets/Audio.hpp>
-#include <bdex/audio/Mixer.hpp>
+#include <bdex/audio/Components.hpp>
 #include <bdex/core/FileSystem.hpp>
 #include <bdex/core/JobSystem.hpp>
 #include <bdex/physics/Physics.hpp>
@@ -127,12 +127,6 @@ protected:
         if (const auto* controls = actions(); controls != nullptr && input() != nullptr) {
             flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
         }
-        // The ears go where the eyes are.
-        if (auto* mixer = engine().services().tryGet<audio::Mixer>();
-            mixer != nullptr && scene().world().has<scene::Transform>(camera_)) {
-            const scene::Transform& eye = scene().world().get<scene::Transform>(camera_);
-            mixer->setListener(eye.position, eye.rotation);
-        }
         updateTitle(time);
 
         if (const platform::InputActions* controls = actions(); controls != nullptr) {
@@ -218,6 +212,7 @@ private:
         serializers_ = scene::ComponentSerializers::withSceneComponents();
         render::addComponentSerializers(serializers_);
         physics::addComponentSerializers(serializers_);
+        audio::addComponentSerializers(serializers_);
         serializers_.add<Spin>(
             "Spin",
             [](const Spin& spin, scene::Fields& out, const scene::EntityRefs&) {
@@ -613,6 +608,7 @@ private:
         // Camera
         camera_ = level.createEntity("Camera");
         world.emplace<render::Camera>(camera_);
+        world.emplace<audio::AudioListener>(camera_);  // the ears go where the eyes are
         world.get<scene::Transform>(camera_).position = Vec3(0.0f, 3.2f, 9.5f);
         flyCamera_.attach(world, camera_, 0.0f, -0.26f);
 
