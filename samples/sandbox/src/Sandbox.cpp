@@ -143,7 +143,8 @@ protected:
 
     void onUpdate(const FrameTime& time) override {
         if (const auto* controls = actions(); controls != nullptr && input() != nullptr) {
-            flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.delta));
+            // Real time: the camera flies on through slow motion or a pause.
+            flyCamera_.update(scene().world(), *controls, *input(), window(), static_cast<f32>(time.unscaledDelta));
         }
         hud_.update(engine(), time, scene().world().entityCount(), actions(), window());
         sparks_.update(scene().world());
@@ -817,7 +818,7 @@ private:
     }
 
     void pollHotReload(const FrameTime& time) {
-        secondsSinceWatch_ += time.delta;
+        secondsSinceWatch_ += time.unscaledDelta;
         if (secondsSinceWatch_ < 0.5 || !engine().services().has<render::IRenderer>()) {
             return;
         }
@@ -885,6 +886,11 @@ private:
         }
         ui_.checkbox("sparks", sparks_.enabled);
         ui_.checkbox("gizmos", debugView_);
+        bool timeChanged = ui_.slider("time scale", timeScale_, 0.05f, 2.0f);
+        timeChanged |= ui_.checkbox("pause", paused_);  // both drawn every frame
+        if (timeChanged) {
+            engine().setTimeScale(paused_ ? 0.0 : timeScale_);
+        }
         if (ui_.button("throw a crate")) {
             throwCrate();
         }
@@ -942,6 +948,8 @@ private:
     bool showPanel_ = true;
     bool platformMoving_ = true;
     bool lanternsSway_ = true;
+    f32 timeScale_ = 1.0f;
+    bool paused_ = false;
     f32 sunElevation_ = 0.0f;
     f32 sunAzimuth_ = 0.0f;
     static constexpr Vec3 kPlatformBase{-7.5f, 0.16f, 1.0f};

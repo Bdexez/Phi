@@ -15,7 +15,7 @@ using namespace bdex;
 void Hud::update(Engine& engine, const FrameTime& time, usize entityCount, const platform::InputActions* actions,
                  platform::IWindow* window) {
     ++frames_;
-    seconds_ += time.delta;
+    seconds_ += time.unscaledDelta;  // frames per real second, paused or not
     if (seconds_ >= 0.5) {
         const f64 fps = frames_ / seconds_;
         if (window != nullptr) {
