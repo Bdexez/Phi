@@ -2,6 +2,8 @@
 // exit codes and lifecycle callbacks, on the headless window module.
 
 #include <bdex/app/Application.hpp>
+#include <bdex/assets/Audio.hpp>
+#include <bdex/audio/Components.hpp>
 #include <bdex/core/Log.hpp>
 #include <bdex/physics/Physics.hpp>
 
@@ -182,4 +184,41 @@ TEST(Application, PublishesCollisions) {
     Bouncer bouncer;
     EXPECT_EQ(bouncer.run({"--frames", "120", "--set", "engine.forced_delta=0.016"}), 0);
     EXPECT_EQ(bouncer.collisions, 1);
+}
+
+TEST(Application, PlaysAudioSourcesWithAnAudioModule) {
+    struct Player final : app::Application {
+        usize voicesAtFirstFrame = 0;
+        usize voicesAtStop = 0;
+        int run(std::vector<std::string> arguments) {
+            arguments.insert(arguments.begin(), "player");
+            std::vector<char*> argv;
+            for (std::string& argument : arguments) {
+                argv.push_back(argument.data());
+            }
+            log::setConsoleEnabled(false);
+            const int code = Application::run(static_cast<int>(argv.size()), argv.data());
+            log::setConsoleEnabled(true);
+            return code;
+        }
+        void onConfigure(Config& config) override { config.set("engine.modules", "window_null,audio_null"); }
+        Result<> onStart() override {
+            // 0.25 s of sound, from an entity: nothing else to do.
+            const ecs::Entity speaker = scene().createEntity("speaker");
+            scene().world().emplace<audio::AudioSource>(
+                speaker, std::make_shared<assets::AudioData>(assets::makeTone(440.0f, 0.25f)));
+            return {};
+        }
+        void onUpdate(const FrameTime& time) override {
+            if (time.frame == 1) {
+                voicesAtFirstFrame = engine().services().get<audio::Mixer>().voiceCount();
+            }
+        }
+        void onStop() override { voicesAtStop = engine().services().get<audio::Mixer>().voiceCount(); }
+    };
+
+    Player player;
+    EXPECT_EQ(player.run({"--frames", "20", "--set", "engine.forced_delta=0.02"}), 0);
+    EXPECT_EQ(player.voicesAtFirstFrame, 1u);  // started by itself
+    EXPECT_EQ(player.voicesAtStop, 0u);        // and played out in 0.4 s
 }

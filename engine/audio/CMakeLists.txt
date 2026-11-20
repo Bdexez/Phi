@@ -1,6 +1,9 @@
 bdex_add_library(audio
     SOURCES
+        src/Components.cpp
         src/Mixer.cpp
     PUBLIC_DEPS
         bdex::core
-        bdex::assets)
+        bdex::ecs
+        bdex::assets
+        bdex::scene)
