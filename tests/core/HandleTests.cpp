@@ -1,10 +1,10 @@
-#include <bdex/core/Handle.hpp>
+#include <phi/core/Handle.hpp>
 
 #include <gtest/gtest.h>
 
 #include <string>
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 struct ThingTag {};

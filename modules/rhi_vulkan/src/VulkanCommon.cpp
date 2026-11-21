@@ -1,6 +1,6 @@
 #include "VulkanCommon.hpp"
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 
 const char* resultString(VkResult result) {
     switch (result) {
@@ -183,4 +183,4 @@ VkDescriptorType toVkDescriptorType(rhi::BindingType type) {
     return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 }
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

@@ -1,4 +1,4 @@
-bdex_add_library(assets
+phi_add_library(assets
     SOURCES
         src/AssetManager.cpp
         src/Gltf.cpp
@@ -9,4 +9,4 @@ bdex_add_library(assets
         src/Wav.cpp
         src/Zlib.cpp
     PUBLIC_DEPS
-        bdex::core)
+        phi::core)

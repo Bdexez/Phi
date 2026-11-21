@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <array>
 
-namespace bdex::forward {
+namespace phi::forward {
 namespace {
 
 Result<rhi::ShaderHandle> loadShader(rhi::IDevice& device, assets::AssetManager& assets,
@@ -260,4 +260,4 @@ void PostProcess::toneMap(rhi::ICommandList& commands, rhi::TextureHandle output
     commands.endRendering();
 }
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

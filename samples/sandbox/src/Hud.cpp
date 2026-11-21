@@ -1,8 +1,8 @@
 #include "Hud.hpp"
 
-#include <bdex/audio/Mixer.hpp>
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/audio/Mixer.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <format>
 #include <string_view>
@@ -10,7 +10,7 @@
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 void Hud::update(Engine& engine, const FrameTime& time, usize entityCount, const platform::InputActions* actions,
                  platform::IWindow* window) {
@@ -19,7 +19,7 @@ void Hud::update(Engine& engine, const FrameTime& time, usize entityCount, const
     if (seconds_ >= 0.5) {
         const f64 fps = frames_ / seconds_;
         if (window != nullptr) {
-            window->setTitle(std::format("bdex sandbox - {:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps));
+            window->setTitle(std::format("Phi sandbox - {:.0f} fps ({:.2f} ms)", fps, 1000.0 / fps));
         }
         f64 gpu = 0.0;
         if (const auto* device = engine.services().tryGet<rhi::IDevice>()) {

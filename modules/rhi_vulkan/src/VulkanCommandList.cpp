@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 
 void CommandList::begin(VkCommandBuffer commandBuffer) {
     commandBuffer_ = commandBuffer;
@@ -15,18 +15,18 @@ void CommandList::begin(VkCommandBuffer commandBuffer) {
 }
 
 void CommandList::end() {
-    BDEX_ASSERT(!rendering_, "endFrame called inside a rendering scope");
+    PHI_ASSERT(!rendering_, "endFrame called inside a rendering scope");
     commandBuffer_ = VK_NULL_HANDLE;
     boundPipeline_ = nullptr;
 }
 
 void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
-    BDEX_ASSERT(!rendering_, "beginRendering called twice");
-    BDEX_ASSERT(!desc.colorAttachments.empty() || desc.depthAttachment != nullptr,
+    PHI_ASSERT(!rendering_, "beginRendering called twice");
+    PHI_ASSERT(!desc.colorAttachments.empty() || desc.depthAttachment != nullptr,
                 "beginRendering needs at least one attachment");
 
     constexpr usize kMaxColorAttachments = 8;
-    BDEX_ASSERT(desc.colorAttachments.size() <= kMaxColorAttachments);
+    PHI_ASSERT(desc.colorAttachments.size() <= kMaxColorAttachments);
     std::array<VkRenderingAttachmentInfo, kMaxColorAttachments> colors{};
     VkExtent2D extent{};
     colorTargets_.clear();
@@ -35,7 +35,7 @@ void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
     for (usize i = 0; i < desc.colorAttachments.size(); ++i) {
         const rhi::ColorAttachment& attachment = desc.colorAttachments[i];
         Texture* texture = device_->texture(attachment.texture);
-        BDEX_ASSERT(texture != nullptr, "invalid color attachment");
+        PHI_ASSERT(texture != nullptr, "invalid color attachment");
         device_->transition(commandBuffer_, *texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         VkRenderingAttachmentInfo& info = colors[i];
@@ -55,7 +55,7 @@ void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
     bool depthHasStencil = false;
     if (desc.depthAttachment != nullptr) {
         Texture* texture = device_->texture(desc.depthAttachment->texture);
-        BDEX_ASSERT(texture != nullptr, "invalid depth attachment");
+        PHI_ASSERT(texture != nullptr, "invalid depth attachment");
         device_->transition(commandBuffer_, *texture,
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
@@ -84,7 +84,7 @@ void CommandList::beginRendering(const rhi::RenderingDesc& desc) {
 }
 
 void CommandList::endRendering() {
-    BDEX_ASSERT(rendering_, "endRendering without beginRendering");
+    PHI_ASSERT(rendering_, "endRendering without beginRendering");
     vkCmdEndRendering(commandBuffer_);
     rendering_ = false;
 
@@ -119,16 +119,16 @@ void CommandList::setScissor(const rhi::Rect& scissor) {
 
 void CommandList::bindPipeline(rhi::PipelineHandle handle) {
     const Pipeline* pipeline = device_->pipeline(handle);
-    BDEX_ASSERT(pipeline != nullptr, "invalid pipeline");
+    PHI_ASSERT(pipeline != nullptr, "invalid pipeline");
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
     boundPipeline_ = pipeline;
     ++stats_.pipelineBinds;
 }
 
 void CommandList::bindBindGroup(u32 setIndex, rhi::BindGroupHandle handle) {
-    BDEX_ASSERT(boundPipeline_ != nullptr, "bind a pipeline before its bind groups");
+    PHI_ASSERT(boundPipeline_ != nullptr, "bind a pipeline before its bind groups");
     const BindGroup* group = device_->bindGroup(handle);
-    BDEX_ASSERT(group != nullptr, "invalid bind group");
+    PHI_ASSERT(group != nullptr, "invalid bind group");
     vkCmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             boundPipeline_->layout, setIndex, 1, &group->handle, 0, nullptr);
     ++stats_.bindGroupBinds;
@@ -136,7 +136,7 @@ void CommandList::bindBindGroup(u32 setIndex, rhi::BindGroupHandle handle) {
 
 void CommandList::bindVertexBuffer(rhi::BufferHandle handle, u64 offset) {
     const Buffer* buffer = device_->buffer(handle);
-    BDEX_ASSERT(buffer != nullptr, "invalid vertex buffer");
+    PHI_ASSERT(buffer != nullptr, "invalid vertex buffer");
     const VkDeviceSize vkOffset = offset;
     vkCmdBindVertexBuffers(commandBuffer_, 0, 1, &buffer->handle, &vkOffset);
     ++stats_.bufferBinds;
@@ -144,7 +144,7 @@ void CommandList::bindVertexBuffer(rhi::BufferHandle handle, u64 offset) {
 
 void CommandList::bindIndexBuffer(rhi::BufferHandle handle, rhi::IndexType type, u64 offset) {
     const Buffer* buffer = device_->buffer(handle);
-    BDEX_ASSERT(buffer != nullptr, "invalid index buffer");
+    PHI_ASSERT(buffer != nullptr, "invalid index buffer");
     vkCmdBindIndexBuffer(commandBuffer_, buffer->handle, offset,
                          type == rhi::IndexType::UInt16 ? VK_INDEX_TYPE_UINT16
                                                         : VK_INDEX_TYPE_UINT32);
@@ -152,8 +152,8 @@ void CommandList::bindIndexBuffer(rhi::BufferHandle handle, rhi::IndexType type,
 }
 
 void CommandList::pushConstants(u32 offset, std::span<const std::byte> data) {
-    BDEX_ASSERT(boundPipeline_ != nullptr, "bind a pipeline before pushing constants");
-    BDEX_ASSERT(boundPipeline_->pushConstantStages != 0,
+    PHI_ASSERT(boundPipeline_ != nullptr, "bind a pipeline before pushing constants");
+    PHI_ASSERT(boundPipeline_->pushConstantStages != 0,
                 "the bound pipeline declares no push constants");
     vkCmdPushConstants(commandBuffer_, boundPipeline_->layout, boundPipeline_->pushConstantStages,
                        offset, static_cast<u32>(data.size()), data.data());
@@ -185,4 +185,4 @@ void CommandList::endDebugGroup() {
     device_->endDebugLabel(commandBuffer_);
 }
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

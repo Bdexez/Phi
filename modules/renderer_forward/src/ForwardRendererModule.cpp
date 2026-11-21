@@ -12,16 +12,16 @@
 #include "DebugFeature.hpp"
 #include "ForwardRenderer.hpp"
 
-#include <bdex/core/Module.hpp>
+#include <phi/core/Module.hpp>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class ForwardRendererModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Forward renderer",
             .provides = {"renderer"},
             .dependencies = {"rhi"},
@@ -82,6 +82,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::ForwardRendererModule)
+PHI_DEFINE_MODULE(phi::ForwardRendererModule)

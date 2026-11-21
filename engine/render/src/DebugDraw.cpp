@@ -1,11 +1,11 @@
-#include <bdex/render/DebugDraw.hpp>
+#include <phi/render/DebugDraw.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
 
-namespace bdex::render {
+namespace phi::render {
 
 namespace {
 
@@ -267,4 +267,4 @@ void DebugDraw::frustum(const Mat4& viewProjection, const Vec4& color) {
     }
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

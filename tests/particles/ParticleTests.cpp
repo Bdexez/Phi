@@ -1,13 +1,13 @@
-#include <bdex/particles/Particles.hpp>
-#include <bdex/scene/Components.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 
-using namespace bdex;
-using namespace bdex::particles;
+using namespace phi;
+using namespace phi::particles;
 
 namespace {
 

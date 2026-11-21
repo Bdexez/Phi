@@ -4,12 +4,12 @@
 
 #include <vk_mem_alloc.h>
 
-#include <bdex/core/Assert.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/core/Types.hpp>
-#include <bdex/rhi/Types.hpp>
+#include <phi/core/Assert.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/core/Types.hpp>
+#include <phi/rhi/Types.hpp>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 
 /// Frames the CPU may record ahead of the GPU.
 inline constexpr u32 kFramesInFlight = 2;
@@ -36,16 +36,16 @@ inline constexpr u32 kFramesInFlight = 2;
 [[nodiscard]] VkAttachmentStoreOp toVkStoreOp(rhi::StoreOp op);
 [[nodiscard]] VkDescriptorType toVkDescriptorType(rhi::BindingType type);
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan
 
 /// For Vulkan calls that can only fail on unrecoverable conditions (device
 /// lost, out of memory) or API misuse: logs the failing call and aborts.
-#define BDEX_VK_CHECK(call)                                                          \
+#define PHI_VK_CHECK(call)                                                          \
     do {                                                                             \
-        const VkResult bdexVkResult = (call);                                        \
-        if (bdexVkResult != VK_SUCCESS) [[unlikely]] {                               \
-            ::bdex::log::error("vulkan", "{} failed: {}", #call,                     \
-                               ::bdex::vulkan::resultString(bdexVkResult));          \
-            BDEX_ASSERT(false, "unrecoverable Vulkan error");                        \
+        const VkResult phiVkResult = (call);                                        \
+        if (phiVkResult != VK_SUCCESS) [[unlikely]] {                               \
+            ::phi::log::error("vulkan", "{} failed: {}", #call,                     \
+                               ::phi::vulkan::resultString(phiVkResult));          \
+            PHI_ASSERT(false, "unrecoverable Vulkan error");                        \
         }                                                                            \
     } while (false)

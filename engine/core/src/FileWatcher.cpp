@@ -1,9 +1,9 @@
-#include <bdex/core/FileWatcher.hpp>
+#include <phi/core/FileWatcher.hpp>
 
 #include <algorithm>
 #include <system_error>
 
-namespace bdex {
+namespace phi {
 
 std::map<std::filesystem::path, FileWatcher::Stamp> FileWatcher::scan(const std::filesystem::path& path) {
     std::map<std::filesystem::path, Stamp> stamps;
@@ -56,4 +56,4 @@ std::vector<std::filesystem::path> FileWatcher::poll() {
     return changed;
 }
 
-}  // namespace bdex
+}  // namespace phi

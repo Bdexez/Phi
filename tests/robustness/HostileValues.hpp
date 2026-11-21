@@ -1,12 +1,12 @@
 #pragma once
 
-#include <bdex/core/Types.hpp>
+#include <phi/core/Types.hpp>
 
 #include <algorithm>
 #include <string>
 #include <string_view>
 
-namespace bdex::test_support {
+namespace phi::test_support {
 
 /// Calls `run` with `text` (a scene file) once for every value in it
 /// replaced by each hostile number, one value at a time: random mutations
@@ -28,4 +28,4 @@ void everyValueMadeHostile(const std::string& text, Run&& run) {
     }
 }
 
-}  // namespace bdex::test_support
+}  // namespace phi::test_support

@@ -1,5 +1,5 @@
-#include <bdex/core/Config.hpp>
-#include <bdex/core/Log.hpp>
+#include <phi/core/Config.hpp>
+#include <phi/core/Log.hpp>
 
 #include <gtest/gtest.h>
 
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(Config, ParsesSectionsAndTypes) {
     const auto config = Config::parse(R"(
@@ -110,7 +110,7 @@ TEST(Config, WritesTextThatReadsBack) {
     ASSERT_TRUE(reread.has_value()) << reread.error().message << "\n" << text;
     EXPECT_EQ(reread->entries(), config.entries());
 
-    const std::filesystem::path path = std::filesystem::temp_directory_path() / "bdex_tests_config.ini";
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "phi_tests_config.ini";
     ASSERT_TRUE(config.saveFile(path).has_value());
     const auto loaded = Config::loadFile(path);
     std::filesystem::remove(path);

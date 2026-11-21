@@ -1,10 +1,10 @@
-#include <bdex/audio/Mixer.hpp>
+#include <phi/audio/Mixer.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
-namespace bdex::audio {
+namespace phi::audio {
 
 namespace {
 constexpr std::array<std::string_view, kBusCount> kBusNames = {"effects", "music", "voice", "ambience"};
@@ -265,4 +265,4 @@ void Mixer::advance(f64 seconds) {
     }
 }
 
-}  // namespace bdex::audio
+}  // namespace phi::audio

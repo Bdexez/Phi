@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 namespace {
 
 VkSurfaceFormatKHR chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats) {
@@ -66,7 +66,7 @@ Result<rhi::SwapchainHandle> Device::createSwapchain(const rhi::SwapchainDesc& d
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     for (VkSemaphore& semaphore : swapchain.imageAvailable) {
-        BDEX_VK_CHECK(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &semaphore));
+        PHI_VK_CHECK(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &semaphore));
     }
 
     if (const auto built = buildSwapchain(swapchain); !built) {
@@ -188,11 +188,11 @@ Result<> Device::buildSwapchain(Swapchain& swapchain) {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format = surfaceFormat.format;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        BDEX_VK_CHECK(vkCreateImageView(device_, &viewInfo, nullptr, &texture.view));
+        PHI_VK_CHECK(vkCreateImageView(device_, &viewInfo, nullptr, &texture.view));
         swapchain.images.push_back(textures_.insert(std::move(texture)));
 
         VkSemaphore semaphore = VK_NULL_HANDLE;
-        BDEX_VK_CHECK(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &semaphore));
+        PHI_VK_CHECK(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &semaphore));
         swapchain.renderFinished.push_back(semaphore);
     }
 
@@ -238,7 +238,7 @@ void Device::destroySwapchain(rhi::SwapchainHandle handle) {
     if (!swapchains_.contains(handle)) {
         return;
     }
-    BDEX_ASSERT(!inFrame_, "destroySwapchain must not be called while recording a frame");
+    PHI_ASSERT(!inFrame_, "destroySwapchain must not be called while recording a frame");
     vkDeviceWaitIdle(device_);
     auto swapchain = swapchains_.take(handle);
     destroySwapchainObjects(*swapchain);
@@ -250,7 +250,7 @@ rhi::Format Device::swapchainFormat(rhi::SwapchainHandle handle) const {
 }
 
 rhi::TextureHandle Device::acquireSwapchainTexture(rhi::SwapchainHandle handle) {
-    BDEX_ASSERT(inFrame_, "acquireSwapchainTexture outside of a frame");
+    PHI_ASSERT(inFrame_, "acquireSwapchainTexture outside of a frame");
     Swapchain* swapchain = swapchains_.get(handle);
     if (swapchain == nullptr) {
         return {};
@@ -308,4 +308,4 @@ rhi::TextureHandle Device::acquireSwapchainTexture(rhi::SwapchainHandle handle) 
     return {};
 }
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

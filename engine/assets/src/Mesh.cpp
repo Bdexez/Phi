@@ -1,4 +1,4 @@
-#include <bdex/assets/Mesh.hpp>
+#include <phi/assets/Mesh.hpp>
 
 #include <algorithm>
 #include <array>
@@ -6,7 +6,7 @@
 #include <numbers>
 #include <vector>
 
-namespace bdex::assets {
+namespace phi::assets {
 
 void computeTangents(MeshData& mesh) {
     std::vector<Vec3> alongU(mesh.vertices.size(), Vec3(0.0f));
@@ -141,4 +141,4 @@ MeshData makeSphere(f32 radius, u32 segments, u32 rings) {
     return mesh;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

@@ -1,4 +1,4 @@
-#include <bdex/audio/Mixer.hpp>
+#include <phi/audio/Mixer.hpp>
 
 #include <gtest/gtest.h>
 
@@ -10,8 +10,8 @@
 #include <thread>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::audio;
+using namespace phi;
+using namespace phi::audio;
 
 namespace {
 

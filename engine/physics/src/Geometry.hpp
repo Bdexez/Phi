@@ -4,14 +4,14 @@
 // character movement: oriented boxes and the tests between them, spheres
 // and rays. Internal to the physics library.
 
-#include <bdex/physics/Physics.hpp>
-#include <bdex/scene/Components.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/scene/Components.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
 
-namespace bdex::physics::detail {
+namespace phi::physics::detail {
 
 using scene::Transform;
 
@@ -174,4 +174,4 @@ inline f32 largestScale(const Transform& transform) {
     return std::max({std::abs(transform.scale.x), std::abs(transform.scale.y), std::abs(transform.scale.z)});
 }
 
-}  // namespace bdex::physics::detail
+}  // namespace phi::physics::detail

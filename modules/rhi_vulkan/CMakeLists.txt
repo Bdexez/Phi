@@ -4,21 +4,21 @@ find_package(Vulkan REQUIRED)
 # available; otherwise a pinned release is downloaded.
 find_package(VulkanMemoryAllocator CONFIG QUIET)
 if(TARGET GPUOpen::VulkanMemoryAllocator)
-    add_library(bdex_vma ALIAS GPUOpen::VulkanMemoryAllocator)
+    add_library(phi_vma ALIAS GPUOpen::VulkanMemoryAllocator)
 else()
     include(FetchContent)
     FetchContent_Declare(VulkanMemoryAllocator
         URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.3.0.tar.gz
         # Only the header is needed: point SOURCE_SUBDIR at a directory without
         # a CMakeLists.txt so the upstream build is not pulled into ours.
-        SOURCE_SUBDIR bdex-header-only)
+        SOURCE_SUBDIR phi-header-only)
     FetchContent_MakeAvailable(VulkanMemoryAllocator)
-    add_library(bdex_vma INTERFACE)
-    target_include_directories(bdex_vma SYSTEM INTERFACE
+    add_library(phi_vma INTERFACE)
+    target_include_directories(phi_vma SYSTEM INTERFACE
         ${vulkanmemoryallocator_SOURCE_DIR}/include)
 endif()
 
-bdex_add_module(rhi_vulkan
+phi_add_module(rhi_vulkan
     SOURCES
         src/VmaImplementation.cpp
         src/VulkanCommandList.cpp
@@ -27,11 +27,11 @@ bdex_add_module(rhi_vulkan
         src/VulkanModule.cpp
         src/VulkanSwapchain.cpp
     DEPS
-        bdex::core
-        bdex::platform
-        bdex::rhi
+        phi::core
+        phi::platform
+        phi::rhi
         Vulkan::Vulkan
-        bdex_vma)
+        phi_vma)
 
 # Third-party implementation unit: not held to the engine's warning level.
 if(MSVC)

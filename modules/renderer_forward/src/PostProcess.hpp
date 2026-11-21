@@ -1,13 +1,13 @@
 #pragma once
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/core/Math.hpp>
-#include <bdex/core/Result.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/core/Math.hpp>
+#include <phi/core/Result.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 /// Post-processing of the forward renderer: holds the HDR target the scene
 /// is drawn into, builds bloom from it, applies exposure and tone mapping,
@@ -79,4 +79,4 @@ private:
     rhi::PipelineHandle toneMapPipeline_;
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

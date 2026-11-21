@@ -1,7 +1,7 @@
-bdex_add_library(ui
+phi_add_library(ui
     SOURCES
         src/Ui.cpp
     PUBLIC_DEPS
-        bdex::core
-        bdex::platform
-        bdex::render)
+        phi::core
+        phi::platform
+        phi::render)

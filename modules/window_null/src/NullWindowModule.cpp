@@ -7,16 +7,16 @@
 // Configuration:
 //   window.width, window.height   size reported to renderers (default 1280x720)
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Module.hpp>
-#include <bdex/platform/Events.hpp>
-#include <bdex/platform/Input.hpp>
-#include <bdex/platform/Window.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Module.hpp>
+#include <phi/platform/Events.hpp>
+#include <phi/platform/Input.hpp>
+#include <phi/platform/Window.hpp>
 
 #include <algorithm>
 #include <memory>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class NullWindow final : public platform::IWindow {
@@ -67,7 +67,7 @@ class NullWindowModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Headless window system",
             .provides = {"window"},
             .dependencies = {},
@@ -110,6 +110,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::NullWindowModule)
+PHI_DEFINE_MODULE(phi::NullWindowModule)

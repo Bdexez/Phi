@@ -1,7 +1,7 @@
-bdex_add_module(audio_openal
+phi_add_module(audio_openal
     SOURCES
         src/OpenAlAudioModule.cpp
     DEPS
-        bdex::core
-        bdex::audio
+        phi::core
+        phi::audio
         OpenAL::OpenAL)

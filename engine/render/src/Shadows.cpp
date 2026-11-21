@@ -1,9 +1,9 @@
-#include <bdex/render/Shadows.hpp>
+#include <phi/render/Shadows.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace bdex::render {
+namespace phi::render {
 
 CameraData fitDirectionalShadow(const CameraData& camera, const Vec3& lightDirection, f32 distance,
                                 u32 mapSize) {
@@ -60,4 +60,4 @@ std::vector<f32> cascadeSplits(f32 nearPlane, f32 distance, u32 count, f32 lambd
     return splits;
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

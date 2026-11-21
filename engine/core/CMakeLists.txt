@@ -1,4 +1,4 @@
-bdex_add_library(core
+phi_add_library(core
     SOURCES
         src/Assert.cpp
         src/Config.cpp
@@ -19,10 +19,10 @@ bdex_add_library(core
         ${CMAKE_DL_LIBS})
 
 # One projection / angle convention for the whole engine.
-target_compile_definitions(bdex_core PUBLIC
+target_compile_definitions(phi_core PUBLIC
     GLM_FORCE_RADIANS
     GLM_FORCE_DEPTH_ZERO_TO_ONE
     GLM_ENABLE_EXPERIMENTAL)
 
 find_package(Threads REQUIRED)
-target_link_libraries(bdex_core PUBLIC Threads::Threads)
+target_link_libraries(phi_core PUBLIC Threads::Threads)

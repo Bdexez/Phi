@@ -1,13 +1,13 @@
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Zlib.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Zlib.hpp>
 
 #include <gtest/gtest.h>
 
 #include <string_view>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::assets;
+using namespace phi;
+using namespace phi::assets;
 
 namespace {
 

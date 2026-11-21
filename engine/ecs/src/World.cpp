@@ -1,10 +1,10 @@
-#include <bdex/ecs/World.hpp>
+#include <phi/ecs/World.hpp>
 
 #include <algorithm>
 #include <utility>
 #include <vector>
 
-namespace bdex::ecs {
+namespace phi::ecs {
 
 Entity World::create() {
     u32 index;
@@ -141,4 +141,4 @@ void World::notify(TypeId type, HookKind kind, Entity entity) {
     }
 }
 
-}  // namespace bdex::ecs
+}  // namespace phi::ecs

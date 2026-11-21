@@ -1,10 +1,10 @@
 #pragma once
 
-#include <bdex/render/Renderer.hpp>
+#include <phi/render/Renderer.hpp>
 
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 /// Draws the particles of every particles::ParticleEmitter in the scene as
 /// soft camera-facing discs, after scene geometry (they pass behind it but
@@ -37,4 +37,4 @@ private:
     std::vector<Vertex> vertices_;       ///< Reused across frames.
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

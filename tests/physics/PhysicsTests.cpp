@@ -1,8 +1,8 @@
-#include <bdex/core/Engine.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/scene/Scene.hpp>
-#include <bdex/scene/Components.hpp>
-#include <bdex/scene/Serialization.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/scene/Scene.hpp>
+#include <phi/scene/Components.hpp>
+#include <phi/scene/Serialization.hpp>
 
 #include <gtest/gtest.h>
 
@@ -12,8 +12,8 @@
 #include <cmath>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::physics;
+using namespace phi;
+using namespace phi::physics;
 using scene::Transform;
 
 namespace {

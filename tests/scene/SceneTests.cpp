@@ -1,11 +1,11 @@
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/render/Frustum.hpp>
-#include <bdex/render/Renderer.hpp>
-#include <bdex/render/ResourceNames.hpp>
-#include <bdex/render/Serialization.hpp>
-#include <bdex/render/Shadows.hpp>
-#include <bdex/scene/Scene.hpp>
-#include <bdex/scene/Serialization.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/render/Frustum.hpp>
+#include <phi/render/Renderer.hpp>
+#include <phi/render/ResourceNames.hpp>
+#include <phi/render/Serialization.hpp>
+#include <phi/render/Shadows.hpp>
+#include <phi/scene/Scene.hpp>
+#include <phi/scene/Serialization.hpp>
 
 #include <gtest/gtest.h>
 
@@ -15,8 +15,8 @@
 #include <numbers>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::scene;
+using namespace phi;
+using namespace phi::scene;
 
 namespace {
 

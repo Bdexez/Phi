@@ -1,4 +1,4 @@
-bdex_add_module(renderer_forward
+phi_add_module(renderer_forward
     SOURCES
         src/DebugFeature.cpp
         src/ForwardRenderer.cpp
@@ -8,18 +8,18 @@ bdex_add_module(renderer_forward
         src/ParticleFeature.cpp
         src/PostProcess.cpp
     DEPS
-        bdex::core
-        bdex::ecs
-        bdex::platform
-        bdex::rhi
-        bdex::assets
-        bdex::scene
-        bdex::render
-        bdex::particles)
+        phi::core
+        phi::ecs
+        phi::platform
+        phi::rhi
+        phi::assets
+        phi::scene
+        phi::render
+        phi::particles)
 
 # Shaders are loaded at runtime from "engine:/shaders/...".
-bdex_compile_shaders(bdex_renderer_forward_shaders
-    OUTPUT_DIR ${BDEX_ASSET_OUTPUT_DIR}/engine/shaders
+phi_compile_shaders(phi_renderer_forward_shaders
+    OUTPUT_DIR ${PHI_ASSET_OUTPUT_DIR}/engine/shaders
     SOURCES
         shaders/mesh.vert
         shaders/mesh.frag
@@ -35,4 +35,4 @@ bdex_compile_shaders(bdex_renderer_forward_shaders
         shaders/bloom_down.frag
         shaders/bloom_up.frag
         shaders/fxaa.frag)
-add_dependencies(bdex_module_renderer_forward bdex_renderer_forward_shaders)
+add_dependencies(phi_module_renderer_forward phi_renderer_forward_shaders)

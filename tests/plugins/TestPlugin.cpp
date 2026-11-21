@@ -1,11 +1,11 @@
 #include "plugins/TestService.hpp"
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Module.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Module.hpp>
 
 #include <memory>
 
-namespace bdex::tests {
+namespace phi::tests {
 namespace {
 
 class TestService final : public ITestService {
@@ -22,7 +22,7 @@ class TestPluginModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Module used by the engine tests",
             .provides = {"test_capability"},
             .dependencies = {},
@@ -67,6 +67,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex::tests
+}  // namespace phi::tests
 
-BDEX_DEFINE_MODULE(bdex::tests::TestPluginModule)
+PHI_DEFINE_MODULE(phi::tests::TestPluginModule)

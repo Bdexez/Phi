@@ -1,6 +1,6 @@
 # LeakSanitizer suppressions for the asan test preset.
 #
-# Only leaks inside system libraries belong here, never bdex code: each
+# Only leaks inside system libraries belong here, never phi code: each
 # entry names a library the engine does not control and says why.
 
 # PipeWire, which OpenAL opens to reach the audio device on most Linux

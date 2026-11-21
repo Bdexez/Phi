@@ -1,4 +1,4 @@
-#include <bdex/core/Engine.hpp>
+#include <phi/core/Engine.hpp>
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(Engine, RunsPhasesInOrderEveryFrame) {
     Config config;

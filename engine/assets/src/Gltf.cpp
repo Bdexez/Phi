@@ -1,6 +1,6 @@
-#include <bdex/assets/Gltf.hpp>
+#include <phi/assets/Gltf.hpp>
 
-#include <bdex/core/Json.hpp>
+#include <phi/core/Json.hpp>
 
 #include <glm/gtx/matrix_decompose.hpp>
 
@@ -11,7 +11,7 @@
 #include <format>
 #include <optional>
 
-namespace bdex::assets {
+namespace phi::assets {
 
 namespace {
 
@@ -682,4 +682,4 @@ Result<ModelData> loadGltf(const VirtualFileSystem& vfs, std::string_view virtua
     });
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

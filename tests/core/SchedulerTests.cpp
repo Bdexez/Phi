@@ -1,4 +1,4 @@
-#include <bdex/core/Scheduler.hpp>
+#include <phi/core/Scheduler.hpp>
 
 #include <gtest/gtest.h>
 
@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(Scheduler, RunsTasksByOrderThenRegistration) {
     Scheduler scheduler;

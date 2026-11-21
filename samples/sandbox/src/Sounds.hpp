@@ -1,8 +1,8 @@
 #pragma once
 
-#include <bdex/assets/Audio.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/EventBus.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/EventBus.hpp>
 
 #include <memory>
 
@@ -15,13 +15,13 @@ class Sounds {
 public:
     /// Synthesizes the sounds and starts playing impacts; nothing without a
     /// mixer (no audio module).
-    void start(bdex::Engine& engine);
-    void playThrow(bdex::Engine& engine) const;
+    void start(phi::Engine& engine);
+    void playThrow(phi::Engine& engine) const;
 
 private:
-    std::shared_ptr<const bdex::assets::AudioData> throw_;
-    std::shared_ptr<const bdex::assets::AudioData> impact_;
-    bdex::Subscription collisions_;
+    std::shared_ptr<const phi::assets::AudioData> throw_;
+    std::shared_ptr<const phi::assets::AudioData> impact_;
+    phi::Subscription collisions_;
 };
 
 }  // namespace sandbox

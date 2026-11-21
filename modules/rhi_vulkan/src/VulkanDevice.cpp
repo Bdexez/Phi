@@ -5,7 +5,7 @@
 #include <format>
 #include <tuple>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 namespace {
 
 constexpr const char* kValidationLayer = "VK_LAYER_KHRONOS_validation";
@@ -36,7 +36,7 @@ LayoutSync layoutSync(VkImageLayout layout) {
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
             return {VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT};
         default:
-            BDEX_ASSERT(false, "unsupported image layout");
+            PHI_ASSERT(false, "unsupported image layout");
             return {VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE};
     }
 }
@@ -156,7 +156,7 @@ Result<> Device::createInstance(const DeviceConfig& config) {
     VkApplicationInfo applicationInfo{};
     applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     applicationInfo.pApplicationName = config.applicationName.c_str();
-    applicationInfo.pEngineName = "bdex";
+    applicationInfo.pEngineName = "phi";
     applicationInfo.apiVersion = VK_API_VERSION_1_3;
 
     VkDebugUtilsMessengerCreateInfoEXT messengerInfo{};
@@ -360,29 +360,29 @@ void Device::createFrameResources() {
         allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocateInfo.commandBufferCount = 1;
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-        BDEX_VK_CHECK(vkAllocateCommandBuffers(device_, &allocateInfo, &commandBuffer));
+        PHI_VK_CHECK(vkAllocateCommandBuffers(device_, &allocateInfo, &commandBuffer));
         return commandBuffer;
     };
 
     for (FrameData& frame : frames_) {
-        BDEX_VK_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &frame.pool));
+        PHI_VK_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &frame.pool));
         frame.commandBuffer = allocateCommandBuffer(frame.pool);
         // Created signaled so the very first beginFrame does not block.
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        BDEX_VK_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &frame.fence));
+        PHI_VK_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &frame.fence));
         if (timestampPeriod_ > 0.0) {
             VkQueryPoolCreateInfo queryInfo{};
             queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
             queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
             queryInfo.queryCount = kMaxTimestamps;
-            BDEX_VK_CHECK(vkCreateQueryPool(device_, &queryInfo, nullptr, &frame.timestamps));
+            PHI_VK_CHECK(vkCreateQueryPool(device_, &queryInfo, nullptr, &frame.timestamps));
         }
     }
 
-    BDEX_VK_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &immediatePool_));
+    PHI_VK_CHECK(vkCreateCommandPool(device_, &poolInfo, nullptr, &immediatePool_));
     immediateCommandBuffer_ = allocateCommandBuffer(immediatePool_);
     fenceInfo.flags = 0;
-    BDEX_VK_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &immediateFence_));
+    PHI_VK_CHECK(vkCreateFence(device_, &fenceInfo, nullptr, &immediateFence_));
 }
 
 Device::~Device() {
@@ -572,14 +572,14 @@ void Device::flushAllDeferred() {
 }
 
 void Device::immediateSubmit(const std::function<void(VkCommandBuffer)>& record) {
-    BDEX_VK_CHECK(vkResetCommandPool(device_, immediatePool_, 0));
+    PHI_VK_CHECK(vkResetCommandPool(device_, immediatePool_, 0));
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    BDEX_VK_CHECK(vkBeginCommandBuffer(immediateCommandBuffer_, &beginInfo));
+    PHI_VK_CHECK(vkBeginCommandBuffer(immediateCommandBuffer_, &beginInfo));
     record(immediateCommandBuffer_);
-    BDEX_VK_CHECK(vkEndCommandBuffer(immediateCommandBuffer_));
+    PHI_VK_CHECK(vkEndCommandBuffer(immediateCommandBuffer_));
 
     VkCommandBufferSubmitInfo commandInfo{};
     commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -588,9 +588,9 @@ void Device::immediateSubmit(const std::function<void(VkCommandBuffer)>& record)
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
     submitInfo.commandBufferInfoCount = 1;
     submitInfo.pCommandBufferInfos = &commandInfo;
-    BDEX_VK_CHECK(vkQueueSubmit2(queue_, 1, &submitInfo, immediateFence_));
-    BDEX_VK_CHECK(vkWaitForFences(device_, 1, &immediateFence_, VK_TRUE, UINT64_MAX));
-    BDEX_VK_CHECK(vkResetFences(device_, 1, &immediateFence_));
+    PHI_VK_CHECK(vkQueueSubmit2(queue_, 1, &submitInfo, immediateFence_));
+    PHI_VK_CHECK(vkWaitForFences(device_, 1, &immediateFence_, VK_TRUE, UINT64_MAX));
+    PHI_VK_CHECK(vkResetFences(device_, 1, &immediateFence_));
 }
 
 void Device::transition(VkCommandBuffer commandBuffer, Texture& texture, VkImageLayout layout) {
@@ -687,7 +687,7 @@ void Device::generateMipmaps(VkCommandBuffer commandBuffer, Texture& texture) {
 // =============================================================================
 
 rhi::BufferHandle Device::createBuffer(const rhi::BufferDesc& desc) {
-    BDEX_ASSERT(desc.size > 0, "cannot create an empty buffer");
+    PHI_ASSERT(desc.size > 0, "cannot create an empty buffer");
 
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -716,7 +716,7 @@ rhi::BufferHandle Device::createBuffer(const rhi::BufferDesc& desc) {
     Buffer buffer;
     buffer.desc = desc;
     VmaAllocationInfo allocated{};
-    BDEX_VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &allocationInfo, &buffer.handle,
+    PHI_VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &allocationInfo, &buffer.handle,
                                   &buffer.allocation, &allocated));
     buffer.mapped = allocated.pMappedData;
     setDebugName(VK_OBJECT_TYPE_BUFFER, handleToU64(buffer.handle), desc.debugName);
@@ -734,15 +734,15 @@ void Device::destroyBuffer(rhi::BufferHandle handle) {
 
 void Device::writeBuffer(rhi::BufferHandle handle, std::span<const std::byte> data, u64 offset) {
     Buffer* buffer = buffers_.get(handle);
-    BDEX_ASSERT(buffer != nullptr, "writeBuffer on an invalid buffer");
-    BDEX_ASSERT(offset + data.size() <= buffer->desc.size, "writeBuffer out of bounds");
+    PHI_ASSERT(buffer != nullptr, "writeBuffer on an invalid buffer");
+    PHI_ASSERT(offset + data.size() <= buffer->desc.size, "writeBuffer out of bounds");
     if (data.empty()) {
         return;
     }
 
     if (buffer->mapped != nullptr) {
         std::memcpy(static_cast<std::byte*>(buffer->mapped) + offset, data.data(), data.size());
-        BDEX_VK_CHECK(vmaFlushAllocation(allocator_, buffer->allocation, offset, data.size()));
+        PHI_VK_CHECK(vmaFlushAllocation(allocator_, buffer->allocation, offset, data.size()));
         return;
     }
 
@@ -755,7 +755,7 @@ void Device::writeBuffer(rhi::BufferHandle handle, std::span<const std::byte> da
     const Buffer* staging = buffers_.get(stagingHandle);
     buffer = buffers_.get(handle);  // the pool may have been reallocated
     std::memcpy(staging->mapped, data.data(), data.size());
-    BDEX_VK_CHECK(vmaFlushAllocation(allocator_, staging->allocation, 0, data.size()));
+    PHI_VK_CHECK(vmaFlushAllocation(allocator_, staging->allocation, 0, data.size()));
 
     immediateSubmit([&](VkCommandBuffer commandBuffer) {
         const VkBufferCopy region{0, offset, data.size()};
@@ -769,8 +769,8 @@ void Device::writeBuffer(rhi::BufferHandle handle, std::span<const std::byte> da
 // =============================================================================
 
 rhi::TextureHandle Device::createTexture(const rhi::TextureDesc& desc) {
-    BDEX_ASSERT(desc.width > 0 && desc.height > 0, "cannot create an empty texture");
-    BDEX_ASSERT(desc.format != rhi::Format::Undefined, "texture format is undefined");
+    PHI_ASSERT(desc.width > 0 && desc.height > 0, "cannot create an empty texture");
+    PHI_ASSERT(desc.format != rhi::Format::Undefined, "texture format is undefined");
 
     Texture texture;
     texture.desc = desc;
@@ -782,7 +782,7 @@ rhi::TextureHandle Device::createTexture(const rhi::TextureDesc& desc) {
                               hasFlag(desc.usage, rhi::TextureUsage::DepthStencilAttachment);
     const u32 fullChain = rhi::fullMipChainLength(desc.width, desc.height);
     u32 mipLevels = desc.mipLevels == 0 ? fullChain : std::min(desc.mipLevels, fullChain);
-    BDEX_ASSERT(!renderTarget || mipLevels == 1, "render targets must have a single mip level");
+    PHI_ASSERT(!renderTarget || mipLevels == 1, "render targets must have a single mip level");
     if (mipLevels > 1 && !supportsMipGeneration(texture.format)) {
         log::warn("vulkan", "{} cannot be mipmapped on this device", rhi::formatName(desc.format));
         mipLevels = 1;
@@ -811,7 +811,7 @@ rhi::TextureHandle Device::createTexture(const rhi::TextureDesc& desc) {
 
     VmaAllocationCreateInfo allocationInfo{};
     allocationInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    BDEX_VK_CHECK(vmaCreateImage(allocator_, &imageInfo, &allocationInfo, &texture.image,
+    PHI_VK_CHECK(vmaCreateImage(allocator_, &imageInfo, &allocationInfo, &texture.image,
                                  &texture.allocation, nullptr));
 
     VkImageViewCreateInfo viewInfo{};
@@ -820,7 +820,7 @@ rhi::TextureHandle Device::createTexture(const rhi::TextureDesc& desc) {
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = texture.format;
     viewInfo.subresourceRange = {aspectMask(desc.format), 0, mipLevels, 0, 1};
-    BDEX_VK_CHECK(vkCreateImageView(device_, &viewInfo, nullptr, &texture.view));
+    PHI_VK_CHECK(vkCreateImageView(device_, &viewInfo, nullptr, &texture.view));
 
     setDebugName(VK_OBJECT_TYPE_IMAGE, handleToU64(texture.image), desc.debugName);
     setDebugName(VK_OBJECT_TYPE_IMAGE_VIEW, handleToU64(texture.view), desc.debugName);
@@ -843,8 +843,8 @@ void Device::destroyTexture(rhi::TextureHandle handle) {
 void Device::writeTexture(rhi::TextureHandle handle, std::span<const std::byte> pixels) {
     {
         const Texture* texture = textures_.get(handle);
-        BDEX_ASSERT(texture != nullptr, "writeTexture on an invalid texture");
-        BDEX_ASSERT(pixels.size() == static_cast<usize>(texture->desc.width) *
+        PHI_ASSERT(texture != nullptr, "writeTexture on an invalid texture");
+        PHI_ASSERT(pixels.size() == static_cast<usize>(texture->desc.width) *
                                          texture->desc.height *
                                          rhi::bytesPerPixel(texture->desc.format),
                     "writeTexture size mismatch");
@@ -857,7 +857,7 @@ void Device::writeTexture(rhi::TextureHandle handle, std::span<const std::byte> 
     const rhi::BufferHandle stagingHandle = createBuffer(stagingDesc);
     const Buffer* staging = buffers_.get(stagingHandle);
     std::memcpy(staging->mapped, pixels.data(), pixels.size());
-    BDEX_VK_CHECK(vmaFlushAllocation(allocator_, staging->allocation, 0, pixels.size()));
+    PHI_VK_CHECK(vmaFlushAllocation(allocator_, staging->allocation, 0, pixels.size()));
 
     Texture* texture = textures_.get(handle);
     immediateSubmit([&](VkCommandBuffer commandBuffer) {
@@ -880,13 +880,13 @@ void Device::writeTexture(rhi::TextureHandle handle, std::span<const std::byte> 
 }
 
 std::vector<u8> Device::readTexture(rhi::TextureHandle handle) {
-    BDEX_ASSERT(!inFrame_, "readTexture must not be called while recording a frame");
+    PHI_ASSERT(!inFrame_, "readTexture must not be called while recording a frame");
     {
         const Texture* texture = textures_.get(handle);
-        BDEX_ASSERT(texture != nullptr, "readTexture on an invalid texture");
-        BDEX_ASSERT(hasFlag(texture->desc.usage, rhi::TextureUsage::TransferSrc),
+        PHI_ASSERT(texture != nullptr, "readTexture on an invalid texture");
+        PHI_ASSERT(hasFlag(texture->desc.usage, rhi::TextureUsage::TransferSrc),
                     "readTexture requires TextureUsage::TransferSrc");
-        BDEX_ASSERT(!rhi::isDepthFormat(texture->desc.format) &&
+        PHI_ASSERT(!rhi::isDepthFormat(texture->desc.format) &&
                         rhi::bytesPerPixel(texture->desc.format) == 4,
                     "readTexture supports 8-bit color formats only");
     }
@@ -920,7 +920,7 @@ std::vector<u8> Device::readTexture(rhi::TextureHandle handle) {
         }
     });
 
-    BDEX_VK_CHECK(vmaInvalidateAllocation(allocator_, readback->allocation, 0, byteCount));
+    PHI_VK_CHECK(vmaInvalidateAllocation(allocator_, readback->allocation, 0, byteCount));
     std::vector<u8> pixels(byteCount);
     std::memcpy(pixels.data(), readback->mapped, byteCount);
     destroyBuffer(readbackHandle);
@@ -966,7 +966,7 @@ rhi::SamplerHandle Device::createSampler(const rhi::SamplerDesc& desc) {
     }
 
     Sampler sampler;
-    BDEX_VK_CHECK(vkCreateSampler(device_, &samplerInfo, nullptr, &sampler.handle));
+    PHI_VK_CHECK(vkCreateSampler(device_, &samplerInfo, nullptr, &sampler.handle));
     setDebugName(VK_OBJECT_TYPE_SAMPLER, handleToU64(sampler.handle), desc.debugName);
     return samplers_.insert(sampler);
 }
@@ -984,7 +984,7 @@ void Device::destroySampler(rhi::SamplerHandle handle) {
 // =============================================================================
 
 rhi::ShaderHandle Device::createShader(const rhi::ShaderDesc& desc) {
-    BDEX_ASSERT(!desc.spirv.empty(), "shader has no SPIR-V code");
+    PHI_ASSERT(!desc.spirv.empty(), "shader has no SPIR-V code");
 
     VkShaderModuleCreateInfo moduleInfo{};
     moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -994,7 +994,7 @@ rhi::ShaderHandle Device::createShader(const rhi::ShaderDesc& desc) {
     Shader shader;
     shader.stage = desc.stage;
     shader.entryPoint = desc.entryPoint;
-    BDEX_VK_CHECK(vkCreateShaderModule(device_, &moduleInfo, nullptr, &shader.module));
+    PHI_VK_CHECK(vkCreateShaderModule(device_, &moduleInfo, nullptr, &shader.module));
     setDebugName(VK_OBJECT_TYPE_SHADER_MODULE, handleToU64(shader.module), desc.debugName);
     return shaders_.insert(std::move(shader));
 }
@@ -1025,7 +1025,7 @@ rhi::BindGroupLayoutHandle Device::createBindGroupLayout(const rhi::BindGroupLay
 
     BindGroupLayout layout;
     layout.desc = desc;
-    BDEX_VK_CHECK(vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &layout.handle));
+    PHI_VK_CHECK(vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &layout.handle));
     setDebugName(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, handleToU64(layout.handle), desc.debugName);
     return bindGroupLayouts_.insert(std::move(layout));
 }
@@ -1040,7 +1040,7 @@ void Device::destroyBindGroupLayout(rhi::BindGroupLayoutHandle handle) {
 
 rhi::BindGroupHandle Device::createBindGroup(const rhi::BindGroupDesc& desc) {
     const BindGroupLayout* layout = bindGroupLayouts_.get(desc.layout);
-    BDEX_ASSERT(layout != nullptr, "bind group created with an invalid layout");
+    PHI_ASSERT(layout != nullptr, "bind group created with an invalid layout");
 
     BindGroup group;
     std::tie(group.handle, group.pool) = allocateDescriptorSet(layout->handle);
@@ -1058,7 +1058,7 @@ rhi::BindGroupHandle Device::createBindGroup(const rhi::BindGroupDesc& desc) {
         const auto declared =
             std::find_if(layout->desc.entries.begin(), layout->desc.entries.end(),
                          [&](const auto& candidate) { return candidate.binding == entry.binding; });
-        BDEX_ASSERT(declared != layout->desc.entries.end(),
+        PHI_ASSERT(declared != layout->desc.entries.end(),
                     "bind group entry is not declared in its layout");
 
         VkWriteDescriptorSet write{};
@@ -1071,14 +1071,14 @@ rhi::BindGroupHandle Device::createBindGroup(const rhi::BindGroupDesc& desc) {
         if (declared->type == rhi::BindingType::CombinedTextureSampler) {
             const Texture* texture = textures_.get(entry.texture);
             const Sampler* sampler = samplers_.get(entry.sampler);
-            BDEX_ASSERT(texture != nullptr && sampler != nullptr,
+            PHI_ASSERT(texture != nullptr && sampler != nullptr,
                         "bind group entry needs a valid texture and sampler");
             imageInfos.push_back(
                 {sampler->handle, texture->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
             write.pImageInfo = &imageInfos.back();
         } else {
             const Buffer* buffer = buffers_.get(entry.buffer);
-            BDEX_ASSERT(buffer != nullptr, "bind group entry needs a valid buffer");
+            PHI_ASSERT(buffer != nullptr, "bind group entry needs a valid buffer");
             bufferInfos.push_back({buffer->handle, entry.offset,
                                    entry.size == rhi::kWholeSize ? VK_WHOLE_SIZE : entry.size});
             write.pBufferInfo = &bufferInfos.back();
@@ -1103,7 +1103,7 @@ VkDescriptorPool Device::createDescriptorPool() {
     poolInfo.poolSizeCount = static_cast<u32>(kPoolSizes.size());
     poolInfo.pPoolSizes = kPoolSizes.data();
     VkDescriptorPool pool = VK_NULL_HANDLE;
-    BDEX_VK_CHECK(vkCreateDescriptorPool(device_, &poolInfo, nullptr, &pool));
+    PHI_VK_CHECK(vkCreateDescriptorPool(device_, &poolInfo, nullptr, &pool));
     return pool;
 }
 
@@ -1124,14 +1124,14 @@ std::pair<VkDescriptorSet, VkDescriptorPool> Device::allocateDescriptorSet(
             return {set, *it};
         }
         if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL) {
-            BDEX_VK_CHECK(result);
+            PHI_VK_CHECK(result);
         }
     }
 
     descriptorPools_.push_back(createDescriptorPool());
     log::debug("vulkan", "descriptor pools exhausted: added pool #{}", descriptorPools_.size());
     allocateInfo.descriptorPool = descriptorPools_.back();
-    BDEX_VK_CHECK(vkAllocateDescriptorSets(device_, &allocateInfo, &set));
+    PHI_VK_CHECK(vkAllocateDescriptorSets(device_, &allocateInfo, &set));
     return {set, descriptorPools_.back()};
 }
 
@@ -1146,7 +1146,7 @@ void Device::destroyBindGroup(rhi::BindGroupHandle handle) {
 rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDesc& desc) {
     const Shader* vertexShader = shaders_.get(desc.vertexShader);
     const Shader* fragmentShader = shaders_.get(desc.fragmentShader);
-    BDEX_ASSERT(vertexShader != nullptr && fragmentShader != nullptr,
+    PHI_ASSERT(vertexShader != nullptr && fragmentShader != nullptr,
                 "pipeline created with invalid shaders");
 
     Pipeline pipeline;
@@ -1156,7 +1156,7 @@ rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDe
     std::vector<VkDescriptorSetLayout> setLayouts;
     for (const rhi::BindGroupLayoutHandle handle : desc.bindGroupLayouts) {
         const BindGroupLayout* layout = bindGroupLayouts_.get(handle);
-        BDEX_ASSERT(layout != nullptr, "pipeline created with an invalid bind group layout");
+        PHI_ASSERT(layout != nullptr, "pipeline created with an invalid bind group layout");
         setLayouts.push_back(layout->handle);
     }
     const VkPushConstantRange pushConstantRange{pipeline.pushConstantStages, 0,
@@ -1166,13 +1166,13 @@ rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDe
     layoutInfo.setLayoutCount = static_cast<u32>(setLayouts.size());
     layoutInfo.pSetLayouts = setLayouts.data();
     if (desc.pushConstantSize > 0) {
-        BDEX_ASSERT(pipeline.pushConstantStages != 0, "push constants need at least one stage");
+        PHI_ASSERT(pipeline.pushConstantStages != 0, "push constants need at least one stage");
         layoutInfo.pushConstantRangeCount = 1;
         layoutInfo.pPushConstantRanges = &pushConstantRange;
     } else {
         pipeline.pushConstantStages = 0;
     }
-    BDEX_VK_CHECK(vkCreatePipelineLayout(device_, &layoutInfo, nullptr, &pipeline.layout));
+    PHI_VK_CHECK(vkCreatePipelineLayout(device_, &layoutInfo, nullptr, &pipeline.layout));
 
     // --- Stages ------------------------------------------------------------------
     std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
@@ -1295,7 +1295,7 @@ rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDe
     pipelineInfo.pColorBlendState = &colorBlend;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipeline.layout;
-    BDEX_VK_CHECK(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+    PHI_VK_CHECK(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
                                             &pipeline.handle));
 
     setDebugName(VK_OBJECT_TYPE_PIPELINE, handleToU64(pipeline.handle), desc.debugName);
@@ -1316,23 +1316,23 @@ void Device::destroyPipeline(rhi::PipelineHandle handle) {
 // =============================================================================
 
 rhi::ICommandList& Device::beginFrame() {
-    BDEX_ASSERT(!inFrame_, "beginFrame called twice");
+    PHI_ASSERT(!inFrame_, "beginFrame called twice");
     FrameData& frame = frames_[frameSlot()];
 
     // This slot was last used by frame N - kFramesInFlight: once its fence is
     // signaled, everything up to that frame has left the GPU.
-    BDEX_VK_CHECK(vkWaitForFences(device_, 1, &frame.fence, VK_TRUE, UINT64_MAX));
-    BDEX_VK_CHECK(vkResetFences(device_, 1, &frame.fence));
+    PHI_VK_CHECK(vkWaitForFences(device_, 1, &frame.fence, VK_TRUE, UINT64_MAX));
+    PHI_VK_CHECK(vkResetFences(device_, 1, &frame.fence));
     if (frameNumber_ >= kFramesInFlight) {
         flushDeferred(frameNumber_ - kFramesInFlight);
     }
     readTimings(frame);
 
-    BDEX_VK_CHECK(vkResetCommandPool(device_, frame.pool, 0));
+    PHI_VK_CHECK(vkResetCommandPool(device_, frame.pool, 0));
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    BDEX_VK_CHECK(vkBeginCommandBuffer(frame.commandBuffer, &beginInfo));
+    PHI_VK_CHECK(vkBeginCommandBuffer(frame.commandBuffer, &beginInfo));
 
     frame.spans.clear();
     frame.openSpans.clear();
@@ -1347,7 +1347,7 @@ rhi::ICommandList& Device::beginFrame() {
 }
 
 void Device::endFrame() {
-    BDEX_ASSERT(inFrame_, "endFrame without beginFrame");
+    PHI_ASSERT(inFrame_, "endFrame without beginFrame");
     FrameData& frame = frames_[frameSlot()];
 
     std::vector<VkSemaphoreSubmitInfo> waits;
@@ -1379,7 +1379,7 @@ void Device::endFrame() {
     }
     endTimedSpan();
     commandList_.end();
-    BDEX_VK_CHECK(vkEndCommandBuffer(frame.commandBuffer));
+    PHI_VK_CHECK(vkEndCommandBuffer(frame.commandBuffer));
 
     VkCommandBufferSubmitInfo commandInfo{};
     commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -1392,7 +1392,7 @@ void Device::endFrame() {
     submitInfo.pCommandBufferInfos = &commandInfo;
     submitInfo.signalSemaphoreInfoCount = static_cast<u32>(signals.size());
     submitInfo.pSignalSemaphoreInfos = signals.data();
-    BDEX_VK_CHECK(vkQueueSubmit2(queue_, 1, &submitInfo, frame.fence));
+    PHI_VK_CHECK(vkQueueSubmit2(queue_, 1, &submitInfo, frame.fence));
 
     for (const rhi::SwapchainHandle handle : acquired_) {
         Swapchain* swapchain = swapchains_.get(handle);
@@ -1418,7 +1418,7 @@ void Device::endFrame() {
 }
 
 void Device::waitIdle() {
-    BDEX_VK_CHECK(vkDeviceWaitIdle(device_));
+    PHI_VK_CHECK(vkDeviceWaitIdle(device_));
 }
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

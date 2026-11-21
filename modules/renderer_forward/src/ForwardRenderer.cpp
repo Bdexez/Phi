@@ -1,21 +1,21 @@
 #include "ForwardRenderer.hpp"
 
-#include <bdex/render/DebugDraw.hpp>
+#include <phi/render/DebugDraw.hpp>
 
 #include "MeshFeature.hpp"
 #include "ParticleFeature.hpp"
 
-#include <bdex/assets/AssetManager.hpp>
-#include <bdex/assets/Image.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/render/Shadows.hpp>
-#include <bdex/scene/Scene.hpp>
+#include <phi/assets/AssetManager.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/render/Shadows.hpp>
+#include <phi/scene/Scene.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 ForwardRenderer::ForwardRenderer(Engine& engine, rhi::IDevice& device)
     : engine_(engine), device_(device) {}
@@ -769,4 +769,4 @@ void ForwardRenderer::saveCapture(const std::filesystem::path& path) {
     engine_.events().publish(render::ScreenshotSaved{path, written.has_value()});
 }
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

@@ -1,4 +1,4 @@
-#include <bdex/core/Log.hpp>
+#include <phi/core/Log.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -10,15 +10,15 @@
 
 #if defined(_WIN32)
 #include <io.h>
-#define BDEX_ISATTY(fd) _isatty(fd)
-#define BDEX_STDERR_FD 2
+#define PHI_ISATTY(fd) _isatty(fd)
+#define PHI_STDERR_FD 2
 #else
 #include <unistd.h>
-#define BDEX_ISATTY(fd) isatty(fd)
-#define BDEX_STDERR_FD STDERR_FILENO
+#define PHI_ISATTY(fd) isatty(fd)
+#define PHI_STDERR_FD STDERR_FILENO
 #endif
 
-namespace bdex::log {
+namespace phi::log {
 namespace {
 
 struct State {
@@ -27,7 +27,7 @@ struct State {
     std::vector<std::pair<u32, Sink>> sinks;
     u32 nextSinkId = 1;
     bool consoleEnabled = true;
-    bool consoleColors = BDEX_ISATTY(BDEX_STDERR_FD) != 0;
+    bool consoleColors = PHI_ISATTY(PHI_STDERR_FD) != 0;
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 };
 
@@ -158,4 +158,4 @@ void write(Level level, std::string_view category, std::string_view message) {
     }
 }
 
-}  // namespace bdex::log
+}  // namespace phi::log

@@ -3,19 +3,19 @@
 #include "Overlay.hpp"
 #include "PostProcess.hpp"
 
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Handle.hpp>
-#include <bdex/platform/Window.hpp>
-#include <bdex/render/Frustum.hpp>
-#include <bdex/render/Renderer.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Handle.hpp>
+#include <phi/platform/Window.hpp>
+#include <phi/render/Frustum.hpp>
+#include <phi/render/Renderer.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <array>
 #include <filesystem>
 #include <memory>
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 struct GpuMesh {
     rhi::BufferHandle vertexBuffer;
@@ -178,4 +178,4 @@ private:
     std::vector<render::CameraData> spotShadowViews_;  ///< This frame's, at most kShadowedSpots.
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

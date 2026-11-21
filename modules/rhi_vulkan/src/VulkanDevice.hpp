@@ -3,10 +3,10 @@
 #include "VulkanCommandList.hpp"
 #include "VulkanCommon.hpp"
 
-#include <bdex/core/Handle.hpp>
-#include <bdex/core/Result.hpp>
-#include <bdex/platform/Window.hpp>
-#include <bdex/rhi/Device.hpp>
+#include <phi/core/Handle.hpp>
+#include <phi/core/Result.hpp>
+#include <phi/platform/Window.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <array>
 #include <atomic>
@@ -17,10 +17,10 @@
 #include <utility>
 #include <vector>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 
 struct DeviceConfig {
-    std::string applicationName = "bdex";
+    std::string applicationName = "phi";
     /// Enable the Khronos validation layer and debug names when available.
     bool validation = false;
     /// Instance extensions required by the window system (surface creation).
@@ -291,4 +291,4 @@ private:
     VkFence immediateFence_ = VK_NULL_HANDLE;
 };
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

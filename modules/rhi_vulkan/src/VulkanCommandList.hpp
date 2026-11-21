@@ -2,11 +2,11 @@
 
 #include "VulkanCommon.hpp"
 
-#include <bdex/rhi/Device.hpp>
+#include <phi/rhi/Device.hpp>
 
 #include <vector>
 
-namespace bdex::vulkan {
+namespace phi::vulkan {
 
 class Device;
 struct Pipeline;
@@ -49,4 +49,4 @@ private:
     bool rendering_ = false;
 };
 
-}  // namespace bdex::vulkan
+}  // namespace phi::vulkan

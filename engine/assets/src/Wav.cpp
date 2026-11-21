@@ -1,4 +1,4 @@
-#include <bdex/assets/Audio.hpp>
+#include <phi/assets/Audio.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <numbers>
 #include <string_view>
 
-namespace bdex::assets {
+namespace phi::assets {
 
 namespace {
 
@@ -169,4 +169,4 @@ AudioData makeTone(f32 frequency, f32 seconds, u32 sampleRate, f32 amplitude) {
     return audio;
 }
 
-}  // namespace bdex::assets
+}  // namespace phi::assets

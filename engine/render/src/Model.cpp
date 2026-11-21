@@ -1,13 +1,13 @@
-#include <bdex/render/Model.hpp>
+#include <phi/render/Model.hpp>
 
-#include <bdex/render/Components.hpp>
+#include <phi/render/Components.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <format>
 #include <utility>
 
-namespace bdex::render {
+namespace phi::render {
 
 MaterialDesc approximateMaterial(const assets::ModelMaterial& material) {
     MaterialDesc desc;
@@ -155,4 +155,4 @@ ecs::Entity instantiateModel(scene::Scene& scene, const assets::ModelData& model
     return root;
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

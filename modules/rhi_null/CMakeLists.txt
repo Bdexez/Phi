@@ -1,7 +1,7 @@
-bdex_add_module(rhi_null
+phi_add_module(rhi_null
     SOURCES
         src/NullRhiModule.cpp
     DEPS
-        bdex::core
-        bdex::platform
-        bdex::rhi)
+        phi::core
+        phi::platform
+        phi::rhi)

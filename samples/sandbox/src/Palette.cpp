@@ -1,7 +1,7 @@
 #include "Palette.hpp"
 
-#include <bdex/assets/Image.hpp>
-#include <bdex/assets/Mesh.hpp>
+#include <phi/assets/Image.hpp>
+#include <phi/assets/Mesh.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,7 @@
 
 namespace sandbox {
 
-using namespace bdex;
+using namespace phi;
 
 namespace {
 

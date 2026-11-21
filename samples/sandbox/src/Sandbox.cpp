@@ -29,21 +29,21 @@
 #include "Sparks.hpp"
 #include "Spin.hpp"
 
-#include <bdex/animation/Animation.hpp>
-#include <bdex/app/Application.hpp>
-#include <bdex/assets/Audio.hpp>
-#include <bdex/audio/Components.hpp>
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/core/FileWatcher.hpp>
-#include <bdex/core/JobSystem.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/particles/Particles.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/render/DebugDraw.hpp>
-#include <bdex/render/Model.hpp>
-#include <bdex/render/ResourceNames.hpp>
-#include <bdex/render/Serialization.hpp>
-#include <bdex/scene/Serialization.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/app/Application.hpp>
+#include <phi/assets/Audio.hpp>
+#include <phi/audio/Components.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/core/FileWatcher.hpp>
+#include <phi/core/JobSystem.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/render/DebugDraw.hpp>
+#include <phi/render/Model.hpp>
+#include <phi/render/ResourceNames.hpp>
+#include <phi/render/Serialization.hpp>
+#include <phi/scene/Serialization.hpp>
 
 #include <algorithm>
 #include <array>
@@ -56,13 +56,13 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
+using namespace phi;
 
 
 class Sandbox final : public app::Application {
 protected:
     void onConfigure(Config& config) override {
-        config.set("window.title", "bdex sandbox");
+        config.set("window.title", "Phi sandbox");
 
         // Default bindings; an [input] section in sandbox.ini overrides them.
         config.setDefault("input.move_forward", "W, Up, LeftStickUp");
@@ -667,4 +667,4 @@ private:
     sandbox::SettingsPanel panel_;
 };
 
-BDEX_MAIN(Sandbox)
+PHI_MAIN(Sandbox)

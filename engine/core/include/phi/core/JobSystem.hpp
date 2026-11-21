@@ -1,0 +1,87 @@
+#pragma once
+
+#include <phi/core/Trace.hpp>
+#include <phi/core/Types.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <type_traits>
+#include <vector>
+
+namespace phi {
+
+/// Fixed-size thread pool for data-parallel work and background tasks.
+class JobSystem {
+public:
+    /// `threadCount == 0` picks hardware_concurrency() - 1 (at least 1).
+    explicit JobSystem(u32 threadCount = 0);
+    ~JobSystem();
+    JobSystem(const JobSystem&) = delete;
+    JobSystem& operator=(const JobSystem&) = delete;
+
+    [[nodiscard]] u32 threadCount() const { return static_cast<u32>(workers_.size()); }
+
+    /// Runs `fn` on a worker thread and returns a future for its result.
+    /// From inside a job, wait for it with wait(), not the future's get():
+    /// a worker blocked on a job queued behind it would never see it run.
+    template <class Fn>
+    auto submit(Fn&& fn) -> std::future<std::invoke_result_t<std::decay_t<Fn>>> {
+        using ResultType = std::invoke_result_t<std::decay_t<Fn>>;
+        auto task = std::make_shared<std::packaged_task<ResultType()>>(std::forward<Fn>(fn));
+        std::future<ResultType> future = task->get_future();
+        enqueue([task] { (*task)(); });
+        return future;
+    }
+
+    /// Splits [0, count) into chunks of at most `grain` items and calls
+    /// `fn(begin, end)` for each chunk, in parallel. Blocks until done.
+    /// The calling thread takes part in the work, so nesting parallelFor
+    /// inside a job cannot deadlock. `fn` must not throw.
+    void parallelFor(usize count, usize grain, const std::function<void(usize, usize)>& fn);
+
+    /// Waits until `future` (a std::future or std::shared_future) is ready,
+    /// running queued jobs on this thread meanwhile, as parallelFor does. A
+    /// job can therefore wait for jobs it submitted, even with every worker
+    /// busy, without deadlocking the pool.
+    template <class Future>
+    void wait(const Future& future) {
+        while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            if (!runPendingJob()) {
+                // Nothing queued: what we wait for is running elsewhere.
+                future.wait_for(std::chrono::microseconds(100));
+            }
+        }
+    }
+
+    /// Runs one queued job on this thread; false if none was waiting.
+    bool runPendingJob();
+
+    /// Records every job, and every chunk of a parallelFor, into `trace`
+    /// from now on, on the row of the thread that ran it ("main" for the
+    /// caller, "worker N"); null stops. Returns once no job is still
+    /// recording into the previous one, so it can then be destroyed.
+    void setTrace(TraceRecorder* trace);
+
+private:
+    void enqueue(std::function<void()> job);
+    void workerLoop(u32 index);
+    /// Runs `work`, recording it as `name` when tracing.
+    void traced(std::string_view name, std::string_view category, const std::function<void()>& work);
+
+    std::vector<std::thread> workers_;
+    std::deque<std::function<void()>> queue_;
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    bool stopping_ = false;
+    std::atomic<TraceRecorder*> trace_{nullptr};
+    std::atomic<u32> recording_{0};  ///< Jobs recording into trace_ right now.
+};
+
+}  // namespace phi

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <bdex/render/Renderer.hpp>
+#include <phi/render/Renderer.hpp>
 
 #include <vector>
 
-namespace bdex::forward {
+namespace phi::forward {
 
 class ForwardRenderer;
 struct GpuMesh;
@@ -90,4 +90,4 @@ private:
     usize shadowObjectsUsed_ = 0;  ///< This frame's, across shadow cascades.
 };
 
-}  // namespace bdex::forward
+}  // namespace phi::forward

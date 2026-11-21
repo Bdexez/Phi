@@ -1,14 +1,14 @@
-#include <bdex/animation/Animation.hpp>
-#include <bdex/app/Application.hpp>
-#include <bdex/audio/Components.hpp>
+#include <phi/animation/Animation.hpp>
+#include <phi/app/Application.hpp>
+#include <phi/audio/Components.hpp>
 
-#include <bdex/core/FileSystem.hpp>
-#include <bdex/particles/Particles.hpp>
-#include <bdex/core/JobSystem.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/physics/Physics.hpp>
-#include <bdex/scene/Serialization.hpp>
-#include <bdex/platform/Events.hpp>
+#include <phi/core/FileSystem.hpp>
+#include <phi/particles/Particles.hpp>
+#include <phi/core/JobSystem.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/physics/Physics.hpp>
+#include <phi/scene/Serialization.hpp>
+#include <phi/platform/Events.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-namespace bdex::app {
+namespace phi::app {
 namespace {
 
 constexpr int kExitSuccess = 0;
@@ -135,29 +135,29 @@ Application::Application() : state_(std::make_unique<State>()) {}
 Application::~Application() = default;
 
 Engine& Application::engine() {
-    BDEX_ASSERT(state_->engine != nullptr, "the engine only exists while run() is executing");
+    PHI_ASSERT(state_->engine != nullptr, "the engine only exists while run() is executing");
     return *state_->engine;
 }
 
 const Engine& Application::engine() const {
-    BDEX_ASSERT(state_->engine != nullptr, "the engine only exists while run() is executing");
+    PHI_ASSERT(state_->engine != nullptr, "the engine only exists while run() is executing");
     return *state_->engine;
 }
 
 scene::Scene& Application::scene() {
     scene::Scene* active = state_->scenes != nullptr ? state_->scenes->active() : nullptr;
-    BDEX_ASSERT(active != nullptr, "no active scene");
+    PHI_ASSERT(active != nullptr, "no active scene");
     return *active;
 }
 
 const scene::Scene& Application::scene() const {
     const scene::Scene* active = state_->scenes != nullptr ? std::as_const(*state_->scenes).active() : nullptr;
-    BDEX_ASSERT(active != nullptr, "no active scene");
+    PHI_ASSERT(active != nullptr, "no active scene");
     return *active;
 }
 
 assets::AssetManager& Application::assets() {
-    BDEX_ASSERT(state_->assets != nullptr);
+    PHI_ASSERT(state_->assets != nullptr);
     return *state_->assets;
 }
 
@@ -196,8 +196,8 @@ int Application::run(int argc, char** argv) {
     Config config;
     config.set("app.name", executable.stem().string());
     config.set("engine.modules", std::string("window_glfw,rhi_vulkan,renderer_forward") +
-                                     (std::string_view(BDEX_DEFAULT_AUDIO_MODULE).empty() ? "" : ",") +
-                                     BDEX_DEFAULT_AUDIO_MODULE);
+                                     (std::string_view(PHI_DEFAULT_AUDIO_MODULE).empty() ? "" : ",") +
+                                     PHI_DEFAULT_AUDIO_MODULE);
     onConfigure(config);
 
     std::filesystem::path configFile = executableDir / (executable.stem().string() + ".ini");
@@ -467,4 +467,4 @@ int Application::run(int argc, char** argv) {
     return exitCode;
 }
 
-}  // namespace bdex::app
+}  // namespace phi::app

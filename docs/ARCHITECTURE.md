@@ -8,7 +8,7 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
 
 ```text
                  ┌──────────────────────────────────────────────┐
-  application    │ sandbox (bdex::app::Application)             │
+  application    │ sandbox (phi::app::Application)             │
                  └──────────────────────┬───────────────────────┘
                                         │ uses interfaces only
                  ┌──────────────────────▼───────────────────────┐
@@ -29,7 +29,7 @@ The engine is a small **kernel** plus **modules**. The kernel knows nothing abou
 
 ## Engine libraries
 
-Each library is one CMake target (`bdex::<name>`) with its public headers under `include/bdex/<name>/`. A library only depends on the ones listed for it; there are no cycles.
+Each library is one CMake target (`phi::<name>`) with its public headers under `include/phi/<name>/`. A library only depends on the ones listed for it; there are no cycles.
 
 | Library | Contents | Depends on |
 | --- | --- | --- |
@@ -49,11 +49,11 @@ Each library is one CMake target (`bdex::<name>`) with its public headers under 
 
 ## The kernel
 
-`bdex::Engine` (in `core`) owns the four mechanisms modules are built from.
+`phi::Engine` (in `core`) owns the four mechanisms modules are built from.
 
 ### Modules
 
-A module implements `IModule`: a description (`info()`) and two lifecycle hooks (`onInit`, `onShutdown`). `ModuleManager::load(name)` finds a module by name, either in the static registry or as a plugin `bdex_module_<name>` next to the executable; application code is identical in both cases.
+A module implements `IModule`: a description (`info()`) and two lifecycle hooks (`onInit`, `onShutdown`). `ModuleManager::load(name)` finds a module by name, either in the static registry or as a plugin `phi_module_<name>` next to the executable; application code is identical in both cases.
 
 Initialization order is computed from what modules declare, not from the order in which they are listed. Dependencies are expressed on **capabilities** rather than module names:
 
@@ -108,7 +108,7 @@ Within a phase, tasks run by ascending `order`, then by registration order.
 
 ### Identity across plugin boundaries
 
-Services, events, and ECS components are keyed by `bdex::typeId<T>()`, a hash of the type's **name** computed at compile time. The same type therefore has the same id in the executable and in every plugin, without relying on RTTI or on static variables being shared between shared libraries. A plugin also exports its ABI version (`kModuleAbiVersion`); a mismatch is rejected at load time.
+Services, events, and ECS components are keyed by `phi::typeId<T>()`, a hash of the type's **name** computed at compile time. The same type therefore has the same id in the executable and in every plugin, without relying on RTTI or on static variables being shared between shared libraries. A plugin also exports its ABI version (`kModuleAbiVersion`); a mismatch is rejected at load time.
 
 ## Writing a module
 
@@ -117,10 +117,10 @@ A module is a directory under `modules/` with one `CMakeLists.txt` and its sourc
 **1. Declare the interface** in an engine library (or reuse an existing one), so that consumers can include it without depending on the module:
 
 ```cpp
-// engine/audio/include/bdex/audio/Audio.hpp
+// engine/audio/include/phi/audio/Audio.hpp
 #include <string_view>
 
-namespace bdex::audio {
+namespace phi::audio {
 class IAudio {
 public:
     virtual ~IAudio() = default;
@@ -133,14 +133,14 @@ public:
 
 ```cpp
 // modules/audio_null/src/AudioNullModule.cpp
-#include <bdex/audio/Audio.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Log.hpp>
-#include <bdex/core/Module.hpp>
+#include <phi/audio/Audio.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Log.hpp>
+#include <phi/core/Module.hpp>
 
 #include <memory>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class NullAudio final : public audio::IAudio {
@@ -152,7 +152,7 @@ class AudioNullModule final : public IModule {
 public:
     ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,   // injected by bdex_add_module()
+            .name = PHI_MODULE_NAME_STRING,   // injected by phi_add_module()
             .description = "Silent audio backend",
             .provides = {"audio"},
             .dependencies = {},
@@ -179,18 +179,18 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::AudioNullModule)
+PHI_DEFINE_MODULE(phi::AudioNullModule)
 ```
 
 **3. Build it:**
 
 ```cmake
 # modules/audio_null/CMakeLists.txt
-bdex_add_module(audio_null
+phi_add_module(audio_null
     SOURCES src/AudioNullModule.cpp
-    DEPS bdex::core bdex::audio)
+    DEPS phi::core phi::audio)
 ```
 
 Add `add_subdirectory(audio_null)` to `modules/CMakeLists.txt`.
@@ -198,7 +198,7 @@ Add `add_subdirectory(audio_null)` to `modules/CMakeLists.txt`.
 **4. Make it available to an application and load it:**
 
 ```cmake
-bdex_target_modules(sandbox window_glfw rhi_vulkan renderer_forward audio_null)
+phi_target_modules(sandbox window_glfw rhi_vulkan renderer_forward audio_null)
 ```
 
 ```ini
@@ -206,7 +206,7 @@ bdex_target_modules(sandbox window_glfw rhi_vulkan renderer_forward audio_null)
 modules = window_glfw, rhi_vulkan, renderer_forward, audio_null
 ```
 
-`bdex_target_modules` adds a build dependency in plugin builds, and links and registers the module in static builds. The executable itself needs no change.
+`phi_target_modules` adds a build dependency in plugin builds, and links and registers the module in static builds. The executable itself needs no change.
 
 ### Rules for modules
 
@@ -214,7 +214,7 @@ modules = window_glfw, rhi_vulkan, renderer_forward, audio_null
 - Talk to the rest of the engine through `Engine`: services, events, tasks, configuration.
 - Release in `onShutdown` everything registered in `onInit` (services, tasks, subscriptions). `ScopedTask` and `Subscription` make this automatic.
 - Read settings from your own configuration section and document them at the top of the module's source file.
-- Recoverable failures return `Result` with a message; `BDEX_ASSERT` is for programming errors.
+- Recoverable failures return `Result` with a message; `PHI_ASSERT` is for programming errors.
 
 [`tests/plugins/TestPlugin.cpp`](../tests/plugins/TestPlugin.cpp) is a complete minimal module, and [`modules/rhi_null`](../modules/rhi_null/src/NullRhiModule.cpp) is the smallest real backend.
 
@@ -341,20 +341,20 @@ The window backend, not the RHI, creates the presentation surface (`IWindow::cre
 | -100 | `sandbox.sky` | the sandbox application |
 | 0 | `forward.meshes` | `renderer_forward` |
 
-A feature implements `IRenderFeature` (`onAttach`, `render`, `onDetach`) and is added with `IRenderer::addFeature`. It draws into the color format given in `RenderSetupContext`: a 16-bit float HDR target by default, tone mapped afterwards, so shaders output linear light that may exceed 1. Every feature receives the per-frame constants and the sun's shadow map as bind group 0; shaders get the matching declarations with `#include "bdex/frame_uniforms.glsl"`, and `#include "bdex/shadows.glsl"` provides `bdexSunShadow()` to receive shadows. To cast them, a feature overrides `renderShadows`, called inside the depth-only shadow pass before `render`, once per cascade with the cascade's index in the context.
+A feature implements `IRenderFeature` (`onAttach`, `render`, `onDetach`) and is added with `IRenderer::addFeature`. It draws into the color format given in `RenderSetupContext`: a 16-bit float HDR target by default, tone mapped afterwards, so shaders output linear light that may exceed 1. Every feature receives the per-frame constants and the sun's shadow map as bind group 0; shaders get the matching declarations with `#include "phi/frame_uniforms.glsl"`, and `#include "phi/shadows.glsl"` provides `phiSunShadow()` to receive shadows. To cast them, a feature overrides `renderShadows`, called inside the depth-only shadow pass before `render`, once per cascade with the cascade's index in the context.
 
 Without a presentable window the renderer draws into an offscreen target; screenshots read that target back.
 
 ## Build system
 
-`cmake/BdexEngine.cmake` provides the building blocks:
+`cmake/PhiEngine.cmake` provides the building blocks:
 
 | Function | Purpose |
 | --- | --- |
-| `bdex_add_library(name ...)` | Engine library `bdex::<name>`. |
-| `bdex_add_module(name ...)` | Module `bdex_module_<name>`: plugin or static library depending on `BDEX_SHARED_MODULES`. |
-| `bdex_target_modules(target modules...)` | Makes modules available to an executable (build dependency, or link + static registration). |
-| `bdex_compile_shaders(target ...)` | GLSL to SPIR-V with `glslc`, with `#include` dependency tracking. |
+| `phi_add_library(name ...)` | Engine library `phi::<name>`. |
+| `phi_add_module(name ...)` | Module `phi_module_<name>`: plugin or static library depending on `PHI_SHARED_MODULES`. |
+| `phi_target_modules(target modules...)` | Makes modules available to an executable (build dependency, or link + static registration). |
+| `phi_compile_shaders(target ...)` | GLSL to SPIR-V with `glslc`, with `#include` dependency tracking. |
 
 Runtime layout, relative to the executable: plugins sit next to it, `assets/engine/` is mounted as `engine:/`, and `assets/<app.name>/` as `app:/`.
 

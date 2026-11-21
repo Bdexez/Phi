@@ -1,4 +1,4 @@
-#include <bdex/assets/Audio.hpp>
+#include <phi/assets/Audio.hpp>
 
 #include <gtest/gtest.h>
 
@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::assets;
+using namespace phi;
+using namespace phi::assets;
 
 namespace {
 

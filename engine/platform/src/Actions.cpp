@@ -1,9 +1,9 @@
-#include <bdex/platform/Actions.hpp>
+#include <phi/platform/Actions.hpp>
 
 #include <algorithm>
 #include <iterator>
 
-namespace bdex::platform {
+namespace phi::platform {
 namespace {
 
 std::string_view trim(std::string_view text) {
@@ -226,4 +226,4 @@ std::vector<std::string> InputActions::bindings(std::string_view action) const {
     return names;
 }
 
-}  // namespace bdex::platform
+}  // namespace phi::platform

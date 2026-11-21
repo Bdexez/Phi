@@ -1,13 +1,13 @@
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Json.hpp>
-#include <bdex/core/Trace.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Json.hpp>
+#include <phi/core/Trace.hpp>
 
 #include <gtest/gtest.h>
 
 #include <string>
 #include <thread>
 
-using namespace bdex;
+using namespace phi;
 
 TEST(Trace, WritesChromeTraceEvents) {
     TraceRecorder trace;

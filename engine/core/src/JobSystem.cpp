@@ -1,10 +1,10 @@
-#include <bdex/core/JobSystem.hpp>
+#include <phi/core/JobSystem.hpp>
 
 #include <algorithm>
 #include <atomic>
 #include <format>
 
-namespace bdex {
+namespace phi {
 
 namespace {
 
@@ -168,4 +168,4 @@ void JobSystem::parallelFor(usize count, usize grain,
     });
 }
 
-}  // namespace bdex
+}  // namespace phi

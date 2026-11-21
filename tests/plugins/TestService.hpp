@@ -3,7 +3,7 @@
 // Contract shared by the test plugin and the tests. Like any engine
 // interface, it is the only thing both sides have in common.
 
-namespace bdex::tests {
+namespace phi::tests {
 
 class ITestService {
 public:
@@ -21,4 +21,4 @@ struct TestPong {
     int value = 0;
 };
 
-}  // namespace bdex::tests
+}  // namespace phi::tests

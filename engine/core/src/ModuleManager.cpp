@@ -1,13 +1,13 @@
-#include <bdex/core/ModuleManager.hpp>
+#include <phi/core/ModuleManager.hpp>
 
-#include <bdex/core/Log.hpp>
+#include <phi/core/Log.hpp>
 
 #include <algorithm>
 #include <map>
 #include <system_error>
 #include <unordered_map>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 std::map<std::string, ModuleFactory, std::less<>>& staticFactories() {
@@ -74,7 +74,7 @@ Result<> ModuleManager::load(std::string_view name) {
     }
 
     // 2. Plugin next to the executable (or in any other search path).
-    const std::string fileName = DynamicLibrary::fileName("bdex_module_" + std::string(name));
+    const std::string fileName = DynamicLibrary::fileName("phi_module_" + std::string(name));
     std::string lastError = "not found in the static registry or in any search path";
     for (const std::filesystem::path& directory : searchPaths_) {
         const std::filesystem::path candidate = directory / fileName;
@@ -89,12 +89,12 @@ Result<> ModuleManager::load(std::string_view name) {
             continue;
         }
 
-        const std::string abiSymbol = "bdex_module_abi_" + std::string(name);
-        const std::string createSymbol = "bdex_create_module_" + std::string(name);
+        const std::string abiSymbol = "phi_module_abi_" + std::string(name);
+        const std::string createSymbol = "phi_create_module_" + std::string(name);
         const auto abi = reinterpret_cast<u32 (*)()>(library->symbol(abiSymbol.c_str()));
         const auto create = reinterpret_cast<ModuleFactory>(library->symbol(createSymbol.c_str()));
         if (abi == nullptr || create == nullptr) {
-            return fail("'{}' is not a bdex module (missing entry point '{}')",
+            return fail("'{}' is not a phi module (missing entry point '{}')",
                         candidate.string(), createSymbol);
         }
         if (abi() != kModuleAbiVersion) {
@@ -288,4 +288,4 @@ const ModuleManager::Entry* ModuleManager::findEntry(std::string_view name) cons
     return it == entries_.end() ? nullptr : &*it;
 }
 
-}  // namespace bdex
+}  // namespace phi

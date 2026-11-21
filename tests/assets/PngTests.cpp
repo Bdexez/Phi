@@ -1,11 +1,11 @@
-#include <bdex/assets/Image.hpp>
+#include <phi/assets/Image.hpp>
 
 #include <gtest/gtest.h>
 
 #include <vector>
 
-using namespace bdex;
-using namespace bdex::assets;
+using namespace phi;
+using namespace phi::assets;
 
 namespace {
 

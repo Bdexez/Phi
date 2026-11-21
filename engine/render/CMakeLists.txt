@@ -1,4 +1,4 @@
-bdex_add_library(render
+phi_add_library(render
     SOURCES
         src/Camera.cpp
         src/DebugDraw.cpp
@@ -8,13 +8,13 @@ bdex_add_library(render
         src/Serialization.cpp
         src/Shadows.cpp
     PUBLIC_DEPS
-        bdex::core
-        bdex::ecs
-        bdex::rhi
-        bdex::assets
-        bdex::scene)
+        phi::core
+        phi::ecs
+        phi::rhi
+        phi::assets
+        phi::scene)
 
 # GLSL headers shared by every renderer and by application shaders
-# (#include "bdex/frame_uniforms.glsl"); picked up by bdex_compile_shaders().
-set(BDEX_SHADER_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+# (#include "phi/frame_uniforms.glsl"); picked up by phi_compile_shaders().
+set(PHI_SHADER_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     CACHE INTERNAL "Include directory for engine GLSL headers")

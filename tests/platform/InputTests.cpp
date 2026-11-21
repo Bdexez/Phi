@@ -1,12 +1,12 @@
-#include <bdex/core/EventBus.hpp>
-#include <bdex/platform/Actions.hpp>
-#include <bdex/platform/Events.hpp>
-#include <bdex/platform/Input.hpp>
+#include <phi/core/EventBus.hpp>
+#include <phi/platform/Actions.hpp>
+#include <phi/platform/Events.hpp>
+#include <phi/platform/Input.hpp>
 
 #include <gtest/gtest.h>
 
-using namespace bdex;
-using namespace bdex::platform;
+using namespace phi;
+using namespace phi::platform;
 
 TEST(InputState, TracksKeyTransitionsPerFrame) {
     EventBus events;

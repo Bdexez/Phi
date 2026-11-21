@@ -1,10 +1,10 @@
-#include <bdex/ui/Ui.hpp>
+#include <phi/ui/Ui.hpp>
 
 #include <algorithm>
 #include <format>
 #include <functional>
 
-namespace bdex::ui {
+namespace phi::ui {
 
 namespace {
 
@@ -157,4 +157,4 @@ bool Context::wantsPointer() const {
     return std::any_of(panels_.begin(), panels_.end(), over) || std::any_of(lastPanels_.begin(), lastPanels_.end(), over);
 }
 
-}  // namespace bdex::ui
+}  // namespace phi::ui

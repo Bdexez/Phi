@@ -1,21 +1,21 @@
 // Audio without a device: the mixer runs in real time and its output is
 // discarded, so sounds start, play for their length and finish exactly as
 // they would if heard. Used headless and in tests.
-#include <bdex/audio/Mixer.hpp>
-#include <bdex/core/Engine.hpp>
-#include <bdex/core/Module.hpp>
+#include <phi/audio/Mixer.hpp>
+#include <phi/core/Engine.hpp>
+#include <phi/core/Module.hpp>
 
 #include <algorithm>
 #include <memory>
 
-namespace bdex {
+namespace phi {
 namespace {
 
 class NullAudioModule final : public IModule {
 public:
     [[nodiscard]] ModuleInfo info() const override {
         return ModuleInfo{
-            .name = BDEX_MODULE_NAME_STRING,
+            .name = PHI_MODULE_NAME_STRING,
             .description = "Silent audio output",
             .provides = {"audio"},
             .dependencies = {},
@@ -47,6 +47,6 @@ private:
 };
 
 }  // namespace
-}  // namespace bdex
+}  // namespace phi
 
-BDEX_DEFINE_MODULE(bdex::NullAudioModule)
+PHI_DEFINE_MODULE(phi::NullAudioModule)

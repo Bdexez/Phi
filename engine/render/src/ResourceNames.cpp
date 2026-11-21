@@ -1,6 +1,6 @@
-#include <bdex/render/ResourceNames.hpp>
+#include <phi/render/ResourceNames.hpp>
 
-namespace bdex::render {
+namespace phi::render {
 
 template <class HandleType>
 void ResourceNames::Table<HandleType>::set(HandleType handle, std::string_view name) {
@@ -65,4 +65,4 @@ void addMeshRendererSerializer(scene::ComponentSerializers& serializers, const R
         });
 }
 
-}  // namespace bdex::render
+}  // namespace phi::render

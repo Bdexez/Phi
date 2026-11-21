@@ -1,8 +1,8 @@
-#include <bdex/platform/Input.hpp>
+#include <phi/platform/Input.hpp>
 
-#include <bdex/platform/Events.hpp>
+#include <phi/platform/Events.hpp>
 
-namespace bdex::platform {
+namespace phi::platform {
 
 InputState::InputState(EventBus& events) {
     keySubscription_ = events.subscribe<KeyEvent>([this](const KeyEvent& event) {
@@ -165,4 +165,4 @@ f32 InputState::gamepadAxis(GamepadAxis axis, u32 gamepad) const {
     return pad != nullptr && index < pad->axes.size() ? pad->axes[index] : 0.0f;
 }
 
-}  // namespace bdex::platform
+}  // namespace phi::platform
