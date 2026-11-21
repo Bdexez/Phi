@@ -151,8 +151,15 @@ detail::ErasedAsset AssetManager::loadNow(const Key& key, std::string_view typeN
 
     if (asset) {
         log::debug("assets", "loaded '{}'", virtualPath);
+    }
+    {
         std::lock_guard lock(mutex_);
-        cache_.emplace(key, *asset);
+        if (asset) {
+            cache_.emplace(key, *asset);
+        }
+        // Drop the in-flight entry once the load is settled so its shared_future
+        // does not keep the asset alive past clearCache().
+        inFlight_.erase(key);
     }
     return asset;
 }
