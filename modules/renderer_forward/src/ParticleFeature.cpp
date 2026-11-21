@@ -73,28 +73,31 @@ void ParticleFeature::render(const render::RenderFrameContext& context) {
     const Vec3 right(view[0][0], view[1][0], view[2][0]);
     const Vec3 up(view[0][1], view[1][1], view[2][1]);
 
-    struct Sprite {
-        Vec3 position;
-        f32 size;
-        Vec4 color;
-        f32 distance;
-    };
-    std::vector<Sprite> blended;
-    std::vector<Sprite> additive;
+    blendedSprites_.clear();
+    additiveSprites_.clear();
     context.world->view<const particles::ParticleEmitter>().each([&](const particles::ParticleEmitter& emitter) {
-        for (const particles::Particle& particle : emitter.particles) {
-            const Sprite sprite{particle.position, particles::sizeAt(emitter, particle), particles::colorAt(emitter, particle),
-                                glm::dot(particle.position - context.camera.position, particle.position - context.camera.position)};
-            (emitter.additive ? additive : blended).push_back(sprite);
+        if (emitter.additive) {
+            for (const particles::Particle& particle : emitter.particles) {
+                additiveSprites_.push_back({particle.position, particles::sizeAt(emitter, particle),
+                                            particles::colorAt(emitter, particle), 0.0f});
+            }
+        } else {
+            for (const particles::Particle& particle : emitter.particles) {
+                const Vec3 offset = particle.position - context.camera.position;
+                blendedSprites_.push_back({particle.position, particles::sizeAt(emitter, particle),
+                                           particles::colorAt(emitter, particle), glm::dot(offset, offset)});
+            }
         }
     });
-    if (blended.empty() && additive.empty()) {
+    if (blendedSprites_.empty() && additiveSprites_.empty()) {
         return;
     }
     // Blended ones back to front, so nearer ones cover farther ones.
-    std::sort(blended.begin(), blended.end(), [](const Sprite& a, const Sprite& b) { return a.distance > b.distance; });
+    std::sort(blendedSprites_.begin(), blendedSprites_.end(),
+              [](const Sprite& a, const Sprite& b) { return a.distance > b.distance; });
 
     vertices_.clear();
+    vertices_.reserve((blendedSprites_.size() + additiveSprites_.size()) * 6);
     const auto quad = [&](const Sprite& sprite) {
         const Vec3 x = right * (sprite.size * 0.5f);
         const Vec3 y = up * (sprite.size * 0.5f);
@@ -106,11 +109,11 @@ void ParticleFeature::render(const render::RenderFrameContext& context) {
             vertices_.push_back(corners[i]);
         }
     };
-    for (const Sprite& sprite : blended) {
+    for (const Sprite& sprite : blendedSprites_) {
         quad(sprite);
     }
     const auto blendedCount = static_cast<u32>(vertices_.size());
-    for (const Sprite& sprite : additive) {
+    for (const Sprite& sprite : additiveSprites_) {
         quad(sprite);
     }
 

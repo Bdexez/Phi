@@ -31,9 +31,18 @@ private:
         usize capacity = 0;  ///< In vertices.
     };
 
+    struct Sprite {
+        Vec3 position;
+        f32 size;
+        Vec4 color;
+        f32 distance;
+    };
+
     rhi::PipelineHandle blended_;
     rhi::PipelineHandle additive_;
     std::vector<VertexBuffer> buffers_;  ///< One per frame in flight.
+    std::vector<Sprite> blendedSprites_;
+    std::vector<Sprite> additiveSprites_;
     std::vector<Vertex> vertices_;       ///< Reused across frames.
 };
 
