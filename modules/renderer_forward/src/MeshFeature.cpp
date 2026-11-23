@@ -12,7 +12,15 @@
 
 namespace phi::forward {
 
+namespace {
+
+constexpr usize kParallelThreshold = 2048;
+constexpr usize kCullGrain = 2048;
+
+}  // namespace
+
 Result<> MeshFeature::onAttach(const render::RenderSetupContext& context) {
+    jobs_ = context.services.tryGet<JobSystem>();
     auto& assets = context.services.get<assets::AssetManager>();
     const auto vertexBinary = assets.load<assets::ShaderBinary>("engine:/shaders/mesh.vert.spv");
     if (!vertexBinary) {
@@ -116,6 +124,7 @@ void MeshFeature::onDetach(rhi::IDevice& device) {
     objectLayout_ = {};
     opaquePipeline_ = {};
     transparentPipeline_ = {};
+    jobs_ = nullptr;
 }
 
 void MeshFeature::ensureObjectCapacity(rhi::IDevice& device, ObjectBuffer& slot, usize count) {
@@ -154,8 +163,6 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
         return;
     }
 
-    // Gather visible meshes: opaque ones bucketed directly by (material, mesh)
-    // in O(N) without sorting every instance; transparent ones kept for back-to-front sort.
     opaqueBucketLookup_.clear();
     opaqueBucketOrder_.clear();
     transparent_.clear();
@@ -164,65 +171,143 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
 
     u64 lastKey = ~u64{0};
     u32 lastBucket = 0;
+    const auto addOpaque = [&](u64 key, const GpuMesh* mesh, const GpuMaterial& material, const Mat4* model) {
+        u32 bucketIndex = lastBucket;
+        if (key != lastKey) {
+            const auto [it, inserted] = opaqueBucketLookup_.emplace(key, activeBuckets);
+            if (inserted) {
+                if (activeBuckets == opaqueBuckets_.size()) {
+                    opaqueBuckets_.emplace_back();
+                }
+                OpaqueBucket& bucket = opaqueBuckets_[activeBuckets];
+                bucket.key = key;
+                bucket.material = material.bindGroup;
+                bucket.mesh = mesh;
+                bucket.baseColor = material.desc.baseColor;
+                // Without a normal map the strength is 0, which keeps the
+                // surface normal exact (the flat texel is only ~(0, 0, 1)).
+                bucket.params = Vec4(material.desc.specular, material.desc.shininess,
+                                     material.desc.normalMap.valid() ? material.desc.normalStrength : 0.0f, 0.0f);
+                bucket.emissive = Vec4(material.desc.emissive, 0.0f);
+                bucket.models.clear();
+                opaqueBucketOrder_.push_back(activeBuckets);
+                ++activeBuckets;
+            }
+            bucketIndex = it->second;
+            lastKey = key;
+            lastBucket = bucketIndex;
+        }
+        opaqueBuckets_[bucketIndex].models.push_back(model);
+        ++opaqueCount;
+    };
+
     const render::Frustum frustum(context.camera.viewProjection);
     const std::span<const u32> entities = renderers->entities();
     const std::span<const render::MeshRenderer> items = renderers->values();
+    const usize count = entities.size();
 
-    for (usize i = 0; i < entities.size(); ++i) {
-        const render::MeshRenderer& renderable = items[i];
-        if (!renderable.visible) {
-            continue;
+    if (jobs_ != nullptr && count >= kParallelThreshold) {
+        const usize chunkCount = (count + kCullGrain - 1) / kCullGrain;
+        if (cullChunks_.size() < chunkCount) {
+            cullChunks_.resize(chunkCount);
         }
-        const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
-        if (transform == nullptr) {
-            continue;
-        }
-        const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
-        if (mesh == nullptr) {
-            continue;  // destroyed or never assigned
-        }
-        const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform->matrix);
-        if (!frustum.intersects(bounds)) {
-            continue;  // outside the view
-        }
-        const GpuMaterial& material = renderer_->materialOrDefault(renderable.material);
-        if (material.desc.transparent) {
-            // Back to front: larger distances first. A non-negative float
-            // orders like its bit pattern, so the complement sorts it
-            // descending.
-            const Vec3 offset = bounds.center - context.camera.position;
-            const f32 distanceSquared = glm::dot(offset, offset);
-            transparent_.push_back({~u64{std::bit_cast<u32>(distanceSquared)}, material.bindGroup, mesh,
-                                    &material, &transform->matrix});
-        } else {
-            const u64 key = (u64{material.bindGroup.index} << 32) | renderable.mesh.index;
-            u32 bucketIndex = lastBucket;
-            if (key != lastKey) {
-                const auto [it, inserted] = opaqueBucketLookup_.emplace(key, activeBuckets);
-                if (inserted) {
-                    if (activeBuckets == opaqueBuckets_.size()) {
-                        opaqueBuckets_.emplace_back();
-                    }
-                    OpaqueBucket& bucket = opaqueBuckets_[activeBuckets];
-                    bucket.key = key;
-                    bucket.material = material.bindGroup;
-                    bucket.mesh = mesh;
-                    bucket.baseColor = material.desc.baseColor;
-                    // Without a normal map the strength is 0, which keeps the
-                    // surface normal exact (the flat texel is only ~(0, 0, 1)).
-                    bucket.params = Vec4(material.desc.specular, material.desc.shininess,
-                                         material.desc.normalMap.valid() ? material.desc.normalStrength : 0.0f, 0.0f);
-                    bucket.emissive = Vec4(material.desc.emissive, 0.0f);
-                    bucket.models.clear();
-                    opaqueBucketOrder_.push_back(activeBuckets);
-                    ++activeBuckets;
+        jobs_->parallelFor(count, kCullGrain, [&](usize begin, usize end) {
+            CullChunk& chunk = cullChunks_[begin / kCullGrain];
+            chunk.opaque.clear();
+            chunk.transparent.clear();
+            render::MeshHandle lastMeshHandle;
+            const GpuMesh* lastMesh = nullptr;
+            render::MaterialHandle lastMatHandle;
+            const GpuMaterial* lastMat = nullptr;
+            for (usize i = begin; i < end; ++i) {
+                const render::MeshRenderer& renderable = items[i];
+                if (!renderable.visible) {
+                    continue;
                 }
-                bucketIndex = it->second;
-                lastKey = key;
-                lastBucket = bucketIndex;
+                const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+                if (transform == nullptr) {
+                    continue;
+                }
+                const GpuMesh* mesh =
+                    renderable.mesh == lastMeshHandle ? lastMesh : renderer_->mesh(renderable.mesh);
+                lastMeshHandle = renderable.mesh;
+                lastMesh = mesh;
+                if (mesh == nullptr) {
+                    continue;
+                }
+                const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform->matrix);
+                if (!frustum.intersects(bounds)) {
+                    continue;
+                }
+                const GpuMaterial& material =
+                    (lastMat != nullptr && renderable.material == lastMatHandle)
+                        ? *lastMat
+                        : renderer_->materialOrDefault(renderable.material);
+                lastMatHandle = renderable.material;
+                lastMat = &material;
+                if (material.desc.transparent) {
+                    const Vec3 offset = bounds.center - context.camera.position;
+                    const f32 distanceSquared = glm::dot(offset, offset);
+                    chunk.transparent.push_back({~u64{std::bit_cast<u32>(distanceSquared)}, material.bindGroup, mesh,
+                                                 &material, &transform->matrix});
+                } else {
+                    const u64 key = (u64{material.bindGroup.index} << 32) | renderable.mesh.index;
+                    chunk.opaque.push_back({key, mesh, &material, &transform->matrix});
+                }
             }
-            opaqueBuckets_[bucketIndex].models.push_back(&transform->matrix);
-            ++opaqueCount;
+        });
+        for (usize c = 0; c < chunkCount; ++c) {
+            const CullChunk& chunk = cullChunks_[c];
+            for (const OpaqueRef& ref : chunk.opaque) {
+                addOpaque(ref.key, ref.mesh, *ref.material, ref.model);
+            }
+            if (!chunk.transparent.empty()) {
+                transparent_.insert(transparent_.end(), chunk.transparent.begin(), chunk.transparent.end());
+            }
+        }
+    } else {
+        render::MeshHandle lastMeshHandle;
+        const GpuMesh* lastMesh = nullptr;
+        render::MaterialHandle lastMatHandle;
+        const GpuMaterial* lastMat = nullptr;
+        for (usize i = 0; i < count; ++i) {
+            const render::MeshRenderer& renderable = items[i];
+            if (!renderable.visible) {
+                continue;
+            }
+            const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+            if (transform == nullptr) {
+                continue;
+            }
+            const GpuMesh* mesh =
+                renderable.mesh == lastMeshHandle ? lastMesh : renderer_->mesh(renderable.mesh);
+            lastMeshHandle = renderable.mesh;
+            lastMesh = mesh;
+            if (mesh == nullptr) {
+                continue;  // destroyed or never assigned
+            }
+            const render::BoundingSphere bounds = render::transformSphere(mesh->bounds, transform->matrix);
+            if (!frustum.intersects(bounds)) {
+                continue;  // outside the view
+            }
+            const GpuMaterial& material =
+                (lastMat != nullptr && renderable.material == lastMatHandle)
+                    ? *lastMat
+                    : renderer_->materialOrDefault(renderable.material);
+            lastMatHandle = renderable.material;
+            lastMat = &material;
+            if (material.desc.transparent) {
+                // Back to front: larger distances first. A non-negative float
+                // orders like its bit pattern, so the complement sorts it
+                // descending.
+                const Vec3 offset = bounds.center - context.camera.position;
+                const f32 distanceSquared = glm::dot(offset, offset);
+                transparent_.push_back({~u64{std::bit_cast<u32>(distanceSquared)}, material.bindGroup, mesh,
+                                        &material, &transform->matrix});
+            } else {
+                const u64 key = (u64{material.bindGroup.index} << 32) | renderable.mesh.index;
+                addOpaque(key, mesh, material, &transform->matrix);
+            }
         }
     }
 
@@ -236,21 +321,48 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
     std::sort(transparent_.begin(), transparent_.end(),
               [](const TransparentItem& a, const TransparentItem& b) { return a.key < b.key; });
 
-    // Lay out per-instance data once in final drawing order.
-    objects_.clear();
-    objects_.reserve(opaqueCount + transparent_.size());
+    // Compute per-bucket instance offsets and lay out ObjectData directly into objects_.
+    u32 offset = 0;
     for (const u32 bucketIndex : opaqueBucketOrder_) {
-        const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
-        for (const Mat4* model : bucket.models) {
-            objects_.push_back({*model, bucket.baseColor, bucket.params, bucket.emissive});
+        opaqueBuckets_[bucketIndex].instanceOffset = offset;
+        offset += static_cast<u32>(opaqueBuckets_[bucketIndex].models.size());
+    }
+    objects_.resize(opaqueCount + transparent_.size());
+    ObjectData* out = objects_.data();
+    if (jobs_ != nullptr && opaqueCount >= kParallelThreshold) {
+        for (const u32 bucketIndex : opaqueBucketOrder_) {
+            const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
+            const std::span<const Mat4* const> models = bucket.models;
+            ObjectData* dst = out + bucket.instanceOffset;
+            if (models.size() >= kParallelThreshold) {
+                jobs_->parallelFor(models.size(), kCullGrain, [&](usize begin, usize end) {
+                    for (usize i = begin; i < end; ++i) {
+                        dst[i] = {*models[i], bucket.baseColor, bucket.params, bucket.emissive};
+                    }
+                });
+            } else {
+                for (usize i = 0; i < models.size(); ++i) {
+                    dst[i] = {*models[i], bucket.baseColor, bucket.params, bucket.emissive};
+                }
+            }
+        }
+    } else {
+        for (const u32 bucketIndex : opaqueBucketOrder_) {
+            const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
+            ObjectData* dst = out + bucket.instanceOffset;
+            for (usize i = 0; i < bucket.models.size(); ++i) {
+                dst[i] = {*bucket.models[i], bucket.baseColor, bucket.params, bucket.emissive};
+            }
         }
     }
-    for (const TransparentItem& item : transparent_) {
+    ObjectData* transparentOut = out + opaqueCount;
+    for (usize i = 0; i < transparent_.size(); ++i) {
+        const TransparentItem& item = transparent_[i];
         const render::MaterialDesc& desc = item.gpuMaterial->desc;
-        objects_.push_back({*item.model, desc.baseColor,
-                            Vec4(desc.specular, desc.shininess,
-                                 desc.normalMap.valid() ? desc.normalStrength : 0.0f, 0.0f),
-                            Vec4(desc.emissive, 0.0f)});
+        transparentOut[i] = {*item.model, desc.baseColor,
+                             Vec4(desc.specular, desc.shininess,
+                                  desc.normalMap.valid() ? desc.normalStrength : 0.0f, 0.0f),
+                             Vec4(desc.emissive, 0.0f)};
     }
 
     ObjectBuffer& slot = objectBuffers_[context.device.frameSlot()];
@@ -266,10 +378,9 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
         commands.bindBindGroup(2, slot.bindGroup);
         rhi::BindGroupHandle boundMaterial;
         const GpuMesh* boundMesh = nullptr;
-        u32 instanceOffset = 0;
         for (const u32 bucketIndex : opaqueBucketOrder_) {
             const OpaqueBucket& bucket = opaqueBuckets_[bucketIndex];
-            const u32 count = static_cast<u32>(bucket.models.size());
+            const u32 instanceCount = static_cast<u32>(bucket.models.size());
             if (bucket.material != boundMaterial) {
                 commands.bindBindGroup(1, bucket.material);
                 boundMaterial = bucket.material;
@@ -279,8 +390,7 @@ void MeshFeature::render(const render::RenderFrameContext& context) {
                 commands.bindIndexBuffer(bucket.mesh->indexBuffer, rhi::IndexType::UInt32);
                 boundMesh = bucket.mesh;
             }
-            commands.drawIndexed(bucket.mesh->indexCount, count, 0, 0, instanceOffset);
-            instanceOffset += count;
+            commands.drawIndexed(bucket.mesh->indexCount, instanceCount, 0, 0, bucket.instanceOffset);
         }
     }
 
@@ -330,25 +440,15 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
 
         const auto* renderers = context.world->storage<render::MeshRenderer>();
         const auto* transforms = context.world->storage<scene::WorldTransform>();
-        if (renderers != nullptr && transforms != nullptr) {
-            u32 lastMeshKey = ~u32{0};
-            u32 lastBucket = 0;
+        if (renderers != nullptr && transforms != nullptr && renderers->size() > 0) {
             const std::span<const u32> entities = renderers->entities();
             const std::span<const render::MeshRenderer> items = renderers->values();
-            for (usize i = 0; i < entities.size(); ++i) {
-                const render::MeshRenderer& renderable = items[i];
-                if (!renderable.visible) {
-                    continue;
-                }
-                const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
-                if (transform == nullptr) {
-                    continue;
-                }
-                const GpuMesh* mesh = renderer_->mesh(renderable.mesh);
-                if (mesh == nullptr || renderer_->materialOrDefault(renderable.material).desc.transparent) {
-                    continue;
-                }
-                const u32 meshKey = renderable.mesh.index;
+            const usize count = entities.size();
+
+            u32 lastMeshKey = ~u32{0};
+            u32 lastBucket = 0;
+            const auto addShadow = [&](u32 meshKey, const GpuMesh* mesh, const Mat4* model,
+                                       const render::BoundingSphere& bounds) {
                 u32 bucketIndex = lastBucket;
                 if (meshKey != lastMeshKey) {
                     const auto [it, inserted] = shadowBucketLookup_.emplace(meshKey, activeBuckets);
@@ -369,8 +469,89 @@ void MeshFeature::renderShadows(const render::RenderFrameContext& context) {
                     lastBucket = bucketIndex;
                 }
                 ShadowMeshBucket& bucket = shadowBuckets_[bucketIndex];
-                bucket.bounds.push_back(render::transformSphere(mesh->bounds, transform->matrix));
-                bucket.models.push_back(&transform->matrix);
+                bucket.bounds.push_back(bounds);
+                bucket.models.push_back(model);
+            };
+
+            if (jobs_ != nullptr && count >= kParallelThreshold) {
+                shadowGather_.resize(count);
+                jobs_->parallelFor(count, kCullGrain, [&](usize begin, usize end) {
+                    render::MeshHandle lastMeshHandle;
+                    const GpuMesh* lastMesh = nullptr;
+                    render::MaterialHandle lastMatHandle;
+                    const GpuMaterial* lastMat = nullptr;
+                    for (usize i = begin; i < end; ++i) {
+                        const render::MeshRenderer& renderable = items[i];
+                        if (!renderable.visible) {
+                            shadowGather_[i].mesh = nullptr;
+                            continue;
+                        }
+                        const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+                        if (transform == nullptr) {
+                            shadowGather_[i].mesh = nullptr;
+                            continue;
+                        }
+                        const GpuMesh* mesh =
+                            renderable.mesh == lastMeshHandle ? lastMesh : renderer_->mesh(renderable.mesh);
+                        lastMeshHandle = renderable.mesh;
+                        lastMesh = mesh;
+                        if (mesh == nullptr) {
+                            shadowGather_[i].mesh = nullptr;
+                            continue;
+                        }
+                        const GpuMaterial& material =
+                            (lastMat != nullptr && renderable.material == lastMatHandle)
+                                ? *lastMat
+                                : renderer_->materialOrDefault(renderable.material);
+                        lastMatHandle = renderable.material;
+                        lastMat = &material;
+                        if (material.desc.transparent) {
+                            shadowGather_[i].mesh = nullptr;
+                            continue;
+                        }
+                        shadowGather_[i] = {renderable.mesh.index, mesh, &transform->matrix,
+                                            render::transformSphere(mesh->bounds, transform->matrix)};
+                    }
+                });
+                for (usize i = 0; i < count; ++i) {
+                    const ShadowCandidate& candidate = shadowGather_[i];
+                    if (candidate.mesh != nullptr) {
+                        addShadow(candidate.meshKey, candidate.mesh, candidate.model, candidate.bounds);
+                    }
+                }
+            } else {
+                render::MeshHandle lastMeshHandle;
+                const GpuMesh* lastMesh = nullptr;
+                render::MaterialHandle lastMatHandle;
+                const GpuMaterial* lastMat = nullptr;
+                for (usize i = 0; i < count; ++i) {
+                    const render::MeshRenderer& renderable = items[i];
+                    if (!renderable.visible) {
+                        continue;
+                    }
+                    const scene::WorldTransform* transform = transforms->tryGet(entities[i]);
+                    if (transform == nullptr) {
+                        continue;
+                    }
+                    const GpuMesh* mesh =
+                        renderable.mesh == lastMeshHandle ? lastMesh : renderer_->mesh(renderable.mesh);
+                    lastMeshHandle = renderable.mesh;
+                    lastMesh = mesh;
+                    if (mesh == nullptr) {
+                        continue;
+                    }
+                    const GpuMaterial& material =
+                        (lastMat != nullptr && renderable.material == lastMatHandle)
+                            ? *lastMat
+                            : renderer_->materialOrDefault(renderable.material);
+                    lastMatHandle = renderable.material;
+                    lastMat = &material;
+                    if (material.desc.transparent) {
+                        continue;
+                    }
+                    addShadow(renderable.mesh.index, mesh, &transform->matrix,
+                              render::transformSphere(mesh->bounds, transform->matrix));
+                }
             }
             std::sort(shadowBucketOrder_.begin(), shadowBucketOrder_.end(),
                       [this](u32 a, u32 b) { return shadowBuckets_[a].meshKey < shadowBuckets_[b].meshKey; });
