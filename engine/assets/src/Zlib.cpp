@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 
 namespace phi::assets {
 namespace {
@@ -218,10 +219,19 @@ Result<> inflateBlock(BitReader& reader, const Huffman& literals, const Huffman&
         if (length > maxSize - out.size()) {
             return fail("deflate: output exceeds {} bytes", maxSize);
         }
-        // Byte by byte: the copy may overlap the bytes it produces.
-        const usize from = out.size() - distance;
-        for (usize i = 0; i < length; ++i) {
-            out.push_back(out[from + i]);
+        const usize start = out.size();
+        const usize from = start - distance;
+        out.resize(start + length);
+        u8* dst = out.data() + start;
+        if (distance >= length) {
+            std::memcpy(dst, out.data() + from, length);
+        } else if (distance == 1) {
+            std::memset(dst, out[from], length);
+        } else {
+            const u8* src = out.data() + from;
+            for (usize i = 0; i < length; ++i) {
+                dst[i] = src[i];
+            }
         }
     }
 }
