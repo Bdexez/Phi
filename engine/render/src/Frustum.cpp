@@ -26,13 +26,6 @@ BoundingSphere computeBoundingSphere(const assets::MeshData& mesh) {
     return sphere;
 }
 
-BoundingSphere transformSphere(const BoundingSphere& sphere, const Mat4& transform) {
-    const f32 scaleSquared = std::max({glm::dot(Vec3(transform[0]), Vec3(transform[0])),
-                                       glm::dot(Vec3(transform[1]), Vec3(transform[1])),
-                                       glm::dot(Vec3(transform[2]), Vec3(transform[2]))});
-    return {Vec3(transform * Vec4(sphere.center, 1.0f)), sphere.radius * std::sqrt(scaleSquared)};
-}
-
 Frustum::Frustum(const Mat4& viewProjection) {
     // Gribb & Hartmann: each plane is a sum or difference of rows of the
     // matrix (GLM stores columns, so row i is m[*][i]).
@@ -54,12 +47,6 @@ Frustum::Frustum(const Mat4& viewProjection) {
             plane /= length;
         }
     }
-}
-
-bool Frustum::intersects(const BoundingSphere& sphere) const {
-    return std::all_of(planes_.begin(), planes_.end(), [&](const Vec4& plane) {
-        return glm::dot(Vec3(plane), sphere.center) + plane.w >= -sphere.radius;
-    });
 }
 
 Ray rayThroughPixel(const Mat4& viewProjection, const Vec2& pixel, Extent2D extent) {
