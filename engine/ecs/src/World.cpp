@@ -14,9 +14,9 @@ Entity World::create() {
     } else {
         index = static_cast<u32>(generations_.size());
         generations_.push_back(1);
-        aliveFlags_.push_back(false);
+        aliveFlags_.push_back(0);
     }
-    aliveFlags_[index] = true;
+    aliveFlags_[index] = 1;
     ++aliveCount_;
     return Entity{index, generations_[index]};
 }
@@ -69,14 +69,14 @@ void World::destroy(Entity entity) {
     for (auto& [type, pool] : pools_) {
         pool->remove(entity.index);
     }
-    aliveFlags_[entity.index] = false;
+    aliveFlags_[entity.index] = 0;
     ++generations_[entity.index];  // invalidates outstanding handles
     freeSlots_.push_back(entity.index);
     --aliveCount_;
 }
 
 bool World::alive(Entity entity) const {
-    return entity.index < generations_.size() && aliveFlags_[entity.index] &&
+    return entity.index < generations_.size() && aliveFlags_[entity.index] != 0 &&
            generations_[entity.index] == entity.generation;
 }
 
@@ -104,8 +104,8 @@ void World::clear() {
     }
     freeSlots_.clear();
     for (u32 index = static_cast<u32>(generations_.size()); index-- > 0;) {
-        if (aliveFlags_[index]) {
-            aliveFlags_[index] = false;
+        if (aliveFlags_[index] != 0) {
+            aliveFlags_[index] = 0;
             ++generations_[index];
         }
         freeSlots_.push_back(index);
