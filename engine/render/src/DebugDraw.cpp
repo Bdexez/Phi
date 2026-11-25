@@ -82,15 +82,29 @@ constexpr f32 kAdvance = 6.0f;      ///< Glyph width 4, then a gap of 2.
 constexpr f32 kLineSpacing = 9.0f;  ///< Baseline to baseline.
 
 std::string_view strokesOf(char character) {
-    if (character >= 'a' && character <= 'z') {
-        character = static_cast<char>(character - 'a' + 'A');
-    }
-    for (const Glyph& glyph : kGlyphs) {
-        if (glyph.character == character) {
-            return glyph.strokes;
+    static const auto table = [] {
+        std::array<std::string_view, 128> lut{};
+        std::string_view fallback;
+        for (const Glyph& glyph : kGlyphs) {
+            if (glyph.character == '?') {
+                fallback = glyph.strokes;
+                break;
+            }
         }
-    }
-    return strokesOf('?');
+        lut.fill(fallback);
+        for (const Glyph& glyph : kGlyphs) {
+            const auto code = static_cast<unsigned char>(glyph.character);
+            if (code < lut.size()) {
+                lut[code] = glyph.strokes;
+            }
+        }
+        for (unsigned char c = 'a'; c <= 'z'; ++c) {
+            lut[c] = lut[c - 'a' + 'A'];
+        }
+        return lut;
+    }();
+    const auto code = static_cast<unsigned char>(character);
+    return code < table.size() ? table[code] : table[static_cast<unsigned char>('?')];
 }
 
 }  // namespace
@@ -225,18 +239,17 @@ f32 DebugDraw::textWidth(std::string_view text, f32 height) {
 void DebugDraw::sphere(const Vec3& center, f32 radius, const Vec4& color, u32 segments) {
     segments = std::max(segments, 3u);
     const f32 step = 2.0f * std::numbers::pi_v<f32> / static_cast<f32>(segments);
-    const std::array<std::pair<Vec3, Vec3>, 3> planes = {{
-        {Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)},
-        {Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)},
-        {Vec3(0.0f, 0.0f, 1.0f), Vec3(1.0f, 0.0f, 0.0f)},
-    }};
-    for (const auto& [a, b] : planes) {
-        for (u32 i = 0; i < segments; ++i) {
-            const f32 t0 = step * static_cast<f32>(i);
-            const f32 t1 = step * static_cast<f32>(i + 1);
-            line(center + (a * std::cos(t0) + b * std::sin(t0)) * radius,
-                 center + (a * std::cos(t1) + b * std::sin(t1)) * radius, color);
-        }
+    f32 c0 = radius;
+    f32 s0 = 0.0f;
+    for (u32 i = 1; i <= segments; ++i) {
+        const f32 angle = step * static_cast<f32>(i);
+        const f32 c1 = std::cos(angle) * radius;
+        const f32 s1 = std::sin(angle) * radius;
+        line(center + Vec3(c0, s0, 0.0f), center + Vec3(c1, s1, 0.0f), color);
+        line(center + Vec3(0.0f, c0, s0), center + Vec3(0.0f, c1, s1), color);
+        line(center + Vec3(s0, 0.0f, c0), center + Vec3(s1, 0.0f, c1), color);
+        c0 = c1;
+        s0 = s1;
     }
 }
 
