@@ -104,25 +104,43 @@ Result<AudioData> decodeWav(std::span<const u8> bytes) {
     audio.channels = channels;
     const usize width = bits / 8u;
     const usize frames = data.size() / (width * channels);  // a partial frame is dropped
-    audio.samples.resize(frames * channels);
-    for (usize i = 0; i < audio.samples.size(); ++i) {
-        const u8* sample = data.data() + i * width;
-        f32 value = 0.0f;
-        if (floating) {
-            u32 raw = readU32(data, i * width);
+    const usize totalSamples = frames * channels;
+    audio.samples.resize(totalSamples);
+    f32* out = audio.samples.data();
+    const u8* src = data.data();
+    if (floating) {
+        for (usize i = 0; i < totalSamples; ++i) {
+            const u32 raw = readU32(data, i * 4);
+            f32 value = 0.0f;
             std::memcpy(&value, &raw, sizeof(value));
-            value = std::isfinite(value) ? std::clamp(value, -1.0f, 1.0f) : 0.0f;
-        } else if (bits == 8) {
-            value = (static_cast<f32>(sample[0]) - 128.0f) / 128.0f;  // 8-bit is unsigned
-        } else {
-            // Little-endian signed integers: build the top bits of an i32.
-            u32 raw = 0;
-            for (usize byte = 0; byte < width; ++byte) {
-                raw |= static_cast<u32>(sample[byte]) << (8 * (4 - width + byte));
-            }
-            value = static_cast<f32>(static_cast<f64>(static_cast<i32>(raw)) / 2147483648.0);
+            out[i] = std::isfinite(value) ? std::clamp(value, -1.0f, 1.0f) : 0.0f;
         }
-        audio.samples[i] = value;
+    } else if (bits == 8) {
+        constexpr f32 kInv128 = 1.0f / 128.0f;
+        for (usize i = 0; i < totalSamples; ++i) {
+            out[i] = (static_cast<f32>(src[i]) - 128.0f) * kInv128;  // 8-bit is unsigned
+        }
+    } else if (bits == 16) {
+        constexpr f32 kInv32768 = 1.0f / 32768.0f;
+        for (usize i = 0; i < totalSamples; ++i) {
+            const i16 raw = static_cast<i16>(static_cast<u16>(src[i * 2]) |
+                                             (static_cast<u16>(src[i * 2 + 1]) << 8));
+            out[i] = static_cast<f32>(raw) * kInv32768;
+        }
+    } else if (bits == 24) {
+        constexpr f64 kInv2Pow31 = 1.0 / 2147483648.0;
+        for (usize i = 0; i < totalSamples; ++i) {
+            const u8* s = src + i * 3;
+            const u32 raw = (static_cast<u32>(s[0]) << 8) | (static_cast<u32>(s[1]) << 16) |
+                            (static_cast<u32>(s[2]) << 24);
+            out[i] = static_cast<f32>(static_cast<f64>(static_cast<i32>(raw)) * kInv2Pow31);
+        }
+    } else {
+        constexpr f64 kInv2Pow31 = 1.0 / 2147483648.0;
+        for (usize i = 0; i < totalSamples; ++i) {
+            const u32 raw = readU32(data, i * 4);
+            out[i] = static_cast<f32>(static_cast<f64>(static_cast<i32>(raw)) * kInv2Pow31);
+        }
     }
     return audio;
 }

@@ -12,9 +12,11 @@ ImageData makeSolidImage(u32 width, u32 height, Color8 color) {
     ImageData image;
     image.width = width;
     image.height = height;
-    image.pixels.resize(static_cast<usize>(width) * height * 4);
-    for (usize i = 0; i < image.pixels.size(); i += 4) {
-        std::copy(color.begin(), color.end(), image.pixels.begin() + static_cast<std::ptrdiff_t>(i));
+    const usize pixelCount = static_cast<usize>(width) * height;
+    image.pixels.resize(pixelCount * 4);
+    u8* dst = image.pixels.data();
+    for (usize i = 0; i < pixelCount; ++i) {
+        std::memcpy(dst + i * 4, color.data(), 4);
     }
     return image;
 }
@@ -92,35 +94,63 @@ Result<ImageData> decodeTga(std::span<const u8> bytes) {
     const usize bytesPerPixel = bitsPerPixel / 8;
     const usize pixelCount = static_cast<usize>(width) * height;
     usize cursor = kHeaderSize + idLength;
+    if (cursor > bytes.size()) {
+        return fail("tga: truncated header");
+    }
 
     ImageData image;
     image.width = width;
     image.height = height;
     image.pixels.resize(pixelCount * 4);
 
-    // Writes pixel `index` (in file order) from BGR(A) source bytes.
-    const auto store = [&](usize index, const u8* source) {
-        const usize row = index / width;
-        const usize column = index % width;
-        const usize targetRow = topToBottom ? row : height - 1 - row;
-        u8* target = image.pixels.data() + (targetRow * width + column) * 4;
-        target[0] = source[2];
-        target[1] = source[1];
-        target[2] = source[0];
-        target[3] = bytesPerPixel == 4 ? source[3] : 255;
-    };
-
     if (imageType == 2) {
-        if (bytes.size() < cursor + pixelCount * bytesPerPixel) {
+        if (bytes.size() - cursor < pixelCount * bytesPerPixel) {
             return fail("tga: truncated pixel data");
         }
-        for (usize i = 0; i < pixelCount; ++i) {
-            store(i, bytes.data() + cursor + i * bytesPerPixel);
+        const u8* src = bytes.data() + cursor;
+        for (u32 y = 0; y < height; ++y) {
+            const usize targetRow = topToBottom ? y : height - 1 - y;
+            u8* dst = image.pixels.data() + targetRow * width * 4;
+            if (bytesPerPixel == 4) {
+                for (u32 x = 0; x < width; ++x) {
+                    dst[0] = src[2];
+                    dst[1] = src[1];
+                    dst[2] = src[0];
+                    dst[3] = src[3];
+                    dst += 4;
+                    src += 4;
+                }
+            } else {
+                for (u32 x = 0; x < width; ++x) {
+                    dst[0] = src[2];
+                    dst[1] = src[1];
+                    dst[2] = src[0];
+                    dst[3] = 255;
+                    dst += 4;
+                    src += 3;
+                }
+            }
         }
         return image;
     }
 
-    // Run-length encoded packets.
+    // Run-length encoded packets, tracking (row, col) incrementally to avoid
+    // per-pixel division by width.
+    usize row = 0;
+    usize col = 0;
+    const auto storeNext = [&](const u8* source) {
+        const usize targetRow = topToBottom ? row : height - 1 - row;
+        u8* target = image.pixels.data() + (targetRow * width + col) * 4;
+        target[0] = source[2];
+        target[1] = source[1];
+        target[2] = source[0];
+        target[3] = bytesPerPixel == 4 ? source[3] : 255;
+        if (++col == width) {
+            col = 0;
+            ++row;
+        }
+    };
+
     usize written = 0;
     while (written < pixelCount) {
         if (cursor >= bytes.size()) {
@@ -132,19 +162,21 @@ Result<ImageData> decodeTga(std::span<const u8> bytes) {
             return fail("tga: RLE packet overruns the image");
         }
         if ((packet & 0x80) != 0) {
-            if (cursor + bytesPerPixel > bytes.size()) {
+            if (bytes.size() - cursor < bytesPerPixel) {
                 return fail("tga: truncated RLE data");
             }
+            const u8* color = bytes.data() + cursor;
             for (usize i = 0; i < count; ++i) {
-                store(written + i, bytes.data() + cursor);
+                storeNext(color);
             }
             cursor += bytesPerPixel;
         } else {
-            if (cursor + count * bytesPerPixel > bytes.size()) {
+            if (bytes.size() - cursor < count * bytesPerPixel) {
                 return fail("tga: truncated RLE data");
             }
+            const u8* src = bytes.data() + cursor;
             for (usize i = 0; i < count; ++i) {
-                store(written + i, bytes.data() + cursor + i * bytesPerPixel);
+                storeNext(src + i * bytesPerPixel);
             }
             cursor += count * bytesPerPixel;
         }
