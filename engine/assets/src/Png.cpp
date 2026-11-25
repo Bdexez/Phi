@@ -76,28 +76,120 @@ std::vector<u8> encodePng(const ImageData& image) {
         const u8* previous = y > 0 ? row - rowBytes : nullptr;
         u64 bestCost = ~u64{0};
         usize best = 0;
-        for (usize filter = 0; filter < candidates.size(); ++filter) {
-            u64 cost = 0;
-            for (usize i = 0; i < rowBytes; ++i) {
-                const u8 left = i >= kPixelBytes ? row[i - kPixelBytes] : 0;
-                const u8 up = previous != nullptr ? previous[i] : 0;
-                const u8 upLeft = previous != nullptr && i >= kPixelBytes ? previous[i - kPixelBytes] : 0;
-                u8 predicted = 0;
-                switch (filter) {
-                    case 1: predicted = left; break;
-                    case 2: predicted = up; break;
-                    case 3: predicted = static_cast<u8>((int{left} + int{up}) >> 1); break;
-                    case 4: predicted = paeth(left, up, upLeft); break;
-                    default: break;
-                }
-                const u8 residual = static_cast<u8>(row[i] - predicted);
-                candidates[filter][i] = residual;
-                cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
-            }
+        const auto consider = [&](usize filter, u64 cost) {
             if (cost < bestCost) {
                 bestCost = cost;
                 best = filter;
             }
+        };
+        // Filter 0: None
+        {
+            u8* dst = candidates[0].data();
+            u64 cost = 0;
+            for (usize i = 0; i < rowBytes; ++i) {
+                const u8 residual = row[i];
+                dst[i] = residual;
+                cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+            }
+            consider(0, cost);
+        }
+        // Filter 1: Sub
+        {
+            u8* dst = candidates[1].data();
+            u64 cost = 0;
+            const usize lead = std::min(kPixelBytes, rowBytes);
+            for (usize i = 0; i < lead; ++i) {
+                const u8 residual = row[i];
+                dst[i] = residual;
+                cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+            }
+            for (usize i = lead; i < rowBytes; ++i) {
+                const u8 residual = static_cast<u8>(row[i] - row[i - kPixelBytes]);
+                dst[i] = residual;
+                cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+            }
+            consider(1, cost);
+        }
+        // Filter 2: Up
+        {
+            u8* dst = candidates[2].data();
+            u64 cost = 0;
+            if (previous != nullptr) {
+                for (usize i = 0; i < rowBytes; ++i) {
+                    const u8 residual = static_cast<u8>(row[i] - previous[i]);
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            } else {
+                for (usize i = 0; i < rowBytes; ++i) {
+                    const u8 residual = row[i];
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            }
+            consider(2, cost);
+        }
+        // Filter 3: Average
+        {
+            u8* dst = candidates[3].data();
+            u64 cost = 0;
+            const usize lead = std::min(kPixelBytes, rowBytes);
+            if (previous != nullptr) {
+                for (usize i = 0; i < lead; ++i) {
+                    const u8 residual = static_cast<u8>(row[i] - (previous[i] >> 1));
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+                for (usize i = lead; i < rowBytes; ++i) {
+                    const u8 residual =
+                        static_cast<u8>(row[i] - ((int{row[i - kPixelBytes]} + int{previous[i]}) >> 1));
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            } else {
+                for (usize i = 0; i < lead; ++i) {
+                    const u8 residual = row[i];
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+                for (usize i = lead; i < rowBytes; ++i) {
+                    const u8 residual = static_cast<u8>(row[i] - (row[i - kPixelBytes] >> 1));
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            }
+            consider(3, cost);
+        }
+        // Filter 4: Paeth
+        {
+            u8* dst = candidates[4].data();
+            u64 cost = 0;
+            const usize lead = std::min(kPixelBytes, rowBytes);
+            if (previous != nullptr) {
+                for (usize i = 0; i < lead; ++i) {
+                    const u8 residual = static_cast<u8>(row[i] - previous[i]);
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+                for (usize i = lead; i < rowBytes; ++i) {
+                    const u8 residual = static_cast<u8>(
+                        row[i] - paeth(row[i - kPixelBytes], previous[i], previous[i - kPixelBytes]));
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            } else {
+                for (usize i = 0; i < lead; ++i) {
+                    const u8 residual = row[i];
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+                for (usize i = lead; i < rowBytes; ++i) {
+                    const u8 residual = static_cast<u8>(row[i] - row[i - kPixelBytes]);
+                    dst[i] = residual;
+                    cost += static_cast<u64>(std::abs(static_cast<int>(static_cast<i8>(residual))));
+                }
+            }
+            consider(4, cost);
         }
         raw.push_back(static_cast<u8>(best));
         raw.insert(raw.end(), candidates[best].begin(), candidates[best].end());
@@ -188,23 +280,59 @@ usize rowBytes(const PngHeader& header, u32 width) {
 /// Reverses the per-row filters of one pass, in place. `rows` holds `count`
 /// rows of one filter byte followed by `stride` bytes.
 Result<> unfilter(std::span<u8> rows, usize stride, usize count, usize pixelBytes) {
+    const usize lead = std::min(pixelBytes, stride);
     for (usize y = 0; y < count; ++y) {
         u8* row = rows.data() + y * (stride + 1);
         const u8 filter = row[0];
         u8* current = row + 1;
         const u8* previous = y > 0 ? current - (stride + 1) : nullptr;
-        for (usize i = 0; i < stride; ++i) {
-            const u8 left = i >= pixelBytes ? current[i - pixelBytes] : 0;
-            const u8 up = previous != nullptr ? previous[i] : 0;
-            const u8 upLeft = previous != nullptr && i >= pixelBytes ? previous[i - pixelBytes] : 0;
-            switch (filter) {
-                case 0: break;
-                case 1: current[i] = static_cast<u8>(current[i] + left); break;
-                case 2: current[i] = static_cast<u8>(current[i] + up); break;
-                case 3: current[i] = static_cast<u8>(current[i] + ((int{left} + int{up}) >> 1)); break;
-                case 4: current[i] = static_cast<u8>(current[i] + paeth(left, up, upLeft)); break;
-                default: return fail("png: invalid filter type {}", filter);
-            }
+        switch (filter) {
+            case 0:
+                break;
+            case 1:
+                for (usize i = lead; i < stride; ++i) {
+                    current[i] = static_cast<u8>(current[i] + current[i - pixelBytes]);
+                }
+                break;
+            case 2:
+                if (previous != nullptr) {
+                    for (usize i = 0; i < stride; ++i) {
+                        current[i] = static_cast<u8>(current[i] + previous[i]);
+                    }
+                }
+                break;
+            case 3:
+                if (previous != nullptr) {
+                    for (usize i = 0; i < lead; ++i) {
+                        current[i] = static_cast<u8>(current[i] + (previous[i] >> 1));
+                    }
+                    for (usize i = lead; i < stride; ++i) {
+                        current[i] = static_cast<u8>(
+                            current[i] + ((int{current[i - pixelBytes]} + int{previous[i]}) >> 1));
+                    }
+                } else {
+                    for (usize i = lead; i < stride; ++i) {
+                        current[i] = static_cast<u8>(current[i] + (current[i - pixelBytes] >> 1));
+                    }
+                }
+                break;
+            case 4:
+                if (previous != nullptr) {
+                    for (usize i = 0; i < lead; ++i) {
+                        current[i] = static_cast<u8>(current[i] + previous[i]);
+                    }
+                    for (usize i = lead; i < stride; ++i) {
+                        current[i] = static_cast<u8>(
+                            current[i] + paeth(current[i - pixelBytes], previous[i], previous[i - pixelBytes]));
+                    }
+                } else {
+                    for (usize i = lead; i < stride; ++i) {
+                        current[i] = static_cast<u8>(current[i] + current[i - pixelBytes]);
+                    }
+                }
+                break;
+            default:
+                return fail("png: invalid filter type {}", filter);
         }
     }
     return {};
