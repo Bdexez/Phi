@@ -486,3 +486,24 @@ TEST(AssetManager, ASyncLoadFromAJobJoinsAnAsyncOneQueuedBehindIt) {
     EXPECT_EQ(job.get(), 7);
     std::filesystem::remove_all(dir);
 }
+
+TEST(AssetManager, ClearCacheReleasesAssets) {
+    const TempDir dir;
+    dir.write("note.txt", "hello");
+    VirtualFileSystem vfs;
+    vfs.mount("data", dir.path);
+    AssetManager assets(vfs);
+    assets.registerLoader<std::string>(".txt", [](std::span<const u8> bytes) -> Result<std::string> {
+        return std::string(bytes.begin(), bytes.end());
+    });
+
+    std::weak_ptr<const std::string> weak;
+    {
+        const auto loaded = assets.load<std::string>("data:/note.txt");
+        ASSERT_TRUE(loaded.has_value());
+        weak = *loaded;
+    }
+    EXPECT_FALSE(weak.expired());  // still held by the cache
+    assets.clearCache();
+    EXPECT_TRUE(weak.expired());   // released once the cache is cleared
+}
