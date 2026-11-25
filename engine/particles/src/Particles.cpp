@@ -75,6 +75,12 @@ void updateParticles(ecs::World& world, f32 dt) {
     if (!(dt >= 0.0f) || !std::isfinite(dt)) {
         return;
     }
+    const auto* worldTransforms = world.storage<scene::WorldTransform>();
+    const auto* transforms = world.storage<scene::Transform>();
+    const auto safeAxis = [](const Vec3& column, const Vec3& fallback) {
+        const f32 length = glm::length(column);
+        return length > 1e-6f ? column / length : fallback;
+    };
     world.view<ParticleEmitter>().each([&](ecs::Entity entity, ParticleEmitter& emitter) {
         // Age and move; the expired go (order does not matter for drawing,
         // so swap with the last).
@@ -94,14 +100,17 @@ void updateParticles(ecs::World& world, f32 dt) {
 
         Vec3 origin(0.0f);
         Vec3 axis = emitter.direction;
-        if (const auto* placed = world.tryGet<scene::WorldTransform>(entity)) {
+        if (const auto* placed = worldTransforms != nullptr ? worldTransforms->tryGet(entity.index) : nullptr) {
             origin = Vec3(placed->matrix[3]);
             if (emitter.localDirection) {
-                // Rotation only: scale (even uneven) must not bend the cone.
+                // Rotation only: scale (even uneven or zero) must not bend the cone or produce NaN.
                 const Mat3 frame(placed->matrix);
-                axis = Mat3(glm::normalize(frame[0]), glm::normalize(frame[1]), glm::normalize(frame[2])) * axis;
+                axis = Mat3(safeAxis(frame[0], Vec3(1.0f, 0.0f, 0.0f)),
+                            safeAxis(frame[1], Vec3(0.0f, 1.0f, 0.0f)),
+                            safeAxis(frame[2], Vec3(0.0f, 0.0f, 1.0f))) *
+                       axis;
             }
-        } else if (const auto* local = world.tryGet<scene::Transform>(entity)) {
+        } else if (const auto* local = transforms != nullptr ? transforms->tryGet(entity.index) : nullptr) {
             origin = local->position;
             if (emitter.localDirection) {
                 axis = local->rotation * axis;
