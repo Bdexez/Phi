@@ -132,11 +132,13 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     };
 
     // Gather: dynamic and static spheres, static boxes.
+    auto* rigidBodies = world.storage<RigidBody>();
+    const auto* kinematics = world.storage<Kinematic>();
     std::vector<Sphere> spheres;
     world.view<Transform, const SphereCollider>().exclude<Trigger>().each(
         [&](ecs::Entity entity, Transform& transform, const SphereCollider& collider) {
             spheres.push_back({entity, transform.position, collider.radius * largestScale(transform),
-                               world.tryGet<RigidBody>(entity), &transform});
+                               rigidBodies != nullptr ? rigidBodies->tryGet(entity.index) : nullptr, &transform});
         });
     std::vector<Box> boxes;
     // Kinematic colliders: their velocity is how they moved since last step.
@@ -158,7 +160,8 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     });
     world.view<const Transform, const BoxCollider>().exclude<RigidBody, Trigger>().each(
         [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider) {
-            boxes.push_back(makeBox(entity, transform, collider, world.tryGet<Kinematic>(entity)));
+            boxes.push_back(makeBox(entity, transform, collider,
+                                    kinematics != nullptr ? kinematics->tryGet(entity.index) : nullptr));
         });
 
     // Sleeping bodies have zero velocity; one that has been given some
@@ -221,119 +224,126 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     // (most worlds are wide rather than tall), except very large ones (a
     // floor) that every sphere checks; each sphere only visits the boxes
     // around it, in their original order so results do not depend on the
-    // grid.
-    f32 cell = 1.0f;
-    {
-        // Typical box size, ignoring the large ones that set the maximum.
-        std::vector<f32> sizes;
-        for (const Box& box : boxes) {
-            sizes.push_back(std::max(box.boundsMax.x - box.boundsMin.x, box.boundsMax.z - box.boundsMin.z));
-        }
-        if (!sizes.empty()) {
-            std::nth_element(sizes.begin(), sizes.begin() + static_cast<std::ptrdiff_t>(sizes.size() / 2), sizes.end());
-            cell = std::max(sizes[sizes.size() / 2] * 2.0f, 0.5f);
-        }
-    }
-    // Clamped: converting a float beyond i64's range is undefined behavior,
-    // and coordinates this far out are nonsense anyway.
-    const auto cellOf = [cell](f32 coordinate) {
-        return static_cast<i64>(std::clamp(std::floor(static_cast<f64>(coordinate) / cell), -1e15, 1e15));
-    };
-    const auto key = [](i64 x, i64 z) { return (static_cast<u64>(x) << 32) ^ static_cast<u64>(z & 0xffffffff); };
-    std::vector<u32> large;
-    std::unordered_map<u64, std::vector<u32>> grid;
-    for (u32 i = 0; i < boxes.size(); ++i) {
-        const Box& box = boxes[i];
-        const i64 x0 = cellOf(box.boundsMin.x);
-        const i64 x1 = cellOf(box.boundsMax.x);
-        const i64 z0 = cellOf(box.boundsMin.z);
-        const i64 z1 = cellOf(box.boundsMax.z);
-        if ((x1 - x0 + 1) * (z1 - z0 + 1) > 16) {
-            large.push_back(i);
-            continue;
-        }
-        for (i64 x = x0; x <= x1; ++x) {
-            for (i64 z = z0; z <= z1; ++z) {
-                grid[key(x, z)].push_back(i);
+    // grid. Skip building the grid when no dynamic sphere is awake.
+    const bool anyAwakeSphere =
+        !boxes.empty() && std::any_of(spheres.begin(), spheres.end(), [](const Sphere& s) {
+            return s.body != nullptr && !s.body->asleep;
+        });
+    if (anyAwakeSphere) {
+        f32 cell = 1.0f;
+        {
+            // Typical box size, ignoring the large ones that set the maximum.
+            std::vector<f32> sizes;
+            sizes.reserve(boxes.size());
+            for (const Box& box : boxes) {
+                sizes.push_back(std::max(box.boundsMax.x - box.boundsMin.x, box.boundsMax.z - box.boundsMin.z));
+            }
+            if (!sizes.empty()) {
+                std::nth_element(sizes.begin(), sizes.begin() + static_cast<std::ptrdiff_t>(sizes.size() / 2), sizes.end());
+                cell = std::max(sizes[sizes.size() / 2] * 2.0f, 0.5f);
             }
         }
-    }
-
-    // Boxes whose cells overlap a region of the XZ plane, in order, plus the
-    // large ones; all of them when the region spans more cells than there
-    // are boxes.
-    std::vector<u32> candidates;
-    const auto gather = [&](const Vec3& low, const Vec3& high) {
-        const i64 x0 = cellOf(low.x);
-        const i64 x1 = cellOf(high.x);
-        const i64 z0 = cellOf(low.z);
-        const i64 z1 = cellOf(high.z);
-        candidates.clear();
-        if (static_cast<f64>(x1 - x0 + 1) * static_cast<f64>(z1 - z0 + 1) > static_cast<f64>(boxes.size())) {
-            for (u32 i = 0; i < boxes.size(); ++i) {
-                candidates.push_back(i);
-            }
-            return;
-        }
-        candidates.assign(large.begin(), large.end());
-        for (i64 x = x0; x <= x1; ++x) {
-            for (i64 z = z0; z <= z1; ++z) {
-                if (const auto found = grid.find(key(x, z)); found != grid.end()) {
-                    candidates.insert(candidates.end(), found->second.begin(), found->second.end());
-                }
-            }
-        }
-        std::sort(candidates.begin(), candidates.end());
-        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
-    };
-    for (Sphere& sphere : spheres) {
-        if (sphere.body == nullptr || sphere.body->asleep) {
-            continue;
-        }
-        // A correction moves the sphere by less than its radius: a margin of
-        // one radius keeps every box it may touch this step.
-        const f32 reach = sphere.radius * 2.0f;
-
-        // Fast spheres could pass through a thin box between two steps:
-        // follow their path and stop it a little inside the first box it
-        // meets, so the contact below resolves the impact.
-        const Vec3 from = sphere.body->previousPosition;
-        const Vec3 travel = sphere.center - from;
-        if (const f32 length = glm::length(travel); length > sphere.radius * 0.5f) {
-            const Vec3 direction = travel / length;
-            gather(glm::min(from, sphere.center) - Vec3(reach), glm::max(from, sphere.center) + Vec3(reach));
-            f32 nearest = length;
-            for (const u32 boxIndex : candidates) {
-                const Box& box = boxes[boxIndex];
-                // The box grown by the radius is a little larger than the
-                // swept sphere's true reach at edges and corners, hence the
-                // check of an actual contact where the path enters it. Paths
-                // starting in contact (rolling on a floor) are left alone.
-                const auto hit = rayBox(box, from, direction, nearest, sphere.radius);
-                if (hit && hit->distance > 0.0f &&
-                    sphereBoxContact(box, from + direction * hit->distance, sphere.radius * 1.01f + 1e-3f)) {
-                    nearest = hit->distance;
-                }
-            }
-            if (nearest < length) {
-                sphere.center = from + direction * std::min(nearest + sphere.radius * 0.02f, length);
-            }
-        }
-
-        gather(sphere.center - Vec3(reach), sphere.center + Vec3(reach));
-
-        for (const u32 boxIndex : candidates) {
-            const Box& box = boxes[boxIndex];
-            const auto contact = sphereBoxContact(box, sphere.center, sphere.radius);
-            if (!contact) {
+        // Clamped: converting a float beyond i64's range is undefined behavior,
+        // and coordinates this far out are nonsense anyway.
+        const auto cellOf = [cell](f32 coordinate) {
+            return static_cast<i64>(std::clamp(std::floor(static_cast<f64>(coordinate) / cell), -1e15, 1e15));
+        };
+        const auto key = [](i64 x, i64 z) { return (static_cast<u64>(x) << 32) ^ static_cast<u64>(z & 0xffffffff); };
+        std::vector<u32> large;
+        std::unordered_map<u64, std::vector<u32>> grid;
+        for (u32 i = 0; i < boxes.size(); ++i) {
+            const Box& box = boxes[i];
+            const i64 x0 = cellOf(box.boundsMin.x);
+            const i64 x1 = cellOf(box.boundsMax.x);
+            const i64 z0 = cellOf(box.boundsMin.z);
+            const i64 z1 = cellOf(box.boundsMax.z);
+            if ((x1 - x0 + 1) * (z1 - z0 + 1) > 16) {
+                large.push_back(i);
                 continue;
             }
-            const Vec3 normal = contact->normal;
-            const f32 depth = contact->depth;
-            separate(sphere, nullptr, normal, depth);
-            report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
-                   resolve({sphere.body, normal * sphere.radius, sphere.radius},
-                           {nullptr, Vec3(0.0f), 0.0f, box.velocityAt(sphere.center + normal * sphere.radius)}, normal));
+            for (i64 x = x0; x <= x1; ++x) {
+                for (i64 z = z0; z <= z1; ++z) {
+                    grid[key(x, z)].push_back(i);
+                }
+            }
+        }
+
+        // Boxes whose cells overlap a region of the XZ plane, in order, plus the
+        // large ones; all of them when the region spans more cells than there
+        // are boxes.
+        std::vector<u32> candidates;
+        const auto gather = [&](const Vec3& low, const Vec3& high) {
+            const i64 x0 = cellOf(low.x);
+            const i64 x1 = cellOf(high.x);
+            const i64 z0 = cellOf(low.z);
+            const i64 z1 = cellOf(high.z);
+            candidates.clear();
+            if (static_cast<f64>(x1 - x0 + 1) * static_cast<f64>(z1 - z0 + 1) > static_cast<f64>(boxes.size())) {
+                for (u32 i = 0; i < boxes.size(); ++i) {
+                    candidates.push_back(i);
+                }
+                return;
+            }
+            candidates.assign(large.begin(), large.end());
+            for (i64 x = x0; x <= x1; ++x) {
+                for (i64 z = z0; z <= z1; ++z) {
+                    if (const auto found = grid.find(key(x, z)); found != grid.end()) {
+                        candidates.insert(candidates.end(), found->second.begin(), found->second.end());
+                    }
+                }
+            }
+            std::sort(candidates.begin(), candidates.end());
+            candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+        };
+        for (Sphere& sphere : spheres) {
+            if (sphere.body == nullptr || sphere.body->asleep) {
+                continue;
+            }
+            // A correction moves the sphere by less than its radius: a margin of
+            // one radius keeps every box it may touch this step.
+            const f32 reach = sphere.radius * 2.0f;
+
+            // Fast spheres could pass through a thin box between two steps:
+            // follow their path and stop it a little inside the first box it
+            // meets, so the contact below resolves the impact.
+            const Vec3 from = sphere.body->previousPosition;
+            const Vec3 travel = sphere.center - from;
+            if (const f32 length = glm::length(travel); length > sphere.radius * 0.5f) {
+                const Vec3 direction = travel / length;
+                gather(glm::min(from, sphere.center) - Vec3(reach), glm::max(from, sphere.center) + Vec3(reach));
+                f32 nearest = length;
+                for (const u32 boxIndex : candidates) {
+                    const Box& box = boxes[boxIndex];
+                    // The box grown by the radius is a little larger than the
+                    // swept sphere's true reach at edges and corners, hence the
+                    // check of an actual contact where the path enters it. Paths
+                    // starting in contact (rolling on a floor) are left alone.
+                    const auto hit = rayBox(box, from, direction, nearest, sphere.radius);
+                    if (hit && hit->distance > 0.0f &&
+                        sphereBoxContact(box, from + direction * hit->distance, sphere.radius * 1.01f + 1e-3f)) {
+                        nearest = hit->distance;
+                    }
+                }
+                if (nearest < length) {
+                    sphere.center = from + direction * std::min(nearest + sphere.radius * 0.02f, length);
+                }
+            }
+
+            gather(sphere.center - Vec3(reach), sphere.center + Vec3(reach));
+
+            for (const u32 boxIndex : candidates) {
+                const Box& box = boxes[boxIndex];
+                const auto contact = sphereBoxContact(box, sphere.center, sphere.radius);
+                if (!contact) {
+                    continue;
+                }
+                const Vec3 normal = contact->normal;
+                const f32 depth = contact->depth;
+                separate(sphere, nullptr, normal, depth);
+                report(sphere.entity, box.entity, sphere.center + normal * sphere.radius, normal,
+                       resolve({sphere.body, normal * sphere.radius, sphere.radius},
+                               {nullptr, Vec3(0.0f), 0.0f, box.velocityAt(sphere.center + normal * sphere.radius)}, normal));
+            }
         }
     }
 
@@ -403,59 +413,65 @@ void step(ecs::World& world, f32 dt, const Settings& settings, std::vector<Conta
     stepBoxes(world, dt, settings, boxes, shapes, contacts);
 
     // Triggers: which bodies overlap each zone now, compared with before.
-    std::vector<Box> crates;
-    world.view<const Transform, const BoxCollider, const RigidBody>().exclude<Trigger>().each(
-        [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider, const RigidBody&) {
-            const Box crate = makeBox(entity, transform, collider);
-            if (finite(crate.boundsMin) && finite(crate.boundsMax)) {
-                crates.push_back(crate);
+    if (const auto* triggerPool = world.storage<Trigger>(); triggerPool != nullptr && triggerPool->size() > 0) {
+        std::vector<Box> crates;
+        world.view<const Transform, const BoxCollider, const RigidBody>().exclude<Trigger>().each(
+            [&](ecs::Entity entity, const Transform& transform, const BoxCollider& collider, const RigidBody&) {
+                const Box crate = makeBox(entity, transform, collider);
+                if (finite(crate.boundsMin) && finite(crate.boundsMax)) {
+                    crates.push_back(crate);
+                }
+            });
+        const auto* boxColliders = world.storage<BoxCollider>();
+        const auto* sphereColliders = world.storage<SphereCollider>();
+        world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
+            const auto* box = boxColliders != nullptr ? boxColliders->tryGet(zone.index) : nullptr;
+            const auto* ball = sphereColliders != nullptr ? sphereColliders->tryGet(zone.index) : nullptr;
+            const std::optional<Box> zoneBox =
+                box != nullptr ? std::optional(makeBox(zone, transform, *box)) : std::nullopt;
+            const f32 zoneRadius = ball != nullptr ? ball->radius * largestScale(transform) : 0.0f;
+            std::vector<ecs::Entity> inside;
+            for (const Sphere& sphere : spheres) {
+                if (sphere.body == nullptr) {
+                    continue;
+                }
+                bool overlaps = false;
+                if (zoneBox) {
+                    overlaps = sphereBoxContact(*zoneBox, sphere.center, sphere.radius).has_value();
+                } else if (ball != nullptr) {
+                    const f32 reach = zoneRadius + sphere.radius;
+                    overlaps = glm::dot(sphere.center - transform.position, sphere.center - transform.position) <
+                               reach * reach;
+                }
+                if (overlaps) {
+                    inside.push_back(sphere.entity);
+                }
             }
+            for (const Box& crate : crates) {
+                const bool overlaps = zoneBox ? boxesOverlap(*zoneBox, crate)
+                                              : ball != nullptr && sphereBoxContact(crate, transform.position, zoneRadius);
+                if (overlaps) {
+                    inside.push_back(crate.entity);
+                }
+            }
+            if (triggers != nullptr) {
+                const auto contains = [](const std::vector<ecs::Entity>& list, ecs::Entity entity) {
+                    return std::find(list.begin(), list.end(), entity) != list.end();
+                };
+                for (const ecs::Entity entity : inside) {
+                    if (!contains(trigger.inside, entity)) {
+                        triggers->push_back({zone, entity, true});
+                    }
+                }
+                for (const ecs::Entity entity : trigger.inside) {
+                    if (!contains(inside, entity)) {
+                        triggers->push_back({zone, entity, false});
+                    }
+                }
+            }
+            trigger.inside = std::move(inside);
         });
-    world.view<const Transform, Trigger>().each([&](ecs::Entity zone, const Transform& transform, Trigger& trigger) {
-        const auto* box = world.tryGet<BoxCollider>(zone);
-        const auto* ball = world.tryGet<SphereCollider>(zone);
-        const std::optional<Box> zoneBox = box != nullptr ? std::optional(makeBox(zone, transform, *box)) : std::nullopt;
-        const f32 zoneRadius = ball != nullptr ? ball->radius * largestScale(transform) : 0.0f;
-        std::vector<ecs::Entity> inside;
-        for (const Sphere& sphere : spheres) {
-            if (sphere.body == nullptr) {
-                continue;
-            }
-            bool overlaps = false;
-            if (zoneBox) {
-                overlaps = sphereBoxContact(*zoneBox, sphere.center, sphere.radius).has_value();
-            } else if (ball != nullptr) {
-                const f32 reach = zoneRadius + sphere.radius;
-                overlaps = glm::dot(sphere.center - transform.position, sphere.center - transform.position) < reach * reach;
-            }
-            if (overlaps) {
-                inside.push_back(sphere.entity);
-            }
-        }
-        for (const Box& crate : crates) {
-            const bool overlaps = zoneBox ? boxesOverlap(*zoneBox, crate)
-                                          : ball != nullptr && sphereBoxContact(crate, transform.position, zoneRadius);
-            if (overlaps) {
-                inside.push_back(crate.entity);
-            }
-        }
-        if (triggers != nullptr) {
-            const auto contains = [](const std::vector<ecs::Entity>& list, ecs::Entity entity) {
-                return std::find(list.begin(), list.end(), entity) != list.end();
-            };
-            for (const ecs::Entity entity : inside) {
-                if (!contains(trigger.inside, entity)) {
-                    triggers->push_back({zone, entity, true});
-                }
-            }
-            for (const ecs::Entity entity : trigger.inside) {
-                if (!contains(inside, entity)) {
-                    triggers->push_back({zone, entity, false});
-                }
-            }
-        }
-        trigger.inside = std::move(inside);
-    });
+    }
 
     // Bodies that kept still long enough fall asleep.
     if (sleeping) {
@@ -551,10 +567,12 @@ MoveResult moveAndSlide(ecs::World& world, ecs::Entity entity, const Vec3& displ
 
     // What the character can bump into: boxes, crates as they stand now,
     // and every other sphere, triggers aside.
+    const auto* kinematics = world.storage<Kinematic>();
     std::vector<Box> boxes;
     world.view<const Transform, const BoxCollider>().exclude<Trigger>().each(
         [&](ecs::Entity other, const Transform& pose, const BoxCollider& collider) {
-            Box box = makeBox(other, pose, collider, world.tryGet<Kinematic>(other));
+            Box box = makeBox(other, pose, collider,
+                              kinematics != nullptr ? kinematics->tryGet(other.index) : nullptr);
             if (finite(box.boundsMin) && finite(box.boundsMax)) {
                 boxes.push_back(box);
             }
