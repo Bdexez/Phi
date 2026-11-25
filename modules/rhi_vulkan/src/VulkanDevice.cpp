@@ -114,6 +114,7 @@ Result<> Device::createInstance(const DeviceConfig& config) {
     };
 
     std::vector<const char*> extensions;
+    extensions.reserve(config.instanceExtensions.size() + 2);
     for (const std::string& extension : config.instanceExtensions) {
         extensions.push_back(extension.c_str());
     }
@@ -832,12 +833,13 @@ void Device::destroyTexture(rhi::TextureHandle handle) {
     if (existing == nullptr || existing->swapchainImage) {
         return;  // swapchain images belong to their swapchain
     }
-    const auto texture = textures_.take(handle);
-    defer([device = device_, allocator = allocator_, image = texture->image, view = texture->view,
-           allocation = texture->allocation] {
-        vkDestroyImageView(device, view, nullptr);
-        vmaDestroyImage(allocator, image, allocation);
-    });
+    if (const auto texture = textures_.take(handle)) {
+        defer([device = device_, allocator = allocator_, image = texture->image, view = texture->view,
+               allocation = texture->allocation] {
+            vkDestroyImageView(device, view, nullptr);
+            vmaDestroyImage(allocator, image, allocation);
+        });
+    }
 }
 
 void Device::writeTexture(rhi::TextureHandle handle, std::span<const std::byte> pixels) {
@@ -1189,6 +1191,7 @@ rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDe
     const VkVertexInputBindingDescription vertexBinding{0, desc.vertexLayout.stride,
                                                         VK_VERTEX_INPUT_RATE_VERTEX};
     std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+    vertexAttributes.reserve(desc.vertexLayout.attributes.size());
     for (const rhi::VertexAttribute& attribute : desc.vertexLayout.attributes) {
         vertexAttributes.push_back(
             {attribute.location, 0, toVkVertexFormat(attribute.format), attribute.offset});
@@ -1270,6 +1273,7 @@ rhi::PipelineHandle Device::createGraphicsPipeline(const rhi::GraphicsPipelineDe
 
     // Dynamic rendering: attachment formats replace the render pass object.
     std::vector<VkFormat> colorFormats;
+    colorFormats.reserve(desc.colorFormats.size());
     for (const rhi::Format format : desc.colorFormats) {
         colorFormats.push_back(toVkFormat(format));
     }

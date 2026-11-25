@@ -156,7 +156,7 @@ public:
             code |= static_cast<int>(bit);
             const int count = counts_[length];
             if (code - count < first) {
-                return symbols_[static_cast<usize>(index + (code - first))];
+                return symbols_[static_cast<usize>(index) + static_cast<usize>(code - first)];
             }
             index += count;
             first = (first + count) << 1;
@@ -521,6 +521,7 @@ std::vector<u8> codeLengths(std::span<const u32> frequencies, int maxBits) {
             return x.weight != y.weight ? x.weight > y.weight : a > b;
         };
         std::vector<i32> heap;
+        heap.reserve(nodes.size());
         for (usize i = 0; i < nodes.size(); ++i) {
             heap.push_back(static_cast<i32>(i));
         }

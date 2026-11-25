@@ -113,7 +113,7 @@ std::string joinModules(const std::vector<std::string>& modules) {
     std::string result;
     for (const std::string& module : modules) {
         if (!result.empty()) {
-            result += ",";
+            result += ',';
         }
         result += module;
     }

@@ -8,12 +8,12 @@ namespace phi::ui {
 
 namespace {
 
-const Vec4 kBackground(0.05f, 0.06f, 0.08f, 0.85f);
-const Vec4 kTitle(0.16f, 0.3f, 0.55f, 0.95f);
-const Vec4 kWidget(0.18f, 0.2f, 0.25f, 1.0f);
-const Vec4 kHover(0.26f, 0.29f, 0.36f, 1.0f);
-const Vec4 kAccent(0.35f, 0.58f, 0.95f, 1.0f);
-const Vec4 kText(0.9f, 0.95f, 1.0f, 1.0f);
+constexpr Vec4 kBackground(0.05f, 0.06f, 0.08f, 0.85f);
+constexpr Vec4 kTitle(0.16f, 0.3f, 0.55f, 0.95f);
+constexpr Vec4 kWidget(0.18f, 0.2f, 0.25f, 1.0f);
+constexpr Vec4 kHover(0.26f, 0.29f, 0.36f, 1.0f);
+constexpr Vec4 kAccent(0.35f, 0.58f, 0.95f, 1.0f);
+constexpr Vec4 kText(0.9f, 0.95f, 1.0f, 1.0f);
 
 }  // namespace
 
