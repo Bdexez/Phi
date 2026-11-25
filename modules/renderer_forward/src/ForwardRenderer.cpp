@@ -299,8 +299,12 @@ void ForwardRenderer::destroyTexture(render::TextureHandle handle) {
 
 rhi::BindGroupHandle ForwardRenderer::createMaterialBindGroup(const render::MaterialDesc& desc) {
     const auto textureOr = [&](render::TextureHandle handle, render::TextureHandle fallback) {
-        const rhi::TextureHandle* texture = textures_.get(handle);
-        return texture != nullptr ? *texture : *textures_.get(fallback);
+        if (const rhi::TextureHandle* texture = textures_.get(handle)) {
+            return *texture;
+        }
+        const rhi::TextureHandle* fallbackTexture = textures_.get(fallback);
+        PHI_ASSERT(fallbackTexture != nullptr, "default renderer texture is missing");
+        return fallbackTexture != nullptr ? *fallbackTexture : rhi::TextureHandle{};
     };
 
     rhi::BindGroupDesc groupDesc;
@@ -456,11 +460,10 @@ void ForwardRenderer::ensureCaptureTarget(Extent2D extent) {
     captureExtent_ = extent;
 }
 
-render::DirectionalLight ForwardRenderer::findSun() const {
+render::DirectionalLight ForwardRenderer::findSun(const ecs::World* activeWorld) {
     render::DirectionalLight light;  // defaults when the scene has none
-    if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-        scenes != nullptr && scenes->active() != nullptr) {
-        scenes->active()->world().view<const render::DirectionalLight>().each(
+    if (activeWorld != nullptr) {
+        activeWorld->view<const render::DirectionalLight>().each(
             [&light](const render::DirectionalLight& candidate) { light = candidate; });
     }
     return light;
@@ -482,15 +485,14 @@ void ForwardRenderer::updateShadowView(const render::CameraData& camera) {
     }
 }
 
-void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameTime& time) {
+void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, ecs::World* activeWorld,
+                                       const FrameTime& time) {
     // Runs even without shadows: clearing keeps the map in a valid state for
     // the frame bind group that references it.
     // The group spans the whole pass, so GPU timings include the clear.
     commands.beginDebugGroup("shadows");
     const rhi::DepthAttachment depth{shadowMap_, rhi::LoadOp::Clear, rhi::StoreOp::Store, 1.0f};
     commands.beginRendering({{}, &depth});
-    auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-    scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
     bool first = true;
     // Each view draws into its cell of the 4 x 2 atlas: the sun's cascades
     // in the first row, spot lights' in the second.
@@ -503,7 +505,7 @@ void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameT
         render::RenderFrameContext context{
             device_,
             commands,
-            activeScene != nullptr ? &activeScene->world() : nullptr,
+            activeWorld,
             camera,
             {shadowMapSize_, shadowMapSize_},
             frameBindGroups_[device_.frameSlot()],
@@ -528,8 +530,8 @@ void ForwardRenderer::renderShadowPass(rhi::ICommandList& commands, const FrameT
     commands.endDebugGroup();
 }
 
-void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
-                                          const FrameTime& time) {
+void ForwardRenderer::updateFrameUniforms(const ecs::World* activeWorld, const render::CameraData& camera,
+                                          Extent2D extent, const FrameTime& time) {
     const render::DirectionalLight& light = sun_;
 
     render::FrameUniforms uniforms;
@@ -563,9 +565,8 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
     // Point lights: all of them if they fit, otherwise the closest to the
     // camera (the light's range counts as closeness).
     pointLights_.clear();
-    if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-        scenes != nullptr && scenes->active() != nullptr) {
-        scenes->active()->world().view<const render::PointLight, const scene::WorldTransform>().each(
+    if (activeWorld != nullptr) {
+        activeWorld->view<const render::PointLight, const scene::WorldTransform>().each(
             [&](const render::PointLight& pointLight, const scene::WorldTransform& transform) {
                 const Vec3 position(transform.matrix[3]);
                 pointLights_.push_back({position, &pointLight,
@@ -589,9 +590,8 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
     // Spot lights, chosen the same way.
     spotLights_.clear();
     spotShadowViews_.clear();
-    if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-        scenes != nullptr && scenes->active() != nullptr) {
-        scenes->active()->world().view<const render::SpotLight, const scene::WorldTransform>().each(
+    if (activeWorld != nullptr) {
+        activeWorld->view<const render::SpotLight, const scene::WorldTransform>().each(
             [&](const render::SpotLight& spot, const scene::WorldTransform& transform) {
                 const Vec3 position(transform.matrix[3]);
                 spotLights_.push_back({position, glm::normalize(-Vec3(transform.matrix[2])), &spot,
@@ -639,8 +639,8 @@ void ForwardRenderer::updateFrameUniforms(const render::CameraData& camera, Exte
 }
 
 void ForwardRenderer::renderScene(rhi::ICommandList& commands, rhi::TextureHandle target,
-                                  Extent2D extent, const render::CameraData& camera,
-                                  const FrameTime& time) {
+                                  Extent2D extent, ecs::World* activeWorld,
+                                  const render::CameraData& camera, const FrameTime& time) {
     const std::array<rhi::ColorAttachment, 1> colorAttachments = {{
         {target, rhi::LoadOp::Clear, rhi::StoreOp::Store,
          {clearColor_.r, clearColor_.g, clearColor_.b, clearColor_.a}},
@@ -654,12 +654,10 @@ void ForwardRenderer::renderScene(rhi::ICommandList& commands, rhi::TextureHandl
                           static_cast<f32>(extent.height), 0.0f, 1.0f});
     commands.setScissor({0, 0, extent.width, extent.height});
 
-    auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-    scene::Scene* activeScene = scenes != nullptr ? scenes->active() : nullptr;
     const render::RenderFrameContext context{
         device_,
         commands,
-        activeScene != nullptr ? &activeScene->world() : nullptr,
+        activeWorld,
         camera,
         extent,
         frameBindGroups_[device_.frameSlot()],
@@ -691,17 +689,21 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
         extent_ = {targetDesc.width, targetDesc.height};
         ensureDepthTarget(extent_);
 
+        // Resolve the active world once for the entire frame.
+        auto* scenes = engine_.services().tryGet<scene::SceneManager>();
+        ecs::World* activeWorld =
+            scenes != nullptr && scenes->active() != nullptr ? &scenes->active()->world() : nullptr;
+
         // Camera: the scene's primary camera, or a default vantage point.
         const f32 aspect = static_cast<f32>(extent_.width) / static_cast<f32>(extent_.height);
         render::CameraData camera = render::makeCameraData(
             glm::inverse(glm::lookAt(Vec3(0.0f, 2.0f, 6.0f), Vec3(0.0f), Vec3(0.0f, 1.0f, 0.0f))),
             render::Camera{}, aspect);
-        if (auto* scenes = engine_.services().tryGet<scene::SceneManager>();
-            scenes != nullptr && scenes->active() != nullptr) {
+        if (activeWorld != nullptr) {
             // Several primary cameras: the lowest entity slot wins, whatever
             // order the components are stored in.
             u32 chosen = ecs::Entity::kInvalidIndex;
-            scenes->active()->world().view<const render::Camera, const scene::WorldTransform>().each(
+            activeWorld->view<const render::Camera, const scene::WorldTransform>().each(
                 [&](ecs::Entity entity, const render::Camera& candidate,
                     const scene::WorldTransform& transform) {
                     if (candidate.primary && entity.index < chosen) {
@@ -711,10 +713,10 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
                 });
         }
 
-        sun_ = findSun();
+        sun_ = findSun(activeWorld);
         updateShadowView(camera);
-        updateFrameUniforms(camera, extent_, time);
-        renderShadowPass(commands, time);
+        updateFrameUniforms(activeWorld, camera, extent_, time);
+        renderShadowPass(commands, activeWorld, time);
         // Swapchain images cannot be read back once presented: when rendering
         // to a window, a capture also goes to the capture target, through the
         // post pass with HDR, or by drawing the scene a second time without.
@@ -723,16 +725,16 @@ void ForwardRenderer::renderFrame(const FrameTime& time) {
             ensureCaptureTarget(extent_);
         }
         if (hdr_) {
-            renderScene(commands, postProcess_.sceneTarget(device_, extent_), extent_, camera, time);
+            renderScene(commands, postProcess_.sceneTarget(device_, extent_), extent_, activeWorld, camera, time);
             postProcess_.prepare(commands);
             postProcess_.apply(commands, target, extent_);
             if (extraCapture) {
                 postProcess_.apply(commands, captureTarget_, extent_);
             }
         } else {
-            renderScene(commands, target, extent_, camera, time);
+            renderScene(commands, target, extent_, activeWorld, camera, time);
             if (extraCapture) {
-                renderScene(commands, captureTarget_, extent_, camera, time);
+                renderScene(commands, captureTarget_, extent_, activeWorld, camera, time);
             }
         }
         // Overlay lines last, on the finished image.

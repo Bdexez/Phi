@@ -94,16 +94,16 @@ private:
     [[nodiscard]] Extent2D targetExtent() const;
     void ensureDepthTarget(Extent2D extent);
     void ensureCaptureTarget(Extent2D extent);
-    void updateFrameUniforms(const render::CameraData& camera, Extent2D extent,
+    void updateFrameUniforms(const ecs::World* activeWorld, const render::CameraData& camera, Extent2D extent,
                              const FrameTime& time);
-    [[nodiscard]] render::DirectionalLight findSun() const;
+    [[nodiscard]] static render::DirectionalLight findSun(const ecs::World* activeWorld);
     /// Fits the sun's shadow volume around the camera's nearby view.
     void updateShadowView(const render::CameraData& camera);
-    void renderShadowPass(rhi::ICommandList& commands, const FrameTime& time);
+    void renderShadowPass(rhi::ICommandList& commands, ecs::World* activeWorld, const FrameTime& time);
     /// Features draw the scene into `target` (the HDR target, or the output
     /// without HDR).
     void renderScene(rhi::ICommandList& commands, rhi::TextureHandle target, Extent2D extent,
-                     const render::CameraData& camera, const FrameTime& time);
+                     ecs::World* activeWorld, const render::CameraData& camera, const FrameTime& time);
     void saveCapture(const std::filesystem::path& path);
     [[nodiscard]] rhi::BindGroupHandle createMaterialBindGroup(const render::MaterialDesc& desc);
     [[nodiscard]] render::RenderSetupContext setupContext();
