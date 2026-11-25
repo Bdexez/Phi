@@ -170,6 +170,18 @@ private:
         ++at_;  // opening quote
         std::string out;
         for (;;) {
+            // Scan forward over plain unescaped characters and copy in one chunk.
+            const usize chunkStart = at_;
+            while (at_ < text_.size()) {
+                const unsigned char ch = static_cast<unsigned char>(text_[at_]);
+                if (ch == '"' || ch == '\\' || ch < 0x20) {
+                    break;
+                }
+                ++at_;
+            }
+            if (at_ > chunkStart) {
+                out.append(text_.data() + chunkStart, at_ - chunkStart);
+            }
             if (at_ >= text_.size()) {
                 return std::unexpected(error("unterminated string").error());
             }
@@ -179,10 +191,6 @@ private:
             }
             if (static_cast<unsigned char>(c) < 0x20) {
                 return std::unexpected(error("control character in a string").error());
-            }
-            if (c != '\\') {
-                out += c;
-                continue;
             }
             if (at_ >= text_.size()) {
                 return std::unexpected(error("unterminated escape").error());
