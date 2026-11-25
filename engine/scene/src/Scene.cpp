@@ -110,17 +110,19 @@ std::vector<ecs::Entity> children(const ecs::World& world, ecs::Entity parent) {
 /// parents come before their children.
 std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
     std::vector<ecs::Entity> found = {root};
-    // Children of each entity, gathered in one pass over the Parent links,
-    // then put in index order: siblings come out the same however the
-    // components are stored.
+    const auto* parents = world.storage<Parent>();
+    if (parents == nullptr || parents->size() == 0) {
+        return found;
+    }
+    // Children of each entity, gathered in one pass over the Parent links.
+    // Siblings are sorted by slot index as each visited node is expanded.
     std::unordered_map<u32, std::vector<ecs::Entity>> children;
-    world.view<const Parent>().each([&](ecs::Entity child, const Parent& link) {
-        if (world.alive(link.entity)) {
-            children[link.entity.index].push_back(child);
+    const std::span<const u32> childSlots = parents->entities();
+    const std::span<const Parent> links = parents->values();
+    for (usize i = 0; i < childSlots.size(); ++i) {
+        if (world.alive(links[i].entity)) {
+            children[links[i].entity.index].push_back(world.entityAt(childSlots[i]));
         }
-    });
-    for (auto& [parent, siblings] : children) {
-        std::sort(siblings.begin(), siblings.end(), [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
     }
     // The set guards against cycles.
     std::unordered_set<u32> seen = {root.index};
@@ -129,7 +131,9 @@ std::vector<ecs::Entity> branch(const ecs::World& world, ecs::Entity root) {
         if (it == children.end()) {
             continue;
         }
-        for (const ecs::Entity child : it->second) {
+        auto& siblings = it->second;
+        std::sort(siblings.begin(), siblings.end(), [](ecs::Entity a, ecs::Entity b) { return a.index < b.index; });
+        for (const ecs::Entity child : siblings) {
             if (seen.insert(child.index).second) {
                 found.push_back(child);
             }
@@ -173,10 +177,30 @@ namespace {
 void updateWorldTransformsImpl(ecs::World& world, JobSystem* jobs) {
     auto* worldTransforms = world.storage<WorldTransform>();
     const auto* transforms = world.storage<Transform>();
-    if (worldTransforms == nullptr || transforms == nullptr) {
+    if (worldTransforms == nullptr || transforms == nullptr || worldTransforms->size() == 0) {
         return;
     }
     const auto* parents = world.storage<Parent>();
+
+    // Fast path for flat scenes (no Parent links): write WorldTransform dense
+    // storage directly without touching scratch buffers or a second pass.
+    if (parents == nullptr || parents->size() == 0) {
+        const std::span<const u32> entities = worldTransforms->entities();
+        const std::span<WorldTransform> outputs = worldTransforms->values();
+        const auto computeRange = [&](usize begin, usize end) {
+            for (usize slot = begin; slot < end; ++slot) {
+                if (const Transform* local = transforms->tryGet(entities[slot])) {
+                    outputs[slot].matrix = local->localMatrix();
+                }
+            }
+        };
+        if (jobs != nullptr) {
+            jobs->parallelFor(entities.size(), 1024, computeRange);
+        } else {
+            computeRange(0, entities.size());
+        }
+        return;
+    }
 
     // Every world matrix is computed once per call, parents before children,
     // whatever order entities are stored in: O(n) in the number of transforms.
@@ -191,15 +215,12 @@ void updateWorldTransformsImpl(ecs::World& world, JobSystem* jobs) {
     // Named explicitly: inside a job, `threadScratch` would be the worker's.
     Scratch& scratch = threadScratch;
 
-    u32 slotCount = 0;
-    for (const u32 index : transforms->entities()) {
-        slotCount = std::max(slotCount, index + 1);
-    }
+    const usize slotCount = world.slotCount();
     scratch.matrices.resize(slotCount);
     scratch.states.assign(slotCount, State::Pending);
 
     const auto parentOf = [&](u32 index) -> std::optional<u32> {
-        const Parent* parent = parents != nullptr ? parents->tryGet(index) : nullptr;
+        const Parent* parent = parents->tryGet(index);
         if (parent == nullptr || !world.alive(parent->entity) ||
             !transforms->contains(parent->entity.index)) {
             return std::nullopt;  // root, or a broken link
@@ -240,13 +261,14 @@ void updateWorldTransformsImpl(ecs::World& world, JobSystem* jobs) {
     // each job writing its own entities' slots and components.
     if (jobs != nullptr) {
         const std::span<const u32> owners = transforms->entities();
+        const std::span<const Transform> locals = transforms->values();
         jobs->parallelFor(owners.size(), 1024, [&](usize begin, usize end) {
             for (usize i = begin; i < end; ++i) {
                 const u32 index = owners[i];
                 if (parentOf(index).has_value()) {
                     continue;
                 }
-                scratch.matrices[index] = transforms->get(index).localMatrix();
+                scratch.matrices[index] = locals[i].localMatrix();
                 WorldTransform* target = worldTransforms->tryGet(index);
                 if (target != nullptr) {
                     target->matrix = scratch.matrices[index];
@@ -257,10 +279,11 @@ void updateWorldTransformsImpl(ecs::World& world, JobSystem* jobs) {
     }
 
     const std::span<const u32> entities = worldTransforms->entities();
+    const std::span<WorldTransform> outputs = worldTransforms->values();
     for (usize slot = 0; slot < entities.size(); ++slot) {
         const u32 index = entities[slot];
         if (transforms->contains(index) && scratch.states[index] != State::Written) {
-            worldTransforms->get(index).matrix = resolve(index);
+            outputs[slot].matrix = resolve(index);
         }
     }
 }
