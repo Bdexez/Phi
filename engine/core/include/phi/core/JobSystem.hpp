@@ -73,7 +73,8 @@ private:
     void enqueue(std::function<void()> job);
     void workerLoop(u32 index);
     /// Runs `work`, recording it as `name` when tracing.
-    void traced(std::string_view name, std::string_view category, const std::function<void()>& work);
+    template <class Fn>
+    void traced(std::string_view name, std::string_view category, Fn&& work);
 
     std::vector<std::thread> workers_;
     std::deque<std::function<void()>> queue_;
