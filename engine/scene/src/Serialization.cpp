@@ -105,8 +105,11 @@ Result<> parseField(const Fields& fields, std::string_view key, Quat& out) {
     out = Quat(values[0], values[1], values[2], values[3]);
     // Hand-edited values may not be unit length; saved ones are, and are
     // kept bit for bit so a load-save round trip is exact.
-    if (std::abs(glm::length(out) - 1.0f) > 1e-5f) {
-        out = glm::normalize(out);
+    const f32 length = glm::length(out);
+    if (!(length > 1e-6f) || !std::isfinite(length)) {
+        out = Quat(1.0f, 0.0f, 0.0f, 0.0f);
+    } else if (std::abs(length - 1.0f) > 1e-5f) {
+        out /= length;
     }
     return {};
 }
